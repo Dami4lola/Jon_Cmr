@@ -1,7 +1,7 @@
 """
 Job API endpoints
 """
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Body
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 
@@ -302,6 +302,51 @@ def update_job(
     session.add(job)
     session.commit()
     session.refresh(job)
+
+    # Refresh with relationships
+    statement = (
+        select(Job)
+        .where(Job.id == job_id)
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+    )
+    job = session.exec(statement).first()
+
+    return job_to_response(job)
+
+
+@router.post("/{job_id}/assign", response_model=JobResponse)
+def assign_workers_to_job(
+    job_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+    worker_ids: list[int] = Body(..., embed=True),
+):
+    """Assign workers to a job (manager only)"""
+    statement = (
+        select(Job)
+        .where(Job.id == job_id)
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+    )
+    job = session.exec(statement).first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    # Remove existing assignments
+    for link in session.exec(select(JobWorkerLink).where(JobWorkerLink.job_id == job_id)).all():
+        session.delete(link)
+
+    # Add new assignments
+    for worker_id in worker_ids:
+        worker = session.get(Worker, worker_id)
+        if worker:
+            link = JobWorkerLink(job_id=job_id, worker_id=worker_id)
+            session.add(link)
+
+    session.commit()
 
     # Refresh with relationships
     statement = (

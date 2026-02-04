@@ -4,20 +4,28 @@ import { purchasesApi } from '../api/purchases';
 import { formatDate } from '../lib/utils';
 import type { PurchaseItem, PurchaseItemCreate } from '../types';
 
+interface PurchaseListResponse {
+  needed: PurchaseItem[];
+  purchased: PurchaseItem[];
+}
+
 export function PurchaseList() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<PurchaseItemCreate>({
-    item_name: '',
-    quantity: 1,
+    name: '',
+    quantity: '1',
     notes: '',
   });
 
-  // Fetch items
-  const { data: items = [], isLoading } = useQuery({
+  // Fetch items - backend returns { needed: [], purchased: [] }
+  const { data, isLoading } = useQuery({
     queryKey: ['purchases'],
-    queryFn: () => purchasesApi.list(),
+    queryFn: () => purchasesApi.list() as unknown as Promise<PurchaseListResponse>,
   });
+
+  const neededItems = data?.needed || [];
+  const purchasedItems = data?.purchased || [];
 
   // Create mutation
   const createMutation = useMutation({
@@ -25,7 +33,7 @@ export function PurchaseList() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       setShowForm(false);
-      setFormData({ item_name: '', quantity: 1, notes: '' });
+      setFormData({ name: '', quantity: '1', notes: '' });
     },
   });
 
@@ -47,12 +55,9 @@ export function PurchaseList() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.item_name.trim()) return;
+    if (!formData.name.trim()) return;
     createMutation.mutate(formData);
   };
-
-  const neededItems = items.filter((item: PurchaseItem) => !item.is_purchased);
-  const purchasedItems = items.filter((item: PurchaseItem) => item.is_purchased);
 
   return (
     <div className="space-y-6">
@@ -78,8 +83,8 @@ export function PurchaseList() {
                 </label>
                 <input
                   type="text"
-                  value={formData.item_name}
-                  onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="Enter item name"
                   required
@@ -90,11 +95,11 @@ export function PurchaseList() {
                   Quantity
                 </label>
                 <input
-                  type="number"
-                  min="1"
+                  type="text"
                   value={formData.quantity || ''}
-                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="e.g. 2, 1 box, 500ml"
                 />
               </div>
             </div>
@@ -155,9 +160,9 @@ export function PurchaseList() {
                       </button>
                       <div>
                         <p className="font-medium text-gray-900">
-                          {item.item_name}
-                          {item.quantity && item.quantity > 1 && (
-                            <span className="text-gray-500 ml-2">x{item.quantity}</span>
+                          {item.name}
+                          {item.quantity && (
+                            <span className="text-gray-500 ml-2">({item.quantity})</span>
                           )}
                         </p>
                         {item.notes && (
@@ -165,6 +170,7 @@ export function PurchaseList() {
                         )}
                         <p className="text-xs text-gray-400">
                           Added {formatDate(item.added_at)}
+                          {item.added_by_name && ` by ${item.added_by_name}`}
                         </p>
                       </div>
                     </div>
@@ -205,14 +211,15 @@ export function PurchaseList() {
                       </div>
                       <div>
                         <p className="font-medium text-gray-700 line-through">
-                          {item.item_name}
-                          {item.quantity && item.quantity > 1 && (
-                            <span className="text-gray-400 ml-2">x{item.quantity}</span>
+                          {item.name}
+                          {item.quantity && (
+                            <span className="text-gray-400 ml-2">({item.quantity})</span>
                           )}
                         </p>
                         {item.purchased_at && (
                           <p className="text-xs text-gray-400">
                             Purchased {formatDate(item.purchased_at)}
+                            {item.purchased_by_name && ` by ${item.purchased_by_name}`}
                           </p>
                         )}
                       </div>

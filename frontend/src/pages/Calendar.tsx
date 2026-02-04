@@ -161,11 +161,7 @@ export function Calendar() {
                           <button
                             key={event.id}
                             onClick={() => setSelectedEvent(event)}
-                            className={`w-full text-left text-xs p-1 rounded truncate transition-colors ${
-                              event.extendedProps?.is_completed
-                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                : 'bg-obatek/10 text-obatek hover:bg-obatek/20'
-                            }`}
+                            className="w-full text-left text-xs p-1 rounded truncate transition-colors bg-obatek/10 text-obatek hover:bg-obatek/20"
                           >
                             {event.title}
                           </button>
@@ -207,24 +203,30 @@ export function Calendar() {
                 <span className="font-medium">Date:</span>{' '}
                 {formatDate(selectedEvent.start)}
               </p>
-              {selectedEvent.extendedProps?.client_name && (
+              {selectedEvent.time && (
                 <p>
-                  <span className="font-medium">Client:</span>{' '}
-                  {selectedEvent.extendedProps.client_name}
+                  <span className="font-medium">Time:</span>{' '}
+                  {selectedEvent.time}
                 </p>
               )}
-              <p>
-                <span className="font-medium">Status:</span>{' '}
-                <span
-                  className={
-                    selectedEvent.extendedProps?.is_completed
-                      ? 'text-green-600'
-                      : 'text-obatek'
-                  }
-                >
-                  {selectedEvent.extendedProps?.is_completed ? 'Completed' : 'Scheduled'}
-                </span>
-              </p>
+              {selectedEvent.client && (
+                <p>
+                  <span className="font-medium">Client:</span>{' '}
+                  {selectedEvent.client}
+                </p>
+              )}
+              {selectedEvent.address && (
+                <p>
+                  <span className="font-medium">Address:</span>{' '}
+                  {selectedEvent.address}
+                </p>
+              )}
+              {selectedEvent.description && (
+                <p>
+                  <span className="font-medium">Description:</span>{' '}
+                  {selectedEvent.description}
+                </p>
+              )}
             </div>
             <div className="mt-6 flex justify-end">
               <button

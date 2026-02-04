@@ -36,7 +36,7 @@ export const purchasesApi = {
   },
 
   markNotPurchased: async (id: number): Promise<PurchaseItem> => {
-    const response = await api.put(`/purchases/${id}/not-purchased`);
+    const response = await api.put(`/purchases/${id}/needed`);
     return response.data;
   },
 };

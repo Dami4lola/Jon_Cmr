@@ -1,7 +1,7 @@
 """
 Job Inspection API endpoints
 """
-from fastapi import APIRouter, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, HTTPException, status, UploadFile, File, Body
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 from datetime import datetime
@@ -393,6 +393,38 @@ def upload_inspection_photos(
     session.commit()
 
     return {"uploaded": len(uploaded), "files": uploaded}
+
+
+@router.put("/photos/{photo_id}", response_model=InspectionPhotoResponse)
+def update_inspection_photo(
+    photo_id: int,
+    session: DBSession,
+    current_user: CurrentUser,
+    caption: str = Body(None, embed=True),
+):
+    """Update an inspection photo caption"""
+    photo = session.get(InspectionPhoto, photo_id)
+
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Photo not found",
+        )
+
+    if caption is not None:
+        photo.caption = caption
+
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+
+    return InspectionPhotoResponse(
+        id=photo.id,
+        inspection_id=photo.inspection_id,
+        image_path=photo.image_path,
+        caption=photo.caption,
+        uploaded_at=photo.uploaded_at,
+    )
 
 
 @router.delete("/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)

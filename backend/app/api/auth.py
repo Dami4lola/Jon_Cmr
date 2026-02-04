@@ -1,7 +1,7 @@
 """
 Authentication API endpoints
 """
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -167,7 +167,7 @@ def get_current_user_info(
 @router.post("/refresh", response_model=Token)
 def refresh_token(
     session: DBSession,
-    refresh_token: str,
+    refresh_token: str = Body(..., embed=True),
 ):
     """Refresh access token using refresh token"""
     payload = decode_token(refresh_token)

@@ -100,13 +100,11 @@ export interface CalendarEvent {
   id: number;
   title: string;
   start: string;
-  end?: string;
-  allDay?: boolean;
-  extendedProps?: {
-    job_id: number;
-    client_name: string;
-    is_completed: boolean;
-  };
+  time?: string;
+  duration?: string;
+  client: string;
+  address: string;
+  description: string;
 }
 
 // Timesheet Types
@@ -174,19 +172,23 @@ export interface Receipt {
 // Purchase List Types
 export interface PurchaseItem {
   id: number;
-  item_name: string;
-  quantity?: number;
+  name: string;
+  quantity?: string;
+  priority: string;
+  status: string;
   notes?: string;
   added_by_id?: number;
+  added_by_name?: string;
   added_at: string;
-  is_purchased: boolean;
-  purchased_at?: string;
   purchased_by_id?: number;
+  purchased_by_name?: string;
+  purchased_at?: string;
 }
 
 export interface PurchaseItemCreate {
-  item_name: string;
-  quantity?: number;
+  name: string;
+  quantity?: string;
+  priority?: string;
   notes?: string;
 }
 
