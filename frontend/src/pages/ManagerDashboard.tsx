@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { timesheetsApi } from '../api/timesheets';
 import { jobsApi } from '../api/jobs';
-import { clientsApi } from '../api/clients';
+import { clientsApi, ClientCreate } from '../api/clients';
 import { workersApi } from '../api/workers';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { Timesheet, Job, Client, Worker, JobCreate } from '../types';
@@ -10,6 +10,7 @@ import type { Timesheet, Job, Client, Worker, JobCreate } from '../types';
 export function ManagerDashboard() {
   const queryClient = useQueryClient();
   const [showCreateJob, setShowCreateJob] = useState(false);
+  const [showCreateClient, setShowCreateClient] = useState(false);
   const [formData, setFormData] = useState<JobCreate>({
     client_id: 0,
     description: '',
@@ -19,6 +20,12 @@ export function ManagerDashboard() {
     estimate_amount: undefined,
     address_override: '',
     worker_ids: [],
+  });
+  const [clientFormData, setClientFormData] = useState<ClientCreate>({
+    name: '',
+    phone_number: '',
+    email: '',
+    address: '',
   });
 
   // Fetch all recent timesheets
@@ -64,6 +71,22 @@ export function ManagerDashboard() {
     },
   });
 
+  // Create client mutation
+  const createClientMutation = useMutation({
+    mutationFn: clientsApi.create,
+    onSuccess: (newClient) => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setShowCreateClient(false);
+      setFormData((prev) => ({ ...prev, client_id: newClient.id }));
+      setClientFormData({
+        name: '',
+        phone_number: '',
+        email: '',
+        address: '',
+      });
+    },
+  });
+
   // Calculate totals
   const totalPayout = timesheets.reduce(
     (sum: number, ts: Timesheet) => sum + (parseFloat(ts.calculated_pay || '0') || 0),
@@ -104,6 +127,20 @@ export function ManagerDashboard() {
     });
   };
 
+  const handleClientSelect = (value: string) => {
+    if (value === 'create-new') {
+      setShowCreateClient(true);
+    } else {
+      setFormData({ ...formData, client_id: parseInt(value) });
+    }
+  };
+
+  const handleCreateClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientFormData.name.trim() || !clientFormData.address.trim()) return;
+    createClientMutation.mutate(clientFormData);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -128,11 +165,14 @@ export function ManagerDashboard() {
                 </label>
                 <select
                   value={formData.client_id}
-                  onChange={(e) => setFormData({ ...formData, client_id: parseInt(e.target.value) })}
+                  onChange={(e) => handleClientSelect(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   required
                 >
                   <option value={0}>Select a client...</option>
+                  <option value="create-new" className="font-medium text-obatek">
+                    + Create New Client
+                  </option>
                   {clients.map((client: Client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -268,6 +308,91 @@ export function ManagerDashboard() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Create Client Modal */}
+      {showCreateClient && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-4">Create New Client</h2>
+            <form onSubmit={handleCreateClient} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name *
+                </label>
+                <input
+                  type="text"
+                  value={clientFormData.name}
+                  onChange={(e) => setClientFormData({ ...clientFormData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="Client name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Address *
+                </label>
+                <input
+                  type="text"
+                  value={clientFormData.address}
+                  onChange={(e) => setClientFormData({ ...clientFormData, address: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="Full address"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={clientFormData.phone_number}
+                  onChange={(e) => setClientFormData({ ...clientFormData, phone_number: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="Phone number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={clientFormData.email}
+                  onChange={(e) => setClientFormData({ ...clientFormData, email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateClient(false);
+                    setClientFormData({ name: '', phone_number: '', email: '', address: '' });
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createClientMutation.isPending || !clientFormData.name.trim() || !clientFormData.address.trim()}
+                  className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+                >
+                  {createClientMutation.isPending ? 'Creating...' : 'Create Client'}
+                </button>
+              </div>
+              {createClientMutation.isError && (
+                <p className="text-red-500 text-sm">
+                  Error: {(createClientMutation.error as Error)?.message || 'Failed to create client'}
+                </p>
+              )}
+            </form>
+          </div>
         </div>
       )}
 
