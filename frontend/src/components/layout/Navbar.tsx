@@ -3,7 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { cn } from '../../lib/utils';
 
 export function Navbar() {
-  const { user, isManager, logout } = useAuthStore();
+  const { user, isManager, isAdmin, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -23,6 +23,11 @@ export function Navbar() {
   if (isManager()) {
     navItems.push({ href: '/manager', label: 'Manager' });
     navItems.push({ href: '/invoices', label: 'Invoices' });
+  }
+
+  // Add admin-only items
+  if (isAdmin()) {
+    navItems.push({ href: '/admin', label: 'Admin' });
   }
 
   return (

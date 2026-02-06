@@ -14,6 +14,7 @@ import { Inspections } from './pages/Inspections';
 import { CreateInspection } from './pages/CreateInspection';
 import { ViewInspection } from './pages/ViewInspection';
 import { Invoices } from './pages/Invoices';
+import { AdminDashboard } from './pages/AdminDashboard';
 
 function App() {
   return (
@@ -52,6 +53,16 @@ function App() {
           element={
             <ProtectedRoute requireManager>
               <Invoices />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Admin-only routes */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute requireAdmin>
+              <AdminDashboard />
             </ProtectedRoute>
           }
         />

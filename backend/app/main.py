@@ -12,7 +12,7 @@ from .database import create_db_and_tables
 from .seed import seed_roles
 
 # Import routers
-from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients
+from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients, users
 
 
 @asynccontextmanager
@@ -59,6 +59,7 @@ app.include_router(timesheets.router, prefix="/api/timesheets", tags=["Timesheet
 app.include_router(invoices.router, prefix="/api/invoices", tags=["Invoices"])
 app.include_router(purchases.router, prefix="/api/purchases", tags=["Purchase List"])
 app.include_router(inspections.router, prefix="/api/inspections", tags=["Inspections"])
+app.include_router(users.router, prefix="/api/users", tags=["User Management"])
 
 
 @app.get("/")
