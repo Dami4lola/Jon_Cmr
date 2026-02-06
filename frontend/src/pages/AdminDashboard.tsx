@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, AdminCreateUserData, UserWithWorker } from '../api/users';
+import { workersApi, WorkerUpdate } from '../api/workers';
 
 const AVAILABLE_ROLES = ['worker', 'manager', 'admin'] as const;
 
@@ -8,6 +9,12 @@ export function AdminDashboard() {
   const queryClient = useQueryClient();
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithWorker | null>(null);
+  const [editingWorker, setEditingWorker] = useState<UserWithWorker | null>(null);
+  const [workerFormData, setWorkerFormData] = useState<WorkerUpdate>({
+    hourly_rate: 0,
+    charges_hst: false,
+    is_employee: false,
+  });
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['worker']);
   const [formData, setFormData] = useState<AdminCreateUserData>({
     username: '',
@@ -51,6 +58,16 @@ export function AdminDashboard() {
     mutationFn: usersApi.toggleActive,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+
+  // Update worker mutation
+  const updateWorkerMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: WorkerUpdate }) =>
+      workersApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setEditingWorker(null);
     },
   });
 
@@ -107,6 +124,22 @@ export function AdminDashboard() {
   const handleSaveRoles = () => {
     if (editingUser) {
       updateRolesMutation.mutate({ id: editingUser.id, roles: selectedRoles });
+    }
+  };
+
+  const handleEditWorker = (user: UserWithWorker) => {
+    if (!user.worker_id) return;
+    setEditingWorker(user);
+    setWorkerFormData({
+      hourly_rate: user.hourly_rate || 0,
+      charges_hst: user.charges_hst || false,
+      is_employee: user.is_employee || false,
+    });
+  };
+
+  const handleSaveWorker = () => {
+    if (editingWorker?.worker_id) {
+      updateWorkerMutation.mutate({ id: editingWorker.worker_id, data: workerFormData });
     }
   };
 
@@ -337,6 +370,73 @@ export function AdminDashboard() {
         </div>
       )}
 
+      {/* Edit Worker Modal */}
+      {editingWorker && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-4">
+              Edit Worker: {editingWorker.worker_name || editingWorker.username}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Hourly Rate ($)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={workerFormData.hourly_rate || ''}
+                  onChange={(e) => setWorkerFormData({ ...workerFormData, hourly_rate: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="e.g. 25.00"
+                />
+              </div>
+              <div className="flex items-center gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={workerFormData.charges_hst || false}
+                    onChange={(e) => setWorkerFormData({ ...workerFormData, charges_hst: e.target.checked })}
+                    className="w-4 h-4 text-obatek rounded focus:ring-obatek"
+                  />
+                  <span className="text-sm text-gray-700">Charges HST</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={workerFormData.is_employee || false}
+                    onChange={(e) => setWorkerFormData({ ...workerFormData, is_employee: e.target.checked })}
+                    className="w-4 h-4 text-obatek rounded focus:ring-obatek"
+                  />
+                  <span className="text-sm text-gray-700">Is Employee</span>
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setEditingWorker(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveWorker}
+                disabled={updateWorkerMutation.isPending}
+                className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+              >
+                {updateWorkerMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+            {updateWorkerMutation.isError && (
+              <p className="text-red-500 text-sm mt-2">
+                Error: {(updateWorkerMutation.error as Error)?.message || 'Failed to update worker'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
@@ -389,6 +489,9 @@ export function AdminDashboard() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Roles
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                    Hourly Rate
+                  </th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
                     Status
                   </th>
@@ -417,6 +520,9 @@ export function AdminDashboard() {
                         ))}
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-right text-sm text-gray-600">
+                      {user.hourly_rate != null ? `$${user.hourly_rate.toFixed(2)}` : '-'}
+                    </td>
                     <td className="px-4 py-3 text-center">
                       <span
                         className={`px-2 py-0.5 text-xs font-medium rounded-full ${
@@ -430,6 +536,14 @@ export function AdminDashboard() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
+                        {user.worker_id && (
+                          <button
+                            onClick={() => handleEditWorker(user)}
+                            className="text-sm text-blue-600 hover:underline"
+                          >
+                            Edit Rate
+                          </button>
+                        )}
                         <button
                           onClick={() => handleEditRoles(user)}
                           className="text-sm text-obatek hover:underline"

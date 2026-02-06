@@ -13,7 +13,6 @@ export function Register() {
     password: '',
     confirmPassword: '',
     name: '',
-    hourly_rate: '',
     charges_hst: false,
     is_employee: false,
   });
@@ -45,19 +44,13 @@ export function Register() {
       return;
     }
 
-    const hourlyRate = parseFloat(formData.hourly_rate);
-    if (isNaN(hourlyRate) || hourlyRate <= 0) {
-      setValidationError('Please enter a valid hourly rate');
-      return;
-    }
-
     try {
       await register({
         username: formData.username,
         email: formData.email,
         password: formData.password,
         name: formData.name,
-        hourly_rate: hourlyRate,
+        hourly_rate: 0, // Default to 0, manager/admin will set the actual rate
         charges_hst: formData.charges_hst,
         is_employee: formData.is_employee,
       });
@@ -158,24 +151,6 @@ export function Register() {
                 required
               />
             </div>
-          </div>
-
-          <div>
-            <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700 mb-1">
-              Hourly Rate ($)
-            </label>
-            <input
-              id="hourly_rate"
-              name="hourly_rate"
-              type="number"
-              step="0.01"
-              min="0"
-              value={formData.hourly_rate}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-              placeholder="25.00"
-              required
-            />
           </div>
 
           <div className="flex items-center gap-6">
