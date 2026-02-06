@@ -5,17 +5,23 @@ import { workersApi, WorkerUpdate } from '../api/workers';
 
 const AVAILABLE_ROLES = ['worker', 'manager', 'admin'] as const;
 
+interface EditUserFormData {
+  roles: string[];
+  hourly_rate: number;
+  charges_hst: boolean;
+  is_employee: boolean;
+}
+
 export function AdminDashboard() {
   const queryClient = useQueryClient();
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithWorker | null>(null);
-  const [editingWorker, setEditingWorker] = useState<UserWithWorker | null>(null);
-  const [workerFormData, setWorkerFormData] = useState<WorkerUpdate>({
+  const [editFormData, setEditFormData] = useState<EditUserFormData>({
+    roles: ['worker'],
     hourly_rate: 0,
     charges_hst: false,
     is_employee: false,
   });
-  const [selectedRoles, setSelectedRoles] = useState<string[]>(['worker']);
   const [formData, setFormData] = useState<AdminCreateUserData>({
     username: '',
     email: '',
@@ -48,8 +54,6 @@ export function AdminDashboard() {
       usersApi.updateRoles(id, { roles }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setEditingUser(null);
-      setSelectedRoles(['worker']);
     },
   });
 
@@ -67,7 +71,6 @@ export function AdminDashboard() {
       workersApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setEditingWorker(null);
     },
   });
 
@@ -105,43 +108,64 @@ export function AdminDashboard() {
         }
       });
     } else {
-      setSelectedRoles((prev) => {
-        if (prev.includes(role)) {
-          const newRoles = prev.filter((r) => r !== role);
-          return newRoles.length ? newRoles : ['worker'];
+      setEditFormData((prev) => {
+        const currentRoles = prev.roles;
+        if (currentRoles.includes(role)) {
+          const newRoles = currentRoles.filter((r) => r !== role);
+          return { ...prev, roles: newRoles.length ? newRoles : ['worker'] };
         } else {
-          return [...prev, role];
+          return { ...prev, roles: [...currentRoles, role] };
         }
       });
     }
   };
 
-  const handleEditRoles = (user: UserWithWorker) => {
+  const handleEditUser = (user: UserWithWorker) => {
     setEditingUser(user);
-    setSelectedRoles([...user.roles]);
-  };
-
-  const handleSaveRoles = () => {
-    if (editingUser) {
-      updateRolesMutation.mutate({ id: editingUser.id, roles: selectedRoles });
-    }
-  };
-
-  const handleEditWorker = (user: UserWithWorker) => {
-    if (!user.worker_id) return;
-    setEditingWorker(user);
-    setWorkerFormData({
+    setEditFormData({
+      roles: [...user.roles],
       hourly_rate: user.hourly_rate || 0,
       charges_hst: user.charges_hst || false,
       is_employee: user.is_employee || false,
     });
   };
 
-  const handleSaveWorker = () => {
-    if (editingWorker?.worker_id) {
-      updateWorkerMutation.mutate({ id: editingWorker.worker_id, data: workerFormData });
+  const handleSaveUser = async () => {
+    if (!editingUser) return;
+
+    try {
+      // Update roles if changed
+      const rolesChanged = JSON.stringify([...editingUser.roles].sort()) !== JSON.stringify([...editFormData.roles].sort());
+      if (rolesChanged) {
+        await updateRolesMutation.mutateAsync({ id: editingUser.id, roles: editFormData.roles });
+      }
+
+      // Update worker details if user has a worker profile
+      if (editingUser.worker_id) {
+        const workerChanged =
+          editFormData.hourly_rate !== (editingUser.hourly_rate || 0) ||
+          editFormData.charges_hst !== (editingUser.charges_hst || false) ||
+          editFormData.is_employee !== (editingUser.is_employee || false);
+
+        if (workerChanged) {
+          await updateWorkerMutation.mutateAsync({
+            id: editingUser.worker_id,
+            data: {
+              hourly_rate: editFormData.hourly_rate,
+              charges_hst: editFormData.charges_hst,
+              is_employee: editFormData.is_employee,
+            },
+          });
+        }
+      }
+
+      setEditingUser(null);
+    } catch {
+      // Errors handled by mutations
     }
   };
+
+  const isSaving = updateRolesMutation.isPending || updateWorkerMutation.isPending;
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
@@ -321,116 +345,107 @@ export function AdminDashboard() {
         </div>
       )}
 
-      {/* Edit Roles Modal */}
+      {/* Edit User Modal */}
       {editingUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4">
             <h2 className="text-lg font-semibold mb-4">
-              Edit Roles for {editingUser.worker_name || editingUser.username}
+              Edit User: {editingUser.worker_name || editingUser.username}
             </h2>
-            <div className="flex flex-wrap gap-2 mb-6">
-              {AVAILABLE_ROLES.map((role) => (
-                <label
-                  key={role}
-                  className={`flex items-center gap-2 px-4 py-2 border rounded-lg cursor-pointer transition-colors ${
-                    selectedRoles.includes(role)
-                      ? 'bg-obatek/10 border-obatek text-obatek'
-                      : 'border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedRoles.includes(role)}
-                    onChange={() => handleRoleToggle(role, false)}
-                    className="sr-only"
-                  />
-                  <span className="text-sm capitalize">{role}</span>
-                </label>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  setEditingUser(null);
-                  setSelectedRoles(['worker']);
-                }}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveRoles}
-                disabled={updateRolesMutation.isPending}
-                className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
-              >
-                {updateRolesMutation.isPending ? 'Saving...' : 'Save Roles'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Edit Worker Modal */}
-      {editingWorker && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
-            <h2 className="text-lg font-semibold mb-4">
-              Edit Worker: {editingWorker.worker_name || editingWorker.username}
-            </h2>
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Roles Section */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Hourly Rate ($)
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Roles
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={workerFormData.hourly_rate || ''}
-                  onChange={(e) => setWorkerFormData({ ...workerFormData, hourly_rate: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                  placeholder="e.g. 25.00"
-                />
+                <div className="flex flex-wrap gap-2">
+                  {AVAILABLE_ROLES.map((role) => (
+                    <label
+                      key={role}
+                      className={`flex items-center gap-2 px-4 py-2 border rounded-lg cursor-pointer transition-colors ${
+                        editFormData.roles.includes(role)
+                          ? 'bg-obatek/10 border-obatek text-obatek'
+                          : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={editFormData.roles.includes(role)}
+                        onChange={() => handleRoleToggle(role, false)}
+                        className="sr-only"
+                      />
+                      <span className="text-sm capitalize">{role}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-6">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={workerFormData.charges_hst || false}
-                    onChange={(e) => setWorkerFormData({ ...workerFormData, charges_hst: e.target.checked })}
-                    className="w-4 h-4 text-obatek rounded focus:ring-obatek"
-                  />
-                  <span className="text-sm text-gray-700">Charges HST</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={workerFormData.is_employee || false}
-                    onChange={(e) => setWorkerFormData({ ...workerFormData, is_employee: e.target.checked })}
-                    className="w-4 h-4 text-obatek rounded focus:ring-obatek"
-                  />
-                  <span className="text-sm text-gray-700">Is Employee</span>
-                </label>
-              </div>
+
+              {/* Worker Details Section */}
+              {editingUser.worker_id && (
+                <>
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-3">Worker Details</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Hourly Rate ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editFormData.hourly_rate || ''}
+                          onChange={(e) => setEditFormData({ ...editFormData, hourly_rate: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                          placeholder="e.g. 25.00"
+                        />
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editFormData.charges_hst}
+                            onChange={(e) => setEditFormData({ ...editFormData, charges_hst: e.target.checked })}
+                            className="w-4 h-4 text-obatek rounded focus:ring-obatek"
+                          />
+                          <span className="text-sm text-gray-700">Charges HST</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editFormData.is_employee}
+                            onChange={(e) => setEditFormData({ ...editFormData, is_employee: e.target.checked })}
+                            className="w-4 h-4 text-obatek rounded focus:ring-obatek"
+                          />
+                          <span className="text-sm text-gray-700">Is Employee</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+
             <div className="flex justify-end gap-2 mt-6">
               <button
-                onClick={() => setEditingWorker(null)}
+                onClick={() => setEditingUser(null)}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={handleSaveWorker}
-                disabled={updateWorkerMutation.isPending}
+                onClick={handleSaveUser}
+                disabled={isSaving}
                 className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
               >
-                {updateWorkerMutation.isPending ? 'Saving...' : 'Save Changes'}
+                {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
-            {updateWorkerMutation.isError && (
+
+            {(updateRolesMutation.isError || updateWorkerMutation.isError) && (
               <p className="text-red-500 text-sm mt-2">
-                Error: {(updateWorkerMutation.error as Error)?.message || 'Failed to update worker'}
+                Error: Failed to update user
               </p>
             )}
           </div>
@@ -536,19 +551,11 @@ export function AdminDashboard() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        {user.worker_id && (
-                          <button
-                            onClick={() => handleEditWorker(user)}
-                            className="text-sm text-blue-600 hover:underline"
-                          >
-                            Edit Rate
-                          </button>
-                        )}
                         <button
-                          onClick={() => handleEditRoles(user)}
+                          onClick={() => handleEditUser(user)}
                           className="text-sm text-obatek hover:underline"
                         >
-                          Edit Roles
+                          Edit
                         </button>
                         <button
                           onClick={() => toggleActiveMutation.mutate(user.id)}
