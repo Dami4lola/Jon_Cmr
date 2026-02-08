@@ -36,7 +36,7 @@ class ClientBrief(BaseModel):
     """Brief client info for nested responses"""
     id: int
     name: str
-    phone_number: str | None
+    phone_number: str | None = None
     address: str
 
     class Config:
