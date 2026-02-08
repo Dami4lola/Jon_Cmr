@@ -39,6 +39,7 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
         client=ClientBrief(
             id=client.id,
             name=client.name,
+            phone_number=client.phone_number,
             address=client.address,
         ),
     )

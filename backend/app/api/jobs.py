@@ -31,6 +31,7 @@ def job_to_response(job: Job) -> JobResponse:
         client=ClientBrief(
             id=job.client.id,
             name=job.client.name,
+            phone_number=job.client.phone_number,
             address=job.client.address,
         ),
         assigned_workers=[
