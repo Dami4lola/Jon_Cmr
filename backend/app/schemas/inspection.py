@@ -2,8 +2,8 @@
 Inspection schemas
 """
 from pydantic import BaseModel, Field
-from datetime import date
-from typing import List
+from datetime import date, datetime
+from typing import List, Optional
 
 from .job import JobBrief
 
@@ -18,37 +18,37 @@ class InspectionCreate(BaseModel):
     is_company_truck_required: bool
 
     # Pre-Job Specific Fields
-    materials_needed: bool | None = None
-    special_tools_needed: str | None = None
-    existing_damage_notes: str | None = None
-    flooring_protection_needed: str | None = None
+    materials_needed: Optional[bool] = None
+    special_tools_needed: Optional[str] = None
+    existing_damage_notes: Optional[str] = None
+    flooring_protection_needed: Optional[str] = None
 
     # Post-Job Specific Fields
-    dump_run_required: bool | None = None
-    customer_keeping_materials: str | None = None
-    materials_to_return: str | None = None
-    inventory_used: str | None = None
-    pickup_required: str | None = None
-    damages_or_quality_concerns: str | None = None
-    scope_change_notes: str | None = None
+    dump_run_required: Optional[bool] = None
+    customer_keeping_materials: Optional[str] = None
+    materials_to_return: Optional[str] = None
+    inventory_used: Optional[str] = None
+    pickup_required: Optional[str] = None
+    damages_or_quality_concerns: Optional[str] = None
+    scope_change_notes: Optional[str] = None
 
 
 class InspectionUpdate(BaseModel):
     """Update inspection"""
-    date: date | None = None
-    customer_name: str | None = None
-    is_company_truck_required: bool | None = None
-    materials_needed: bool | None = None
-    special_tools_needed: str | None = None
-    existing_damage_notes: str | None = None
-    flooring_protection_needed: str | None = None
-    dump_run_required: bool | None = None
-    customer_keeping_materials: str | None = None
-    materials_to_return: str | None = None
-    inventory_used: str | None = None
-    pickup_required: str | None = None
-    damages_or_quality_concerns: str | None = None
-    scope_change_notes: str | None = None
+    date: Optional[date] = None
+    customer_name: Optional[str] = None
+    is_company_truck_required: Optional[bool] = None
+    materials_needed: Optional[bool] = None
+    special_tools_needed: Optional[str] = None
+    existing_damage_notes: Optional[str] = None
+    flooring_protection_needed: Optional[str] = None
+    dump_run_required: Optional[bool] = None
+    customer_keeping_materials: Optional[str] = None
+    materials_to_return: Optional[str] = None
+    inventory_used: Optional[str] = None
+    pickup_required: Optional[str] = None
+    damages_or_quality_concerns: Optional[str] = None
+    scope_change_notes: Optional[str] = None
 
 
 class InspectionPhotoResponse(BaseModel):
@@ -56,7 +56,7 @@ class InspectionPhotoResponse(BaseModel):
     id: int
     image_path: str
     image_url: str
-    caption: str | None
+    caption: Optional[str]
     uploaded_at: datetime
 
     class Config:
@@ -74,19 +74,19 @@ class InspectionResponse(BaseModel):
     is_company_truck_required: bool
 
     # Pre-Job Specific Fields
-    materials_needed: bool | None
-    special_tools_needed: str | None
-    existing_damage_notes: str | None
-    flooring_protection_needed: str | None
+    materials_needed: Optional[bool]
+    special_tools_needed: Optional[str]
+    existing_damage_notes: Optional[str]
+    flooring_protection_needed: Optional[str]
 
     # Post-Job Specific Fields
-    dump_run_required: bool | None
-    customer_keeping_materials: str | None
-    materials_to_return: str | None
-    inventory_used: str | None
-    pickup_required: str | None
-    damages_or_quality_concerns: str | None
-    scope_change_notes: str | None
+    dump_run_required: Optional[bool]
+    customer_keeping_materials: Optional[str]
+    materials_to_return: Optional[str]
+    inventory_used: Optional[str]
+    pickup_required: Optional[str]
+    damages_or_quality_concerns: Optional[str]
+    scope_change_notes: Optional[str]
 
     # Nested objects
     job: JobBrief
