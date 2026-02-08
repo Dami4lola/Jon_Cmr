@@ -66,10 +66,11 @@ def list_jobs(
         worker = session.exec(
             select(Worker).where(Worker.user_id == current_user.id)
         ).first()
-        if worker:
-            statement = statement.join(JobWorkerLink).where(
-                JobWorkerLink.worker_id == worker.id
-            )
+        if not worker:
+            return []
+        statement = statement.join(JobWorkerLink).where(
+            JobWorkerLink.worker_id == worker.id
+        )
 
     statement = statement.order_by(Job.scheduled_date.desc())
     jobs = session.exec(statement).all()

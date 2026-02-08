@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { queryClient } from '../lib/queryClient';
 import type { User } from '../types';
 
 interface AuthState {
@@ -50,6 +51,8 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         localStorage.removeItem('access_token');
+        localStorage.removeItem('obatek-query-cache');
+        queryClient.clear();
         set({ token: null, user: null, isAuthenticated: false });
       },
 
