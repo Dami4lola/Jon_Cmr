@@ -206,7 +206,7 @@ export interface JobInspection {
   is_company_truck_required: boolean;
 
   // Pre-Job Specific Fields
-  materials_needed?: boolean;
+  materials_needed?: string;
   special_tools_needed?: string;
   existing_damage_notes?: string;
   flooring_protection_needed?: string;
@@ -236,7 +236,7 @@ export interface InspectionCreate {
   date: string;
   customer_name: string;
   is_company_truck_required: boolean;
-  materials_needed?: boolean;
+  materials_needed?: string;
   special_tools_needed?: string;
   existing_damage_notes?: string;
   flooring_protection_needed?: string;

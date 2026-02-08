@@ -18,7 +18,7 @@ class InspectionCreate(BaseModel):
     is_company_truck_required: bool
 
     # Pre-Job Specific Fields
-    materials_needed: Optional[bool] = None
+    materials_needed: Optional[str] = None
     special_tools_needed: Optional[str] = None
     existing_damage_notes: Optional[str] = None
     flooring_protection_needed: Optional[str] = None
@@ -38,7 +38,7 @@ class InspectionUpdate(BaseModel):
     date: Optional[date] = None
     customer_name: Optional[str] = None
     is_company_truck_required: Optional[bool] = None
-    materials_needed: Optional[bool] = None
+    materials_needed: Optional[str] = None
     special_tools_needed: Optional[str] = None
     existing_damage_notes: Optional[str] = None
     flooring_protection_needed: Optional[str] = None
@@ -74,7 +74,7 @@ class InspectionResponse(BaseModel):
     is_company_truck_required: bool
 
     # Pre-Job Specific Fields
-    materials_needed: Optional[bool]
+    materials_needed: Optional[str]
     special_tools_needed: Optional[str]
     existing_damage_notes: Optional[str]
     flooring_protection_needed: Optional[str]

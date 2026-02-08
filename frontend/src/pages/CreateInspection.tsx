@@ -16,7 +16,7 @@ export function CreateInspection() {
   const [isCompanyTruckRequired, setIsCompanyTruckRequired] = useState(false);
 
   // Pre-job specific fields
-  const [materialsNeeded, setMaterialsNeeded] = useState(false);
+  const [materialsNeeded, setMaterialsNeeded] = useState('');
   const [specialToolsNeeded, setSpecialToolsNeeded] = useState('');
   const [existingDamageNotes, setExistingDamageNotes] = useState('');
   const [flooringProtectionNeeded, setFlooringProtectionNeeded] = useState('');
@@ -52,7 +52,7 @@ export function CreateInspection() {
           customer_name: customerName,
           is_company_truck_required: isCompanyTruckRequired,
           // Pre-job fields
-          materials_needed: type === 'pre' ? materialsNeeded : undefined,
+          materials_needed: type === 'pre' ? materialsNeeded || undefined : undefined,
           special_tools_needed: type === 'pre' ? specialToolsNeeded || undefined : undefined,
           existing_damage_notes: type === 'pre' ? existingDamageNotes || undefined : undefined,
           flooring_protection_needed: type === 'pre' ? flooringProtectionNeeded || undefined : undefined,
@@ -191,17 +191,17 @@ export function CreateInspection() {
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Pre-Job Details</h3>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="materialsNeeded"
-                checked={materialsNeeded}
-                onChange={(e) => setMaterialsNeeded(e.target.checked)}
-                className="w-4 h-4 text-obatek focus:ring-obatek border-gray-300 rounded"
-              />
-              <label htmlFor="materialsNeeded" className="text-sm font-medium text-gray-700">
-                Materials needed
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Materials needed (optional)
               </label>
+              <textarea
+                value={materialsNeeded}
+                onChange={(e) => setMaterialsNeeded(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="List materials needed for the job..."
+              />
             </div>
 
             <div>

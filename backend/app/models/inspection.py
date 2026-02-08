@@ -34,7 +34,7 @@ class JobInspection(SQLModel, table=True):
     is_company_truck_required: bool
 
     # Pre-Job Specific Fields
-    materials_needed: bool | None = None
+    materials_needed: str | None = None
     special_tools_needed: str | None = None
     existing_damage_notes: str | None = None
     flooring_protection_needed: str | None = None
