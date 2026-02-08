@@ -10,6 +10,7 @@ import os
 from .config import settings
 from .database import create_db_and_tables
 from .seed import seed_roles
+from .middleware import LoggingMiddleware, register_exception_handlers
 
 # Import routers
 from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients, users
@@ -37,6 +38,12 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Register exception handlers
+register_exception_handlers(app)
+
+# Add middleware
+app.add_middleware(LoggingMiddleware)
 
 # CORS middleware
 app.add_middleware(

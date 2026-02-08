@@ -4,6 +4,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { AuthInitializer } from './components/AuthInitializer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { queryClient, persister, setupOfflineSync } from './lib/queryClient';
 import './index.css';
 
@@ -12,15 +13,17 @@ setupOfflineSync();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <PersistQueryClientProvider
-      client={queryClient}
-      persistOptions={{ persister }}
-    >
-      <BrowserRouter>
-        <AuthInitializer>
-          <App />
-        </AuthInitializer>
-      </BrowserRouter>
-    </PersistQueryClientProvider>
+    <ErrorBoundary>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{ persister }}
+      >
+        <BrowserRouter>
+          <AuthInitializer>
+            <App />
+          </AuthInitializer>
+        </BrowserRouter>
+      </PersistQueryClientProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );
