@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { timesheetsApi } from '../api/timesheets';
 import { jobsApi } from '../api/jobs';
@@ -8,6 +9,7 @@ import { formatCurrency, formatDate } from '../lib/utils';
 import type { Timesheet, Job, Client, Worker, JobCreate } from '../types';
 
 export function ManagerDashboard() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showCreateJob, setShowCreateJob] = useState(false);
   const [showCreateClient, setShowCreateClient] = useState(false);
@@ -695,7 +697,7 @@ export function ManagerDashboard() {
               </thead>
               <tbody className="divide-y">
                 {timesheets.map((ts: Timesheet) => (
-                  <tr key={ts.id} className="hover:bg-gray-50">
+                  <tr key={ts.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/timesheets/${ts.id}`)}>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
                       {ts.worker?.name || 'Unknown'}
                     </td>

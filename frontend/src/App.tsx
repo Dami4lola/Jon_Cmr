@@ -15,6 +15,7 @@ import { CreateInspection } from './pages/CreateInspection';
 import { ViewInspection } from './pages/ViewInspection';
 import { Invoices } from './pages/Invoices';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { ViewTimesheet } from './pages/ViewTimesheet';
 
 function App() {
   return (
@@ -45,6 +46,14 @@ function App() {
           element={
             <ProtectedRoute requireManager>
               <ManagerDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/timesheets/:id"
+          element={
+            <ProtectedRoute requireManager>
+              <ViewTimesheet />
             </ProtectedRoute>
           }
         />
