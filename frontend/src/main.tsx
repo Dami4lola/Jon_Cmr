@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import { AuthInitializer } from './components/AuthInitializer';
 import { queryClient, persister, setupOfflineSync } from './lib/queryClient';
 import './index.css';
 
@@ -16,7 +17,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       persistOptions={{ persister }}
     >
       <BrowserRouter>
-        <App />
+        <AuthInitializer>
+          <App />
+        </AuthInitializer>
       </BrowserRouter>
     </PersistQueryClientProvider>
   </React.StrictMode>
