@@ -22,7 +22,7 @@ export function ManagerDashboard() {
     estimated_duration: undefined,
     estimate_amount: undefined,
     address_override: '',
-    worker_ids: [],
+    assigned_worker_ids: [],
   });
   const [editFormData, setEditFormData] = useState<JobCreate>({
     client_id: 0,
@@ -32,7 +32,7 @@ export function ManagerDashboard() {
     estimated_duration: undefined,
     estimate_amount: undefined,
     address_override: '',
-    worker_ids: [],
+    assigned_worker_ids: [],
   });
   const [clientFormData, setClientFormData] = useState<ClientCreate>({
     name: '',
@@ -79,7 +79,7 @@ export function ManagerDashboard() {
         estimated_duration: undefined,
         estimate_amount: undefined,
         address_override: '',
-        worker_ids: [],
+        assigned_worker_ids: [],
       });
     },
   });
@@ -141,7 +141,7 @@ export function ManagerDashboard() {
       scheduled_date: formData.scheduled_date || undefined,
       scheduled_time: formData.scheduled_time || undefined,
       address_override: formData.address_override || undefined,
-      worker_ids: formData.worker_ids?.length ? formData.worker_ids : undefined,
+      assigned_worker_ids: formData.assigned_worker_ids?.length ? formData.assigned_worker_ids : undefined,
     };
 
     createJobMutation.mutate(submitData);
@@ -149,11 +149,11 @@ export function ManagerDashboard() {
 
   const handleWorkerToggle = (workerId: number) => {
     setFormData((prev) => {
-      const currentWorkers = prev.worker_ids || [];
+      const currentWorkers = prev.assigned_worker_ids || [];
       if (currentWorkers.includes(workerId)) {
-        return { ...prev, worker_ids: currentWorkers.filter((id) => id !== workerId) };
+        return { ...prev, assigned_worker_ids: currentWorkers.filter((id) => id !== workerId) };
       } else {
-        return { ...prev, worker_ids: [...currentWorkers, workerId] };
+        return { ...prev, assigned_worker_ids: [...currentWorkers, workerId] };
       }
     });
   };
@@ -182,17 +182,17 @@ export function ManagerDashboard() {
       estimated_duration: job.estimated_duration ? parseFloat(job.estimated_duration) : undefined,
       estimate_amount: job.estimate_amount ? parseFloat(job.estimate_amount) : undefined,
       address_override: job.address_override || '',
-      worker_ids: job.workers?.map((w) => w.id) || [],
+      assigned_worker_ids: job.workers?.map((w) => w.id) || [],
     });
   };
 
   const handleEditWorkerToggle = (workerId: number) => {
     setEditFormData((prev) => {
-      const currentWorkers = prev.worker_ids || [];
+      const currentWorkers = prev.assigned_worker_ids || [];
       if (currentWorkers.includes(workerId)) {
-        return { ...prev, worker_ids: currentWorkers.filter((id) => id !== workerId) };
+        return { ...prev, assigned_worker_ids: currentWorkers.filter((id) => id !== workerId) };
       } else {
-        return { ...prev, worker_ids: [...currentWorkers, workerId] };
+        return { ...prev, assigned_worker_ids: [...currentWorkers, workerId] };
       }
     });
   };
@@ -214,7 +214,7 @@ export function ManagerDashboard() {
       scheduled_date: editFormData.scheduled_date || undefined,
       scheduled_time: editFormData.scheduled_time || undefined,
       address_override: editFormData.address_override || undefined,
-      worker_ids: editFormData.worker_ids?.length ? editFormData.worker_ids : undefined,
+      assigned_worker_ids: editFormData.assigned_worker_ids?.length ? editFormData.assigned_worker_ids : undefined,
     };
 
     updateJobMutation.mutate({ id: editingJob.id, data: submitData });
@@ -352,14 +352,14 @@ export function ManagerDashboard() {
                     <label
                       key={worker.id}
                       className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                        formData.worker_ids?.includes(worker.id)
+                        formData.assigned_worker_ids?.includes(worker.id)
                           ? 'bg-obatek/10 border-obatek text-obatek'
                           : 'border-gray-300 hover:border-gray-400'
                       }`}
                     >
                       <input
                         type="checkbox"
-                        checked={formData.worker_ids?.includes(worker.id) || false}
+                        checked={formData.assigned_worker_ids?.includes(worker.id) || false}
                         onChange={() => handleWorkerToggle(worker.id)}
                         className="sr-only"
                       />
@@ -596,14 +596,14 @@ export function ManagerDashboard() {
                       <label
                         key={worker.id}
                         className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                          editFormData.worker_ids?.includes(worker.id)
+                          editFormData.assigned_worker_ids?.includes(worker.id)
                             ? 'bg-obatek/10 border-obatek text-obatek'
                             : 'border-gray-300 hover:border-gray-400'
                         }`}
                       >
                         <input
                           type="checkbox"
-                          checked={editFormData.worker_ids?.includes(worker.id) || false}
+                          checked={editFormData.assigned_worker_ids?.includes(worker.id) || false}
                           onChange={() => handleEditWorkerToggle(worker.id)}
                           className="sr-only"
                         />

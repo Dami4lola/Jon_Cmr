@@ -95,7 +95,7 @@ export interface JobCreate {
   estimated_duration?: number;
   estimate_amount?: number;
   address_override?: string;
-  worker_ids?: number[];
+  assigned_worker_ids?: number[];
 }
 
 export interface CalendarEvent {
