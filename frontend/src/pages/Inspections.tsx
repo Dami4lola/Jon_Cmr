@@ -62,8 +62,8 @@ function JobInspectionCard({ job }: { job: Job }) {
     queryFn: () => inspectionsApi.listForJob(job.id),
   });
 
-  const preInspection = inspections.find((i: JobInspection) => i.inspection_type === 'pre');
-  const postInspection = inspections.find((i: JobInspection) => i.inspection_type === 'post');
+  const preInspection = inspections.find((i: JobInspection) => i.type === 'pre');
+  const postInspection = inspections.find((i: JobInspection) => i.type === 'post');
 
   return (
     <div className="bg-white rounded-lg shadow p-4">

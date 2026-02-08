@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from .user import User
     from .job import Job
     from .timesheet import Timesheet
-    from .inspection import JobInspection
 
 
 class Worker(SQLModel, table=True):
@@ -26,4 +25,3 @@ class Worker(SQLModel, table=True):
     # Relationships
     user: Optional["User"] = Relationship(back_populates="worker")
     timesheets: List["Timesheet"] = Relationship(back_populates="worker")
-    inspections: List["JobInspection"] = Relationship(back_populates="inspector")

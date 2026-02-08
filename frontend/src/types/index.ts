@@ -196,10 +196,28 @@ export interface PurchaseItemCreate {
 export interface JobInspection {
   id: number;
   job_id: number;
-  inspection_type: 'pre' | 'post';
-  notes?: string;
-  created_by_id?: number;
-  created_at: string;
+  type: 'pre' | 'post';
+  date: string;
+
+  // Common Fields
+  customer_name: string;
+  is_company_truck_required: boolean;
+
+  // Pre-Job Specific Fields
+  materials_needed?: boolean;
+  special_tools_needed?: string;
+  existing_damage_notes?: string;
+  flooring_protection_needed?: string;
+
+  // Post-Job Specific Fields
+  dump_run_required?: boolean;
+  customer_keeping_materials?: string;
+  materials_to_return?: string;
+  inventory_used?: string;
+  pickup_required?: string;
+  damages_or_quality_concerns?: string;
+  scope_change_notes?: string;
+
   photos?: InspectionPhoto[];
   job?: Job;
 }
@@ -213,7 +231,20 @@ export interface InspectionPhoto {
 }
 
 export interface InspectionCreate {
-  notes?: string;
+  date: string;
+  customer_name: string;
+  is_company_truck_required: boolean;
+  materials_needed?: boolean;
+  special_tools_needed?: string;
+  existing_damage_notes?: string;
+  flooring_protection_needed?: string;
+  dump_run_required?: boolean;
+  customer_keeping_materials?: string;
+  materials_to_return?: string;
+  inventory_used?: string;
+  pickup_required?: string;
+  damages_or_quality_concerns?: string;
+  scope_change_notes?: string;
 }
 
 // API Response Types

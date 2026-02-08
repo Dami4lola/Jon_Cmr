@@ -2,60 +2,53 @@
 Inspection schemas
 """
 from pydantic import BaseModel, Field
-from datetime import date, time, datetime
+from datetime import date
 from typing import List
 
-from .worker import WorkerBrief
 from .job import JobBrief
 
 
 class InspectionCreate(BaseModel):
     """Create inspection"""
-    inspection_type: str = Field(..., pattern="^(pre|post)$")
-    inspection_date: date
-    inspection_time: time | None = None
-    status: str = Field(default="draft")
+    type: str = Field(..., pattern="^(pre|post)$")
+    date: date
 
-    # General fields
-    site_conditions: str | None = None
-    safety_hazards: str | None = None
-    notes: str | None = None
+    # Common Fields
+    customer_name: str
+    is_company_truck_required: bool
 
-    # Pre-inspection specific
-    client_present: bool = False
-    access_issues: str | None = None
-    existing_damage: str | None = None
+    # Pre-Job Specific Fields
+    materials_needed: bool | None = None
+    special_tools_needed: str | None = None
+    existing_damage_notes: str | None = None
+    flooring_protection_needed: str | None = None
 
-    # Post-inspection specific
-    work_completed: str | None = None
-    quality_check_passed: bool = True
-    client_satisfied: bool | None = None
-    followup_required: bool = False
-    followup_notes: str | None = None
-
-    # Client signature
-    client_name_signed: str | None = Field(default=None, max_length=100)
-    client_signature: str | None = None  # Base64
+    # Post-Job Specific Fields
+    dump_run_required: bool | None = None
+    customer_keeping_materials: str | None = None
+    materials_to_return: str | None = None
+    inventory_used: str | None = None
+    pickup_required: str | None = None
+    damages_or_quality_concerns: str | None = None
+    scope_change_notes: str | None = None
 
 
 class InspectionUpdate(BaseModel):
     """Update inspection"""
-    inspection_date: date | None = None
-    inspection_time: time | None = None
-    status: str | None = None
-    site_conditions: str | None = None
-    safety_hazards: str | None = None
-    notes: str | None = None
-    client_present: bool | None = None
-    access_issues: str | None = None
-    existing_damage: str | None = None
-    work_completed: str | None = None
-    quality_check_passed: bool | None = None
-    client_satisfied: bool | None = None
-    followup_required: bool | None = None
-    followup_notes: str | None = None
-    client_name_signed: str | None = None
-    client_signature: str | None = None
+    date: date | None = None
+    customer_name: str | None = None
+    is_company_truck_required: bool | None = None
+    materials_needed: bool | None = None
+    special_tools_needed: str | None = None
+    existing_damage_notes: str | None = None
+    flooring_protection_needed: str | None = None
+    dump_run_required: bool | None = None
+    customer_keeping_materials: str | None = None
+    materials_to_return: str | None = None
+    inventory_used: str | None = None
+    pickup_required: str | None = None
+    damages_or_quality_concerns: str | None = None
+    scope_change_notes: str | None = None
 
 
 class InspectionPhotoResponse(BaseModel):
@@ -73,40 +66,30 @@ class InspectionPhotoResponse(BaseModel):
 class InspectionResponse(BaseModel):
     """Inspection response"""
     id: int
-    inspection_type: str
-    inspection_date: date
-    inspection_time: time | None
-    status: str
+    type: str
+    date: date
 
-    # General fields
-    site_conditions: str | None
-    safety_hazards: str | None
-    notes: str | None
+    # Common Fields
+    customer_name: str
+    is_company_truck_required: bool
 
-    # Pre-inspection specific
-    client_present: bool
-    access_issues: str | None
-    existing_damage: str | None
+    # Pre-Job Specific Fields
+    materials_needed: bool | None
+    special_tools_needed: str | None
+    existing_damage_notes: str | None
+    flooring_protection_needed: str | None
 
-    # Post-inspection specific
-    work_completed: str | None
-    quality_check_passed: bool
-    client_satisfied: bool | None
-    followup_required: bool
-    followup_notes: str | None
-
-    # Client signature
-    client_name_signed: str | None
-    client_signature: str | None
-
-    # Timestamps
-    created_at: datetime
-    updated_at: datetime
-    completed_at: datetime | None
+    # Post-Job Specific Fields
+    dump_run_required: bool | None
+    customer_keeping_materials: str | None
+    materials_to_return: str | None
+    inventory_used: str | None
+    pickup_required: str | None
+    damages_or_quality_concerns: str | None
+    scope_change_notes: str | None
 
     # Nested objects
     job: JobBrief
-    inspector: WorkerBrief | None
     photos: List[InspectionPhotoResponse]
 
     class Config:

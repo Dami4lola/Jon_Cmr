@@ -33,7 +33,7 @@ export function ViewInspection() {
     );
   }
 
-  const inspectionType = inspection.inspection_type === 'pre' ? 'Pre-Inspection' : 'Post-Inspection';
+  const inspectionType = inspection.type === 'pre' ? 'Pre-Inspection' : 'Post-Inspection';
 
   return (
     <div className="space-y-6">
@@ -63,7 +63,7 @@ export function ViewInspection() {
           <div className="flex items-center justify-between">
             <span
               className={`px-3 py-1 rounded-full text-sm font-medium ${
-                inspection.inspection_type === 'pre'
+                inspection.type === 'pre'
                   ? 'bg-blue-100 text-blue-700'
                   : 'bg-green-100 text-green-700'
               }`}
@@ -71,16 +71,105 @@ export function ViewInspection() {
               {inspectionType}
             </span>
             <span className="text-sm text-gray-500">
-              Created {formatDate(inspection.created_at)}
+              {formatDate(inspection.date)}
             </span>
           </div>
         </div>
 
-        {/* Notes */}
-        {inspection.notes && (
+        {/* Common Fields */}
+        <div className="p-4 border-b">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">General Information</h3>
+          <div className="space-y-2">
+            <div>
+              <span className="text-sm font-medium text-gray-700">Customer Name: </span>
+              <span className="text-gray-600">{inspection.customer_name}</span>
+            </div>
+            <div>
+              <span className="text-sm font-medium text-gray-700">Company Truck Required: </span>
+              <span className="text-gray-600">
+                {inspection.is_company_truck_required ? 'Yes' : 'No'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Pre-Job Specific Fields */}
+        {inspection.type === 'pre' && (
           <div className="p-4 border-b">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Notes</h3>
-            <p className="text-gray-600 whitespace-pre-wrap">{inspection.notes}</p>
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Pre-Job Details</h3>
+            <div className="space-y-2">
+              <div>
+                <span className="text-sm font-medium text-gray-700">Materials Needed: </span>
+                <span className="text-gray-600">{inspection.materials_needed ? 'Yes' : 'No'}</span>
+              </div>
+              {inspection.special_tools_needed && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Special Tools Needed: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.special_tools_needed}</p>
+                </div>
+              )}
+              {inspection.existing_damage_notes && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Existing Damage Notes: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.existing_damage_notes}</p>
+                </div>
+              )}
+              {inspection.flooring_protection_needed && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Flooring Protection Needed: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.flooring_protection_needed}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Post-Job Specific Fields */}
+        {inspection.type === 'post' && (
+          <div className="p-4 border-b">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Post-Job Details</h3>
+            <div className="space-y-2">
+              <div>
+                <span className="text-sm font-medium text-gray-700">Dump Run Required: </span>
+                <span className="text-gray-600">{inspection.dump_run_required ? 'Yes' : 'No'}</span>
+              </div>
+              {inspection.customer_keeping_materials && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Customer Keeping Materials: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.customer_keeping_materials}</p>
+                </div>
+              )}
+              {inspection.materials_to_return && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Materials to Return: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.materials_to_return}</p>
+                </div>
+              )}
+              {inspection.inventory_used && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Inventory Used: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.inventory_used}</p>
+                </div>
+              )}
+              {inspection.pickup_required && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Pickup Required: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.pickup_required}</p>
+                </div>
+              )}
+              {inspection.damages_or_quality_concerns && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Damages or Quality Concerns: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.damages_or_quality_concerns}</p>
+                </div>
+              )}
+              {inspection.scope_change_notes && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Scope Change Notes: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.scope_change_notes}</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

@@ -10,7 +10,6 @@ import uuid
 
 from ..config import settings
 from ..models import JobInspection, InspectionPhoto, Job, Worker
-from ..models.inspection import InspectionStatus
 from ..schemas.inspection import (
     InspectionCreate,
     InspectionUpdate,
@@ -18,7 +17,6 @@ from ..schemas.inspection import (
     InspectionPhotoResponse,
 )
 from ..schemas.job import JobBrief
-from ..schemas.worker import WorkerBrief
 from .deps import DBSession, CurrentUser, CurrentWorker
 
 router = APIRouter()
@@ -28,36 +26,27 @@ def inspection_to_response(inspection: JobInspection) -> InspectionResponse:
     """Convert JobInspection model to response schema"""
     return InspectionResponse(
         id=inspection.id,
-        inspection_type=inspection.inspection_type,
-        inspection_date=inspection.inspection_date,
-        inspection_time=inspection.inspection_time,
-        status=inspection.status,
-        site_conditions=inspection.site_conditions,
-        safety_hazards=inspection.safety_hazards,
-        notes=inspection.notes,
-        client_present=inspection.client_present,
-        access_issues=inspection.access_issues,
-        existing_damage=inspection.existing_damage,
-        work_completed=inspection.work_completed,
-        quality_check_passed=inspection.quality_check_passed,
-        client_satisfied=inspection.client_satisfied,
-        followup_required=inspection.followup_required,
-        followup_notes=inspection.followup_notes,
-        client_name_signed=inspection.client_name_signed,
-        client_signature=inspection.client_signature,
-        created_at=inspection.created_at,
-        updated_at=inspection.updated_at,
-        completed_at=inspection.completed_at,
+        type=inspection.type,
+        date=inspection.date,
+        customer_name=inspection.customer_name,
+        is_company_truck_required=inspection.is_company_truck_required,
+        materials_needed=inspection.materials_needed,
+        special_tools_needed=inspection.special_tools_needed,
+        existing_damage_notes=inspection.existing_damage_notes,
+        flooring_protection_needed=inspection.flooring_protection_needed,
+        dump_run_required=inspection.dump_run_required,
+        customer_keeping_materials=inspection.customer_keeping_materials,
+        materials_to_return=inspection.materials_to_return,
+        inventory_used=inspection.inventory_used,
+        pickup_required=inspection.pickup_required,
+        damages_or_quality_concerns=inspection.damages_or_quality_concerns,
+        scope_change_notes=inspection.scope_change_notes,
         job=JobBrief(
             id=inspection.job.id,
             description=inspection.job.description,
             client_name=inspection.job.client.name if inspection.job.client else "",
             scheduled_date=inspection.job.scheduled_date,
         ),
-        inspector=WorkerBrief(
-            id=inspection.inspector.id,
-            name=inspection.inspector.name,
-        ) if inspection.inspector else None,
         photos=[
             InspectionPhotoResponse(
                 id=photo.id,
@@ -113,10 +102,9 @@ def list_job_inspections(
         .where(JobInspection.job_id == job_id)
         .options(
             selectinload(JobInspection.job).selectinload(Job.client),
-            selectinload(JobInspection.inspector),
             selectinload(JobInspection.photos),
         )
-        .order_by(JobInspection.inspection_date.desc())
+        .order_by(JobInspection.date.desc())
     )
     inspections = session.exec(statement).all()
 
@@ -177,7 +165,7 @@ def create_inspection(
     existing = session.exec(
         select(JobInspection)
         .where(JobInspection.job_id == job_id)
-        .where(JobInspection.inspection_type == inspection_type)
+        .where(JobInspection.type == inspection_type)
     ).first()
 
     if existing:
@@ -189,28 +177,22 @@ def create_inspection(
     # Create inspection
     inspection = JobInspection(
         job_id=job_id,
-        inspection_type=inspection_type,
-        inspector_id=worker.id if worker else None,
-        inspection_date=data.inspection_date,
-        inspection_time=data.inspection_time,
-        status=data.status,
-        site_conditions=data.site_conditions,
-        safety_hazards=data.safety_hazards,
-        notes=data.notes,
-        client_present=data.client_present,
-        access_issues=data.access_issues,
-        existing_damage=data.existing_damage,
-        work_completed=data.work_completed,
-        quality_check_passed=data.quality_check_passed,
-        client_satisfied=data.client_satisfied,
-        followup_required=data.followup_required,
-        followup_notes=data.followup_notes,
-        client_name_signed=data.client_name_signed,
-        client_signature=data.client_signature,
+        type=inspection_type,
+        date=data.date,
+        customer_name=data.customer_name,
+        is_company_truck_required=data.is_company_truck_required,
+        materials_needed=data.materials_needed,
+        special_tools_needed=data.special_tools_needed,
+        existing_damage_notes=data.existing_damage_notes,
+        flooring_protection_needed=data.flooring_protection_needed,
+        dump_run_required=data.dump_run_required,
+        customer_keeping_materials=data.customer_keeping_materials,
+        materials_to_return=data.materials_to_return,
+        inventory_used=data.inventory_used,
+        pickup_required=data.pickup_required,
+        damages_or_quality_concerns=data.damages_or_quality_concerns,
+        scope_change_notes=data.scope_change_notes,
     )
-
-    if inspection.status == InspectionStatus.COMPLETED.value:
-        inspection.completed_at = datetime.utcnow()
 
     session.add(inspection)
     session.commit()
@@ -222,7 +204,6 @@ def create_inspection(
         .where(JobInspection.id == inspection.id)
         .options(
             selectinload(JobInspection.job).selectinload(Job.client),
-            selectinload(JobInspection.inspector),
             selectinload(JobInspection.photos),
         )
     )
@@ -244,7 +225,6 @@ def get_inspection(
         .options(
             selectinload(JobInspection.job).selectinload(Job.client),
             selectinload(JobInspection.job).selectinload(Job.assigned_workers),
-            selectinload(JobInspection.inspector),
             selectinload(JobInspection.photos),
         )
     )
@@ -315,12 +295,6 @@ def update_inspection(
     for key, value in update_data.items():
         setattr(inspection, key, value)
 
-    inspection.updated_at = datetime.utcnow()
-
-    # Set completed_at if status changed to completed
-    if data.status == InspectionStatus.COMPLETED.value and not inspection.completed_at:
-        inspection.completed_at = datetime.utcnow()
-
     session.add(inspection)
     session.commit()
 
@@ -330,7 +304,6 @@ def update_inspection(
         .where(JobInspection.id == inspection_id)
         .options(
             selectinload(JobInspection.job).selectinload(Job.client),
-            selectinload(JobInspection.inspector),
             selectinload(JobInspection.photos),
         )
     )
@@ -366,7 +339,7 @@ def upload_inspection_photos(
             settings.UPLOAD_DIR,
             "inspections",
             str(inspection.job_id),
-            inspection.inspection_type,
+            inspection.type,
         )
         os.makedirs(upload_dir, exist_ok=True)
 
@@ -380,7 +353,7 @@ def upload_inspection_photos(
         relative_path = os.path.join(
             "inspections",
             str(inspection.job_id),
-            inspection.inspection_type,
+            inspection.type,
             filename,
         )
         photo = InspectionPhoto(

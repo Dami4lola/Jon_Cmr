@@ -10,7 +10,26 @@ export function CreateInspection() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [notes, setNotes] = useState('');
+  // Common fields
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [customerName, setCustomerName] = useState('');
+  const [isCompanyTruckRequired, setIsCompanyTruckRequired] = useState(false);
+
+  // Pre-job specific fields
+  const [materialsNeeded, setMaterialsNeeded] = useState(false);
+  const [specialToolsNeeded, setSpecialToolsNeeded] = useState('');
+  const [existingDamageNotes, setExistingDamageNotes] = useState('');
+  const [flooringProtectionNeeded, setFlooringProtectionNeeded] = useState('');
+
+  // Post-job specific fields
+  const [dumpRunRequired, setDumpRunRequired] = useState(false);
+  const [customerKeepingMaterials, setCustomerKeepingMaterials] = useState('');
+  const [materialsToReturn, setMaterialsToReturn] = useState('');
+  const [inventoryUsed, setInventoryUsed] = useState('');
+  const [pickupRequired, setPickupRequired] = useState('');
+  const [damagesOrQualityConcerns, setDamagesOrQualityConcerns] = useState('');
+  const [scopeChangeNotes, setScopeChangeNotes] = useState('');
+
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
@@ -28,7 +47,24 @@ export function CreateInspection() {
       const inspection = await inspectionsApi.create(
         Number(jobId),
         type as 'pre' | 'post',
-        { notes: notes || undefined }
+        {
+          date,
+          customer_name: customerName,
+          is_company_truck_required: isCompanyTruckRequired,
+          // Pre-job fields
+          materials_needed: type === 'pre' ? materialsNeeded : undefined,
+          special_tools_needed: type === 'pre' ? specialToolsNeeded || undefined : undefined,
+          existing_damage_notes: type === 'pre' ? existingDamageNotes || undefined : undefined,
+          flooring_protection_needed: type === 'pre' ? flooringProtectionNeeded || undefined : undefined,
+          // Post-job fields
+          dump_run_required: type === 'post' ? dumpRunRequired : undefined,
+          customer_keeping_materials: type === 'post' ? customerKeepingMaterials || undefined : undefined,
+          materials_to_return: type === 'post' ? materialsToReturn || undefined : undefined,
+          inventory_used: type === 'post' ? inventoryUsed || undefined : undefined,
+          pickup_required: type === 'post' ? pickupRequired || undefined : undefined,
+          damages_or_quality_concerns: type === 'post' ? damagesOrQualityConcerns || undefined : undefined,
+          scope_change_notes: type === 'post' ? scopeChangeNotes || undefined : undefined,
+        }
       );
 
       // Then upload photos if any
@@ -105,19 +141,207 @@ export function CreateInspection() {
           </div>
         )}
 
-        {/* Notes */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Notes (optional)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={4}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
-            placeholder="Add any notes about the inspection..."
-          />
+        {/* Common Fields */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">General Information</h3>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Date <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Customer Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+              placeholder="Enter customer name..."
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="companyTruck"
+              checked={isCompanyTruckRequired}
+              onChange={(e) => setIsCompanyTruckRequired(e.target.checked)}
+              className="w-4 h-4 text-obatek focus:ring-obatek border-gray-300 rounded"
+            />
+            <label htmlFor="companyTruck" className="text-sm font-medium text-gray-700">
+              Company truck required
+            </label>
+          </div>
         </div>
+
+        {/* Pre-Job Specific Fields */}
+        {type === 'pre' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Pre-Job Details</h3>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="materialsNeeded"
+                checked={materialsNeeded}
+                onChange={(e) => setMaterialsNeeded(e.target.checked)}
+                className="w-4 h-4 text-obatek focus:ring-obatek border-gray-300 rounded"
+              />
+              <label htmlFor="materialsNeeded" className="text-sm font-medium text-gray-700">
+                Materials needed
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Special tools needed (optional)
+              </label>
+              <textarea
+                value={specialToolsNeeded}
+                onChange={(e) => setSpecialToolsNeeded(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="List any special tools required..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Existing damage notes (optional)
+              </label>
+              <textarea
+                value={existingDamageNotes}
+                onChange={(e) => setExistingDamageNotes(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="Document any existing damage..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Flooring protection needed (optional)
+              </label>
+              <textarea
+                value={flooringProtectionNeeded}
+                onChange={(e) => setFlooringProtectionNeeded(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="Describe flooring protection requirements..."
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Post-Job Specific Fields */}
+        {type === 'post' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Post-Job Details</h3>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="dumpRunRequired"
+                checked={dumpRunRequired}
+                onChange={(e) => setDumpRunRequired(e.target.checked)}
+                className="w-4 h-4 text-obatek focus:ring-obatek border-gray-300 rounded"
+              />
+              <label htmlFor="dumpRunRequired" className="text-sm font-medium text-gray-700">
+                Dump run required
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Is customer keeping purchased materials? (optional)
+              </label>
+              <textarea
+                value={customerKeepingMaterials}
+                onChange={(e) => setCustomerKeepingMaterials(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="Details about customer materials..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Materials to return (optional)
+              </label>
+              <textarea
+                value={materialsToReturn}
+                onChange={(e) => setMaterialsToReturn(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="List materials to be returned..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Inventory used (Just Jon or Personal) (optional)
+              </label>
+              <textarea
+                value={inventoryUsed}
+                onChange={(e) => setInventoryUsed(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="Specify inventory used..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Pickup required (Tools/Trailers) (optional)
+              </label>
+              <textarea
+                value={pickupRequired}
+                onChange={(e) => setPickupRequired(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="List tools/trailers to pickup..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Damages or quality concerns (optional)
+              </label>
+              <textarea
+                value={damagesOrQualityConcerns}
+                onChange={(e) => setDamagesOrQualityConcerns(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="Document any damages or quality issues..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Scope change notes (Less work or more work?) (optional)
+              </label>
+              <textarea
+                value={scopeChangeNotes}
+                onChange={(e) => setScopeChangeNotes(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-none"
+                placeholder="Describe any scope changes..."
+              />
+            </div>
+          </div>
+        )}
 
         {/* Photo Upload */}
         <div>
