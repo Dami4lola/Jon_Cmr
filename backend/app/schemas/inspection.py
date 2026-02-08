@@ -10,7 +10,6 @@ from .job import JobBrief
 
 class InspectionCreate(BaseModel):
     """Create inspection"""
-    type: str = Field(..., pattern="^(pre|post)$")
     date: date
 
     # Common Fields
