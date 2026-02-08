@@ -337,21 +337,32 @@ export function Dashboard() {
           <div className="divide-y">
             {jobs.map((job) => (
               <div key={job.id} className="p-4 hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
                     <p className="font-medium text-gray-900">{job.description}</p>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-gray-600 mt-1">
                       {job.client?.name} | {job.job_address}
                     </p>
                     {job.scheduled_date && (
-                      <p className="text-sm text-obatek">
-                        Scheduled: {formatDate(job.scheduled_date)}
+                      <p className="text-sm font-medium text-obatek mt-1">
+                        {formatDate(job.scheduled_date)}
                         {job.scheduled_time && ` at ${job.scheduled_time}`}
+                      </p>
+                    )}
+                    {job.client?.phone_number && (
+                      <p className="text-sm text-gray-600 mt-1">
+                        <span className="font-medium">Contact:</span>{' '}
+                        <a
+                          href={`tel:${job.client.phone_number}`}
+                          className="text-obatek hover:underline"
+                        >
+                          {job.client.phone_number}
+                        </a>
                       </p>
                     )}
                   </div>
                   {job.calculated_distance_km && (
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-gray-500 ml-4">
                       {job.calculated_distance_km} km
                     </div>
                   )}

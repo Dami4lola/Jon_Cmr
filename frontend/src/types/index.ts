@@ -66,6 +66,8 @@ export interface Client {
 export interface ClientBrief {
   id: number;
   name: string;
+  phone_number?: string;
+  address: string;
 }
 
 // Job Types
