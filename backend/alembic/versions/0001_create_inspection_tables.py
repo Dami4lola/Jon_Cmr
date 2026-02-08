@@ -1,26 +1,31 @@
-"""update_inspection_fields
+"""create inspection tables
 
-Revision ID: 9a79b61a1d4d
-Revises: 
-Create Date: 2026-02-06 03:44:11.492667
+Revision ID: 0001
+Revises:
+Create Date: 2026-02-08
 
+Drops and recreates job_inspection and inspection_photo tables
+with the correct schema. Safe to run since tables are empty.
 """
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-import sqlmodel
 
 
 # revision identifiers, used by Alembic.
-revision: str = '9a79b61a1d4d'
+revision: str = '0001'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create the job_inspection table with the new schema
+    # Drop existing malformed tables (safe - they're empty)
+    op.execute("DROP TABLE IF EXISTS inspection_photo CASCADE")
+    op.execute("DROP TABLE IF EXISTS job_inspection CASCADE")
+
+    # Recreate with correct schema
     op.create_table(
         'job_inspection',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -29,7 +34,7 @@ def upgrade() -> None:
         sa.Column('date', sa.Date(), nullable=False),
         sa.Column('customer_name', sa.String(), nullable=False),
         sa.Column('is_company_truck_required', sa.Boolean(), nullable=False),
-        sa.Column('materials_needed', sa.Boolean(), nullable=True),
+        sa.Column('materials_needed', sa.String(), nullable=True),
         sa.Column('special_tools_needed', sa.String(), nullable=True),
         sa.Column('existing_damage_notes', sa.String(), nullable=True),
         sa.Column('flooring_protection_needed', sa.String(), nullable=True),
@@ -45,7 +50,6 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_job_inspection_job_id'), 'job_inspection', ['job_id'], unique=False)
 
-    # Create the inspection_photo table
     op.create_table(
         'inspection_photo',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -60,7 +64,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop the tables
     op.drop_index(op.f('ix_inspection_photo_inspection_id'), table_name='inspection_photo')
     op.drop_table('inspection_photo')
     op.drop_index(op.f('ix_job_inspection_job_id'), table_name='job_inspection')
