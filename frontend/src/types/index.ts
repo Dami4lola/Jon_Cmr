@@ -168,6 +168,9 @@ export interface Receipt {
   id: number;
   timesheet_id: number;
   image_path: string;
+  image_url?: string;
+  description?: string;
+  amount?: string;
   uploaded_at: string;
 }
 
