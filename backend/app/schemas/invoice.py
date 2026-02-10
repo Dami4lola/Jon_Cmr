@@ -11,7 +11,6 @@ from .client import ClientBrief
 
 class InvoiceCreate(BaseModel):
     """Create invoice - mostly auto-generated from job"""
-    job_id: int
     notes: str | None = None
 
 
