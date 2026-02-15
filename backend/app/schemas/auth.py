@@ -36,6 +36,28 @@ class RegisterRequest(BaseModel):
     is_employee: bool = False
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Forgot password request"""
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Reset password request"""
+    token: str
+    new_password: str = Field(..., min_length=6)
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change password request (authenticated)"""
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+
+
+class MessageResponse(BaseModel):
+    """Generic message response"""
+    message: str
+
+
 class UserResponse(BaseModel):
     """User response (safe to expose)"""
     id: int

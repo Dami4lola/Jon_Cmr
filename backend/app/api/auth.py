@@ -9,8 +9,9 @@ from sqlalchemy.orm import selectinload
 
 from ..database import get_session
 from ..models import User, Worker, Role
-from ..schemas.auth import Token, LoginRequest, RegisterRequest, UserResponse
-from ..services.auth import verify_password, get_password_hash, create_access_token, create_refresh_token, decode_token
+from ..schemas.auth import Token, LoginRequest, RegisterRequest, UserResponse, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest, MessageResponse
+from ..services.auth import verify_password, get_password_hash, create_access_token, create_refresh_token, decode_token, create_password_reset_token, verify_password_reset_token
+from ..services.email import send_password_reset_email
 from ..seed import get_role_by_name
 from .deps import DBSession, CurrentUser
 
@@ -197,3 +198,75 @@ def refresh_token(
         refresh_token=new_refresh_token,
         token_type="bearer",
     )
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(
+    session: DBSession,
+    data: ForgotPasswordRequest,
+):
+    """
+    Request a password reset email.
+    Always returns success to prevent email enumeration.
+    """
+    statement = select(User).where(User.email == data.email)
+    user = session.exec(statement).first()
+
+    if user and user.is_active:
+        token = create_password_reset_token(user.id)
+        try:
+            send_password_reset_email(user.email, token)
+        except Exception:
+            # Log but don't expose email sending failures to the user
+            pass
+
+    return MessageResponse(message="If an account exists with that email, you will receive a password reset link.")
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(
+    session: DBSession,
+    data: ResetPasswordRequest,
+):
+    """Reset password using a valid reset token"""
+    user_id = verify_password_reset_token(data.token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    statement = select(User).where(User.id == user_id)
+    user = session.exec(statement).first()
+
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user.hashed_password = get_password_hash(data.new_password)
+    session.add(user)
+    session.commit()
+
+    return MessageResponse(message="Your password has been reset successfully.")
+
+
+@router.post("/change-password", response_model=MessageResponse)
+def change_password(
+    session: DBSession,
+    current_user: CurrentUser,
+    data: ChangePasswordRequest,
+):
+    """Change password for the currently authenticated user"""
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    current_user.hashed_password = get_password_hash(data.new_password)
+    session.add(current_user)
+    session.commit()
+
+    return MessageResponse(message="Password changed successfully.")

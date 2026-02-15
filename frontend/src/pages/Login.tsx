@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useAuthStore } from '../store/authStore';
 
 export function Login() {
   const { isAuthenticated } = useAuthStore();
   const { login, isLoggingIn, loginError } = useAuth();
+  const location = useLocation();
+  const passwordReset = location.state?.passwordReset;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -31,6 +33,12 @@ export function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {passwordReset && (
+            <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm">
+              Your password has been reset successfully. Sign in with your new password.
+            </div>
+          )}
+
           {loginError && (
             <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
               Invalid username or password
@@ -65,6 +73,12 @@ export function Login() {
               placeholder="Enter your password"
               required
             />
+          </div>
+
+          <div className="flex justify-end">
+            <Link to="/forgot-password" className="text-sm text-obatek hover:underline">
+              Forgot password?
+            </Link>
           </div>
 
           <button

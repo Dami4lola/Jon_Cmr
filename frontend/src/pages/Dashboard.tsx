@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { timesheetsApi } from '../api/timesheets';
+import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { TimesheetCreate, Timesheet } from '../types';
@@ -10,6 +11,11 @@ export function Dashboard() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState('');
+  const [pwSubmitting, setPwSubmitting] = useState(false);
 
   // Fetch assigned jobs
   const { data: jobs = [], isLoading: loadingJobs } = useQuery({
@@ -68,6 +74,33 @@ export function Dashboard() {
     createMutation.mutate(formData);
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError('');
+    setPwSuccess('');
+
+    if (pwForm.newPassword.length < 6) {
+      setPwError('New password must be at least 6 characters');
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwError('New passwords do not match');
+      return;
+    }
+
+    setPwSubmitting(true);
+    try {
+      await authApi.changePassword(pwForm.currentPassword, pwForm.newPassword);
+      setPwSuccess('Password changed successfully.');
+      setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setPwError(detail || 'Failed to change password. Please try again.');
+    } finally {
+      setPwSubmitting(false);
+    }
+  };
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
@@ -90,13 +123,95 @@ export function Dashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600">Welcome back, {user?.username}</p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
-        >
-          {showForm ? 'Cancel' : 'Submit Timesheet'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowChangePassword(!showChangePassword)}
+            className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+          >
+            Change Password
+          </button>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+          >
+            {showForm ? 'Cancel' : 'Submit Timesheet'}
+          </button>
+        </div>
       </div>
+
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full">
+            <h2 className="text-lg font-semibold mb-4">Change Password</h2>
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              {pwError && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">{pwError}</div>
+              )}
+              {pwSuccess && (
+                <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm">{pwSuccess}</div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+                <input
+                  type="password"
+                  value={pwForm.currentPassword}
+                  onChange={(e) => setPwForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                <input
+                  type="password"
+                  value={pwForm.newPassword}
+                  onChange={(e) => setPwForm((prev) => ({ ...prev, newPassword: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={pwForm.confirmPassword}
+                  onChange={(e) => setPwForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  required
+                  minLength={6}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangePassword(false);
+                    setPwError('');
+                    setPwSuccess('');
+                    setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={pwSubmitting}
+                  className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+                >
+                  {pwSubmitting ? 'Changing...' : 'Change Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Timesheet Form */}
       {showForm && (

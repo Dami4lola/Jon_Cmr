@@ -52,3 +52,21 @@ def decode_token(token: str) -> dict[str, Any] | None:
         return payload
     except JWTError:
         return None
+
+
+def create_password_reset_token(user_id: int) -> str:
+    """Create a short-lived JWT token for password reset"""
+    expire = datetime.utcnow() + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES)
+    to_encode = {"sub": str(user_id), "type": "password_reset", "exp": expire}
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def verify_password_reset_token(token: str) -> int | None:
+    """Verify a password reset token and return user_id, or None if invalid"""
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "password_reset":
+        return None
+    try:
+        return int(payload["sub"])
+    except (KeyError, ValueError):
+        return None

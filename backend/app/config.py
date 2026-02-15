@@ -43,5 +43,16 @@ class Settings:
     # Receipts paid with these cards won't be reimbursed to workers
     COMPANY_CARD_DIGITS: str = config("COMPANY_CARD_DIGITS", default="5564")
 
+    # Email (Resend)
+    RESEND_API_KEY: str | None = config("RESEND_API_KEY", default=None)
+
+    # Frontend URL (for building password reset links)
+    FRONTEND_URL: str = config("FRONTEND_URL", default="http://localhost:5173")
+
+    # Password reset token expiry
+    PASSWORD_RESET_EXPIRE_MINUTES: int = config(
+        "PASSWORD_RESET_EXPIRE_MINUTES", default=15, cast=int
+    )
+
 
 settings = Settings()
