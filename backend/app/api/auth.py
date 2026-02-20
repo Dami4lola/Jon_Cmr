@@ -1,6 +1,7 @@
 """
 Authentication API endpoints
 """
+import logging
 from fastapi import APIRouter, HTTPException, status, Depends, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -9,6 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from ..database import get_session
 from ..models import User, Worker, Role
+
+logger = logging.getLogger(__name__)
 from ..schemas.auth import Token, LoginRequest, RegisterRequest, UserResponse, ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest, MessageResponse
 from ..services.auth import verify_password, get_password_hash, create_access_token, create_refresh_token, decode_token, create_password_reset_token, verify_password_reset_token
 from ..services.email import send_password_reset_email
@@ -35,7 +38,19 @@ def login(
     )
     user = session.exec(statement).first()
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user:
+        logger.warning(f"LOGIN_FAIL: username '{form_data.username}' not found in database")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not verify_password(form_data.password, user.hashed_password):
+        logger.warning(
+            f"LOGIN_FAIL: password mismatch for '{form_data.username}' "
+            f"(hash prefix: {user.hashed_password[:10] if user.hashed_password else 'None'})"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
