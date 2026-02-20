@@ -339,6 +339,7 @@ def admin_reset_password(
         )
 
     user.hashed_password = get_password_hash(data.new_password)
+    session.add(user)
     session.commit()
 
     return {"message": f"Password for '{user.username}' has been reset successfully."}
