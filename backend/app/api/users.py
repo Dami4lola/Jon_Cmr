@@ -34,6 +34,11 @@ class UpdateUserRolesRequest(BaseModel):
     roles: List[str] = Field(..., min_items=1)
 
 
+class AdminResetPasswordRequest(BaseModel):
+    """Admin request to reset a user's password"""
+    new_password: str = Field(..., min_length=6)
+
+
 class UserWithWorkerResponse(BaseModel):
     """Extended user response with worker details"""
     id: int
@@ -314,3 +319,26 @@ def toggle_user_active(
         charges_hst=worker.charges_hst if worker else None,
         is_employee=worker.is_employee if worker else None,
     )
+
+
+@router.put("/{user_id}/reset-password")
+def admin_reset_password(
+    session: DBSession,
+    admin: AdminUser,
+    user_id: int,
+    data: AdminResetPasswordRequest,
+):
+    """Reset a user's password (admin only)"""
+    statement = select(User).where(User.id == user_id)
+    user = session.exec(statement).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user.hashed_password = get_password_hash(data.new_password)
+    session.commit()
+
+    return {"message": f"Password for '{user.username}' has been reset successfully."}

@@ -54,4 +54,9 @@ export const usersApi = {
     const response = await api.put(`/users/${id}/toggle-active`);
     return response.data;
   },
+
+  resetPassword: async (id: number, newPassword: string): Promise<{ message: string }> => {
+    const response = await api.put(`/users/${id}/reset-password`, { new_password: newPassword });
+    return response.data;
+  },
 };

@@ -16,6 +16,9 @@ export function AdminDashboard() {
   const queryClient = useQueryClient();
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithWorker | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserWithWorker | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetSuccess, setResetSuccess] = useState('');
   const [editFormData, setEditFormData] = useState<EditUserFormData>({
     roles: ['worker'],
     hourly_rate: 0,
@@ -62,6 +65,16 @@ export function AdminDashboard() {
     mutationFn: usersApi.toggleActive,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+
+  // Reset password mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ id, newPassword }: { id: number; newPassword: string }) =>
+      usersApi.resetPassword(id, newPassword),
+    onSuccess: (data) => {
+      setResetSuccess(data.message);
+      setNewPassword('');
     },
   });
 
@@ -206,6 +219,7 @@ export function AdminDashboard() {
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="Username"
+                  autoComplete="off"
                   required
                 />
               </div>
@@ -248,6 +262,7 @@ export function AdminDashboard() {
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="Minimum 6 characters"
+                  autoComplete="new-password"
                   minLength={6}
                   required
                 />
@@ -452,6 +467,64 @@ export function AdminDashboard() {
         </div>
       )}
 
+      {/* Reset Password Modal */}
+      {resetPasswordUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-1">Reset Password</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Setting a new password for <span className="font-medium text-gray-700">{resetPasswordUser.worker_name || resetPasswordUser.username}</span>
+            </p>
+
+            {resetSuccess ? (
+              <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm mb-4">
+                {resetSuccess}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                    placeholder="Minimum 6 characters"
+                    minLength={6}
+                  />
+                </div>
+                {resetPasswordMutation.isError && (
+                  <p className="text-red-500 text-sm">Failed to reset password. Please try again.</p>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => { setResetPasswordUser(null); setNewPassword(''); setResetSuccess(''); resetPasswordMutation.reset(); }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                {resetSuccess ? 'Close' : 'Cancel'}
+              </button>
+              {!resetSuccess && (
+                <button
+                  onClick={() => {
+                    if (newPassword.length >= 6) {
+                      resetPasswordMutation.mutate({ id: resetPasswordUser.id, newPassword });
+                    }
+                  }}
+                  disabled={resetPasswordMutation.isPending || newPassword.length < 6}
+                  className="bg-yellow-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-yellow-700 transition-colors disabled:opacity-50"
+                >
+                  {resetPasswordMutation.isPending ? 'Resetting...' : 'Reset Password'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
@@ -556,6 +629,12 @@ export function AdminDashboard() {
                           className="text-sm text-obatek hover:underline"
                         >
                           Edit
+                        </button>
+                        <button
+                          onClick={() => { setResetPasswordUser(user); setNewPassword(''); setResetSuccess(''); }}
+                          className="text-sm text-yellow-600 hover:underline"
+                        >
+                          Reset Password
                         </button>
                         <button
                           onClick={() => toggleActiveMutation.mutate(user.id)}
