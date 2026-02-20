@@ -1,6 +1,7 @@
 """
 OBATEK FastAPI Application Entry Point
 """
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +13,8 @@ from .database import create_db_and_tables
 from .seed import seed_roles
 from .middleware import LoggingMiddleware, register_exception_handlers
 
+logger = logging.getLogger(__name__)
+
 # Import routers
 from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients, users
 
@@ -22,6 +25,13 @@ async def lifespan(app: FastAPI):
     # Startup: create tables and seed data
     create_db_and_tables()
     seed_roles()
+
+    # Log bcrypt version for debugging password issues
+    try:
+        import bcrypt
+        logger.info(f"bcrypt version: {bcrypt.__version__}")
+    except Exception as e:
+        logger.warning(f"Could not detect bcrypt version: {e}")
 
     # Create upload directories
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
