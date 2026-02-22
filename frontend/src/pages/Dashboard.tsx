@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { timesheetsApi } from '../api/timesheets';
@@ -43,10 +43,30 @@ export function Dashboard() {
     receipt_card_digits: '',
   });
 
+  // Receipt file upload state
+  const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
+  const [uploadingReceipts, setUploadingReceipts] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Payout preview state
+  const [payoutPreview, setPayoutPreview] = useState<{ calculated_pay: number } | null>(null);
+
   // Create timesheet mutation
   const createMutation = useMutation({
     mutationFn: timesheetsApi.create,
-    onSuccess: () => {
+    onSuccess: async (newTimesheet) => {
+      // Upload receipt files if any were selected
+      if (receiptFiles.length > 0) {
+        setUploadingReceipts(true);
+        try {
+          await timesheetsApi.uploadReceipts(newTimesheet.id, receiptFiles);
+        } catch {
+          // Timesheet was created but receipt upload failed
+          console.error('Receipt upload failed');
+        } finally {
+          setUploadingReceipts(false);
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
       setShowForm(false);
       resetForm();
@@ -66,12 +86,36 @@ export function Dashboard() {
       receipts_total: 0,
       receipt_card_digits: '',
     });
+    setReceiptFiles([]);
+    setPayoutPreview(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.job_id === 0) return;
     createMutation.mutate(formData);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setReceiptFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+    }
+    // Reset input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeFile = (index: number) => {
+    setReceiptFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePreviewPayout = async () => {
+    if (formData.job_id === 0 || formData.hours_worked <= 0) return;
+    try {
+      const preview = await timesheetsApi.calculatePayout(formData);
+      setPayoutPreview(preview);
+    } catch {
+      setPayoutPreview(null);
+    }
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -317,7 +361,7 @@ export function Dashboard() {
               </label>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Company Materials ($)
@@ -332,6 +376,7 @@ export function Dashboard() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="0.00"
                 />
+                <p className="text-xs text-gray-400 mt-1">Paid by company. Not added to your pay.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -347,7 +392,11 @@ export function Dashboard() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="0.00"
                 />
+                <p className="text-xs text-green-600 mt-1">Paid by you. Will be reimbursed.</p>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Receipts Total ($)
@@ -362,23 +411,83 @@ export function Dashboard() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="0.00"
                 />
+                <p className="text-xs text-gray-400 mt-1">Reimbursed unless paid with company card.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Receipt Card (Last 4 Digits)
+                </label>
+                <input
+                  type="text"
+                  name="receipt_card_digits"
+                  value={formData.receipt_card_digits}
+                  onChange={handleChange}
+                  maxLength={4}
+                  pattern="[0-9]{4}"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="1234"
+                />
               </div>
             </div>
 
-            <div className="max-w-xs">
+            {/* Receipt Image Upload */}
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Receipt Card (Last 4 Digits)
+                Attach Receipt Photos
               </label>
               <input
-                type="text"
-                name="receipt_card_digits"
-                value={formData.receipt_card_digits}
-                onChange={handleChange}
-                maxLength={4}
-                pattern="[0-9]{4}"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                placeholder="1234"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
               />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-obatek hover:text-obatek transition-colors w-full"
+              >
+                + Add Receipt Photos
+              </button>
+              {receiptFiles.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {receiptFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between bg-gray-50 px-3 py-1.5 rounded text-sm">
+                      <span className="text-gray-700 truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="text-red-500 hover:text-red-700 ml-2 text-xs font-medium"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Payout Preview */}
+            <div className="border-t pt-4">
+              <button
+                type="button"
+                onClick={handlePreviewPayout}
+                disabled={formData.job_id === 0 || formData.hours_worked <= 0}
+                className="text-sm text-obatek hover:underline disabled:text-gray-400 disabled:no-underline"
+              >
+                Preview estimated pay
+              </button>
+              {payoutPreview && (
+                <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-sm font-semibold text-green-800">
+                    Estimated Pay: {formatCurrency(payoutPreview.calculated_pay)}
+                  </p>
+                  <p className="text-xs text-green-600 mt-1">
+                    Company materials are not included in your pay.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3">
@@ -391,10 +500,10 @@ export function Dashboard() {
               </button>
               <button
                 type="submit"
-                disabled={createMutation.isPending}
+                disabled={createMutation.isPending || uploadingReceipts}
                 className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
               >
-                {createMutation.isPending ? 'Submitting...' : 'Submit'}
+                {uploadingReceipts ? 'Uploading Receipts...' : createMutation.isPending ? 'Submitting...' : 'Submit'}
               </button>
             </div>
           </form>
