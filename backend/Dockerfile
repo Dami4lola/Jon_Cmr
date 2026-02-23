@@ -33,6 +33,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
 
-# Start application (main.py handles table creation and seeding on startup)
-# Use PORT env var for Railway, default to 8000
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Start application with migrations
+# start.sh stamps alembic version if needed, runs migrations, then starts uvicorn
+CMD ["bash", "start.sh"]
