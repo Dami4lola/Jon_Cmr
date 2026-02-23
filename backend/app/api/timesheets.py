@@ -38,6 +38,7 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
         company_materials=timesheet.company_materials,
         personal_materials=timesheet.personal_materials,
         calculated_pay=timesheet.calculated_pay,
+        receipt_count=len(timesheet.receipts) if timesheet.receipts else 0,
         created_at=timesheet.created_at,
         worker=WorkerBrief(id=timesheet.worker.id, name=timesheet.worker.name),
         job=JobBrief(
@@ -66,6 +67,7 @@ def list_timesheets(
         .options(
             selectinload(Timesheet.worker),
             selectinload(Timesheet.job).selectinload(Job.client),
+            selectinload(Timesheet.receipts),
         )
     )
 
@@ -194,6 +196,7 @@ def get_timesheet(
         .options(
             selectinload(Timesheet.worker),
             selectinload(Timesheet.job).selectinload(Job.client),
+            selectinload(Timesheet.receipts),
         )
     )
     timesheet = session.exec(statement).first()
@@ -402,7 +405,7 @@ def get_timesheet_receipts(
             id=r.id,
             timesheet_id=r.timesheet_id,
             image_path=r.image_path,
-            image_url=f"/uploads/{r.image_path}" if not r.image_path.startswith("/") else r.image_path,
+            image_url=f"/{r.image_path}" if not r.image_path.startswith("/") else r.image_path,
             description=r.description,
             amount=r.amount,
             uploaded_at=r.uploaded_at,

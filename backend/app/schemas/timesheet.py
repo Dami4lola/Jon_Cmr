@@ -44,6 +44,7 @@ class TimesheetResponse(BaseModel):
     company_materials: Decimal
     personal_materials: Decimal
     calculated_pay: Decimal | None
+    receipt_count: int = 0
     created_at: dt.datetime
 
     # Nested objects

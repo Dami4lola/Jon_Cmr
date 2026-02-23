@@ -125,6 +125,7 @@ export interface Timesheet {
   company_materials: string;
   personal_materials: string;
   calculated_pay?: string;
+  receipt_count: number;
   created_at: string;
   worker?: Worker;
   job?: Job;

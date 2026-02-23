@@ -718,6 +718,9 @@ export function ManagerDashboard() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                     Break
                   </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                    Receipts
+                  </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                     Payout
                   </th>
@@ -740,6 +743,13 @@ export function ManagerDashboard() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 text-right">
                       {parseFloat(ts.break_duration) > 0 ? `${ts.break_duration}h` : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-center">
+                      {ts.receipt_count > 0 ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          {ts.receipt_count}
+                        </span>
+                      ) : '-'}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-obatek text-right">
                       {ts.calculated_pay ? formatCurrency(ts.calculated_pay) : '-'}
