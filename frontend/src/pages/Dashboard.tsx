@@ -34,13 +34,11 @@ export function Dashboard() {
     job_id: 0,
     date: new Date().toISOString().split('T')[0],
     hours_worked: 0,
-    round_trip_kms: 0,
+    break_duration: 0,
     used_company_truck: false,
     worked_at_hq: false,
     company_materials: 0,
     personal_materials: 0,
-    receipts_total: 0,
-    receipt_card_digits: '',
   });
 
   // Receipt file upload state
@@ -78,13 +76,11 @@ export function Dashboard() {
       job_id: 0,
       date: new Date().toISOString().split('T')[0],
       hours_worked: 0,
-      round_trip_kms: 0,
+      break_duration: 0,
       used_company_truck: false,
       worked_at_hq: false,
       company_materials: 0,
       personal_materials: 0,
-      receipts_total: 0,
-      receipt_card_digits: '',
     });
     setReceiptFiles([]);
     setPayoutPreview(null);
@@ -323,18 +319,20 @@ export function Dashboard() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Round Trip KMs
+                  Break Duration (hours)
                 </label>
                 <input
                   type="number"
-                  name="round_trip_kms"
-                  value={formData.round_trip_kms || ''}
+                  name="break_duration"
+                  value={formData.break_duration || ''}
                   onChange={handleChange}
-                  step="0.1"
+                  step="0.25"
                   min="0"
+                  max="24"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="0"
                 />
+                <p className="text-xs text-gray-400 mt-1">Tracked for records only.</p>
               </div>
             </div>
 
@@ -393,40 +391,6 @@ export function Dashboard() {
                   placeholder="0.00"
                 />
                 <p className="text-xs text-green-600 mt-1">Paid by you. Will be reimbursed.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Receipts Total ($)
-                </label>
-                <input
-                  type="number"
-                  name="receipts_total"
-                  value={formData.receipts_total || ''}
-                  onChange={handleChange}
-                  step="0.01"
-                  min="0"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                  placeholder="0.00"
-                />
-                <p className="text-xs text-gray-400 mt-1">Reimbursed unless paid with company card.</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Receipt Card (Last 4 Digits)
-                </label>
-                <input
-                  type="text"
-                  name="receipt_card_digits"
-                  value={formData.receipt_card_digits}
-                  onChange={handleChange}
-                  maxLength={4}
-                  pattern="[0-9]{4}"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                  placeholder="1234"
-                />
               </div>
             </div>
 
@@ -531,7 +495,7 @@ export function Dashboard() {
                       {ts.job?.client?.name} - {ts.job?.description}
                     </p>
                     <p className="text-sm text-gray-600">
-                      {formatDate(ts.date)} | {ts.hours_worked} hours | {ts.round_trip_kms} km
+                      {formatDate(ts.date)} | {ts.hours_worked} hours{parseFloat(ts.break_duration) > 0 ? ` | ${ts.break_duration}h break` : ''}
                     </p>
                   </div>
                   <div className="text-right">
@@ -567,9 +531,10 @@ export function Dashboard() {
                     <p className="text-sm text-gray-600 mt-1">
                       {job.client?.name} | {job.job_address}
                     </p>
-                    {job.scheduled_date && (
+                    {job.start_date && (
                       <p className="text-sm font-medium text-obatek mt-1">
-                        {formatDate(job.scheduled_date)}
+                        {formatDate(job.start_date)}
+                        {job.end_date && job.end_date !== job.start_date && ` – ${formatDate(job.end_date)}`}
                         {job.scheduled_time && ` at ${job.scheduled_time}`}
                       </p>
                     )}

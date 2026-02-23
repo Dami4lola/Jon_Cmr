@@ -1,7 +1,7 @@
 """
 Timesheet schemas
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from decimal import Decimal
 import datetime as dt
 
@@ -14,21 +14,11 @@ class TimesheetCreate(BaseModel):
     job_id: int
     date: dt.date
     hours_worked: Decimal = Field(..., gt=0, le=24)
-    round_trip_kms: Decimal = Field(default=Decimal("0"), ge=0, le=9999.99)
+    break_duration: Decimal = Field(default=Decimal("0"), ge=0, le=24)
     used_company_truck: bool = False
     worked_at_hq: bool = False
     company_materials: Decimal = Field(default=Decimal("0"), ge=0, le=99999.99)
     personal_materials: Decimal = Field(default=Decimal("0"), ge=0, le=99999.99)
-    receipts_total: Decimal = Field(default=Decimal("0"), ge=0, le=99999.99)
-    receipt_card_digits: str | None = Field(default=None, max_length=4)
-
-    @field_validator("receipt_card_digits")
-    @classmethod
-    def validate_card_digits(cls, v):
-        if v is not None and v != "":
-            if not v.isdigit() or len(v) != 4:
-                raise ValueError("Card digits must be exactly 4 numbers")
-        return v if v else None
 
 
 class TimesheetUpdate(BaseModel):
@@ -36,13 +26,11 @@ class TimesheetUpdate(BaseModel):
     job_id: int | None = None
     date: dt.date | None = None
     hours_worked: Decimal | None = Field(default=None, gt=0, le=24)
-    round_trip_kms: Decimal | None = Field(default=None, ge=0, le=9999.99)
+    break_duration: Decimal | None = Field(default=None, ge=0, le=24)
     used_company_truck: bool | None = None
     worked_at_hq: bool | None = None
     company_materials: Decimal | None = Field(default=None, ge=0, le=99999.99)
     personal_materials: Decimal | None = Field(default=None, ge=0, le=99999.99)
-    receipts_total: Decimal | None = Field(default=None, ge=0, le=99999.99)
-    receipt_card_digits: str | None = None
 
 
 class TimesheetResponse(BaseModel):
@@ -50,13 +38,11 @@ class TimesheetResponse(BaseModel):
     id: int
     date: dt.date
     hours_worked: Decimal
-    round_trip_kms: Decimal
+    break_duration: Decimal
     used_company_truck: bool
     worked_at_hq: bool
     company_materials: Decimal
     personal_materials: Decimal
-    receipts_total: Decimal
-    receipt_card_digits: str | None
     calculated_pay: Decimal | None
     created_at: dt.datetime
 
@@ -97,7 +83,6 @@ class PayoutPreview(BaseModel):
     minimum_applied: bool
     labor_cost: Decimal
     hst_applied: bool
-    km_reimbursement: Decimal
+    break_duration: Decimal
     personal_materials: Decimal
-    receipts_reimbursement: Decimal
     calculated_pay: Decimal

@@ -45,7 +45,8 @@ def inspection_to_response(inspection: JobInspection) -> InspectionResponse:
             id=inspection.job.id,
             description=inspection.job.description,
             client_name=inspection.job.client.name if inspection.job.client else "",
-            scheduled_date=inspection.job.scheduled_date,
+            start_date=inspection.job.start_date,
+            end_date=inspection.job.end_date,
         ),
         photos=[
             InspectionPhotoResponse(

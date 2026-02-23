@@ -31,7 +31,8 @@ class Job(SQLModel, table=True):
     description: str  # Detailed job description
 
     # Scheduling
-    scheduled_date: date | None = Field(default=None, index=True)
+    start_date: date | None = Field(default=None, index=True)
+    end_date: date | None = Field(default=None)
     scheduled_time: time | None = Field(default=None)
     estimated_duration: Decimal | None = Field(default=None, max_digits=4, decimal_places=2)
 

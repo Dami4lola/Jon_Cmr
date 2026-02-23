@@ -34,7 +34,8 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
             id=job.id,
             description=job.description,
             client_name=client.name,
-            scheduled_date=job.scheduled_date,
+            start_date=job.start_date,
+            end_date=job.end_date,
         ),
         client=ClientBrief(
             id=client.id,

@@ -75,7 +75,8 @@ export interface Job {
   id: number;
   client_id: number;
   description: string;
-  scheduled_date?: string;
+  start_date?: string;
+  end_date?: string;
   scheduled_time?: string;
   estimated_duration?: string;
   is_completed: boolean;
@@ -90,7 +91,8 @@ export interface Job {
 export interface JobCreate {
   client_id: number;
   description: string;
-  scheduled_date?: string;
+  start_date?: string;
+  end_date?: string;
   scheduled_time?: string;
   estimated_duration?: number;
   estimate_amount?: number;
@@ -102,6 +104,7 @@ export interface CalendarEvent {
   id: number;
   title: string;
   start: string;
+  end?: string;
   time?: string;
   duration?: string;
   client: string;
@@ -116,13 +119,11 @@ export interface Timesheet {
   job_id: number;
   date: string;
   hours_worked: string;
-  round_trip_kms: string;
+  break_duration: string;
   used_company_truck: boolean;
   worked_at_hq: boolean;
   company_materials: string;
   personal_materials: string;
-  receipts_total: string;
-  receipt_card_digits?: string;
   calculated_pay?: string;
   created_at: string;
   worker?: Worker;
@@ -133,13 +134,11 @@ export interface TimesheetCreate {
   job_id: number;
   date: string;
   hours_worked: number;
-  round_trip_kms?: number;
+  break_duration?: number;
   used_company_truck?: boolean;
   worked_at_hq?: boolean;
   company_materials?: number;
   personal_materials?: number;
-  receipts_total?: number;
-  receipt_card_digits?: string;
 }
 
 // Invoice Types

@@ -32,13 +32,11 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
         id=timesheet.id,
         date=timesheet.date,
         hours_worked=timesheet.hours_worked,
-        round_trip_kms=timesheet.round_trip_kms,
+        break_duration=timesheet.break_duration,
         used_company_truck=timesheet.used_company_truck,
         worked_at_hq=timesheet.worked_at_hq,
         company_materials=timesheet.company_materials,
         personal_materials=timesheet.personal_materials,
-        receipts_total=timesheet.receipts_total,
-        receipt_card_digits=timesheet.receipt_card_digits,
         calculated_pay=timesheet.calculated_pay,
         created_at=timesheet.created_at,
         worker=WorkerBrief(id=timesheet.worker.id, name=timesheet.worker.name),
@@ -46,7 +44,8 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
             id=timesheet.job.id,
             description=timesheet.job.description,
             client_name=timesheet.job.client.name if timesheet.job.client else "",
-            scheduled_date=timesheet.job.scheduled_date,
+            start_date=timesheet.job.start_date,
+            end_date=timesheet.job.end_date,
         ),
     )
 
@@ -154,13 +153,11 @@ def create_timesheet(
         job_id=data.job_id,
         date=data.date,
         hours_worked=data.hours_worked,
-        round_trip_kms=data.round_trip_kms,
+        break_duration=data.break_duration,
         used_company_truck=data.used_company_truck,
         worked_at_hq=data.worked_at_hq,
         company_materials=data.company_materials,
         personal_materials=data.personal_materials,
-        receipts_total=data.receipts_total,
-        receipt_card_digits=data.receipt_card_digits,
     )
 
     # Calculate pay
@@ -474,13 +471,11 @@ def calculate_payout_preview(
         job_id=data.job_id,
         date=data.date,
         hours_worked=data.hours_worked,
-        round_trip_kms=data.round_trip_kms,
+        break_duration=data.break_duration,
         used_company_truck=data.used_company_truck,
         worked_at_hq=data.worked_at_hq,
         company_materials=data.company_materials,
         personal_materials=data.personal_materials,
-        receipts_total=data.receipts_total,
-        receipt_card_digits=data.receipt_card_digits,
     )
 
     # Get detailed breakdown

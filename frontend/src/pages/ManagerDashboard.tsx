@@ -17,7 +17,8 @@ export function ManagerDashboard() {
   const [formData, setFormData] = useState<JobCreate>({
     client_id: 0,
     description: '',
-    scheduled_date: '',
+    start_date: '',
+    end_date: '',
     scheduled_time: '',
     estimated_duration: undefined,
     estimate_amount: undefined,
@@ -27,7 +28,8 @@ export function ManagerDashboard() {
   const [editFormData, setEditFormData] = useState<JobCreate>({
     client_id: 0,
     description: '',
-    scheduled_date: '',
+    start_date: '',
+    end_date: '',
     scheduled_time: '',
     estimated_duration: undefined,
     estimate_amount: undefined,
@@ -74,7 +76,8 @@ export function ManagerDashboard() {
       setFormData({
         client_id: 0,
         description: '',
-        scheduled_date: '',
+        start_date: '',
+        end_date: '',
         scheduled_time: '',
         estimated_duration: undefined,
         estimate_amount: undefined,
@@ -138,7 +141,8 @@ export function ManagerDashboard() {
 
     const submitData: JobCreate = {
       ...formData,
-      scheduled_date: formData.scheduled_date || undefined,
+      start_date: formData.start_date || undefined,
+      end_date: formData.end_date || undefined,
       scheduled_time: formData.scheduled_time || undefined,
       address_override: formData.address_override || undefined,
       assigned_worker_ids: formData.assigned_worker_ids?.length ? formData.assigned_worker_ids : undefined,
@@ -177,7 +181,8 @@ export function ManagerDashboard() {
     setEditFormData({
       client_id: job.client_id,
       description: job.description,
-      scheduled_date: job.scheduled_date || '',
+      start_date: job.start_date || '',
+      end_date: job.end_date || '',
       scheduled_time: job.scheduled_time || '',
       estimated_duration: job.estimated_duration ? parseFloat(job.estimated_duration) : undefined,
       estimate_amount: job.estimate_amount ? parseFloat(job.estimate_amount) : undefined,
@@ -211,7 +216,8 @@ export function ManagerDashboard() {
 
     const submitData: Partial<JobCreate> = {
       ...editFormData,
-      scheduled_date: editFormData.scheduled_date || undefined,
+      start_date: editFormData.start_date || undefined,
+      end_date: editFormData.end_date || undefined,
       scheduled_time: editFormData.scheduled_time || undefined,
       address_override: editFormData.address_override || undefined,
       assigned_worker_ids: editFormData.assigned_worker_ids?.length ? editFormData.assigned_worker_ids : undefined,
@@ -274,21 +280,32 @@ export function ManagerDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Scheduled Date
+                  Start Date
                 </label>
                 <input
                   type="date"
-                  value={formData.scheduled_date}
-                  onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Scheduled Time
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Time
                 </label>
                 <input
                   type="time"
@@ -518,21 +535,32 @@ export function ManagerDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Scheduled Date
+                    Start Date
                   </label>
                   <input
                     type="date"
-                    value={editFormData.scheduled_date}
-                    onChange={(e) => setEditFormData({ ...editFormData, scheduled_date: e.target.value })}
+                    value={editFormData.start_date}
+                    onChange={(e) => setEditFormData({ ...editFormData, start_date: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Scheduled Time
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editFormData.end_date}
+                    onChange={(e) => setEditFormData({ ...editFormData, end_date: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Start Time
                   </label>
                   <input
                     type="time"
@@ -688,7 +716,7 @@ export function ManagerDashboard() {
                     Hours
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                    KMs
+                    Break
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                     Payout
@@ -711,7 +739,7 @@ export function ManagerDashboard() {
                       {ts.hours_worked}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 text-right">
-                      {ts.round_trip_kms}
+                      {parseFloat(ts.break_duration) > 0 ? `${ts.break_duration}h` : '-'}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-obatek text-right">
                       {ts.calculated_pay ? formatCurrency(ts.calculated_pay) : '-'}
@@ -757,8 +785,11 @@ export function ManagerDashboard() {
                     )}
                   </div>
                   <div className="text-right flex-shrink-0">
-                    {job.scheduled_date && (
-                      <p className="text-sm text-obatek">{formatDate(job.scheduled_date)}</p>
+                    {job.start_date && (
+                      <p className="text-sm text-obatek">
+                        {formatDate(job.start_date)}
+                        {job.end_date && job.end_date !== job.start_date && ` – ${formatDate(job.end_date)}`}
+                      </p>
                     )}
                     {job.estimate_amount && (
                       <p className="text-sm text-gray-500">

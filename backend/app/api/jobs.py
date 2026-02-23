@@ -20,7 +20,8 @@ def job_to_response(job: Job) -> JobResponse:
     return JobResponse(
         id=job.id,
         description=job.description,
-        scheduled_date=job.scheduled_date,
+        start_date=job.start_date,
+        end_date=job.end_date,
         scheduled_time=job.scheduled_time,
         estimated_duration=job.estimated_duration,
         is_completed=job.is_completed,
@@ -72,7 +73,7 @@ def list_jobs(
             JobWorkerLink.worker_id == worker.id
         )
 
-    statement = statement.order_by(Job.scheduled_date.desc())
+    statement = statement.order_by(Job.start_date.desc())
     jobs = session.exec(statement).all()
 
     return [job_to_response(job) for job in jobs]
@@ -97,7 +98,8 @@ def create_job(
     job = Job(
         client_id=data.client_id,
         description=data.description,
-        scheduled_date=data.scheduled_date,
+        start_date=data.start_date,
+        end_date=data.end_date,
         scheduled_time=data.scheduled_time,
         estimated_duration=data.estimated_duration,
         estimate_amount=data.estimate_amount,
@@ -151,7 +153,7 @@ def get_calendar_events(
     statement = (
         select(Job)
         .options(selectinload(Job.client))
-        .where(Job.scheduled_date.isnot(None))
+        .where(Job.start_date.isnot(None))
         .where(Job.is_completed == False)
     )
 
@@ -168,7 +170,8 @@ def get_calendar_events(
         event = CalendarEvent(
             id=job.id,
             title=f"{job.client.name} - {job.description[:30]}",
-            start=job.scheduled_date,
+            start=job.start_date,
+            end=job.end_date,
             time=job.scheduled_time.strftime("%H:%M") if job.scheduled_time else None,
             duration=str(job.estimated_duration) if job.estimated_duration else None,
             client=job.client.name,

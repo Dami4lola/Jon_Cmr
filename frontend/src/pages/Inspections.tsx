@@ -73,9 +73,10 @@ function JobInspectionCard({ job }: { job: Job }) {
           <p className="text-sm text-gray-600">
             {job.client?.name} | {job.job_address}
           </p>
-          {job.scheduled_date && (
+          {job.start_date && (
             <p className="text-sm text-obatek">
-              {formatDate(job.scheduled_date)}
+              {formatDate(job.start_date)}
+              {job.end_date && job.end_date !== job.start_date && ` – ${formatDate(job.end_date)}`}
             </p>
           )}
         </div>

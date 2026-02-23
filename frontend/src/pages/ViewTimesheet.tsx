@@ -108,7 +108,7 @@ export function ViewTimesheet() {
 
           {/* Hours Section */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Hours & Travel</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Hours</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="border border-gray-200 rounded-lg p-3">
                 <p className="text-xs text-gray-500">Hours Worked</p>
@@ -127,12 +127,14 @@ export function ViewTimesheet() {
                   )}
                 </p>
               </div>
-              <div className="border border-gray-200 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Round Trip KMs</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {parseFloat(timesheet.round_trip_kms).toFixed(1)}
-                </p>
-              </div>
+              {parseFloat(timesheet.break_duration) > 0 && (
+                <div className="border border-gray-200 rounded-lg p-3">
+                  <p className="text-xs text-gray-500">Break Duration</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    {parseFloat(timesheet.break_duration).toFixed(2)}h
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -180,20 +182,6 @@ export function ViewTimesheet() {
                   {formatCurrency(timesheet.personal_materials)}
                 </span>
               </div>
-              <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                <span className="text-sm text-gray-600">Receipts Total</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {formatCurrency(timesheet.receipts_total)}
-                </span>
-              </div>
-              {timesheet.receipt_card_digits && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">Card Used (last 4)</span>
-                  <span className="text-sm font-mono font-medium text-gray-900">
-                    **** {timesheet.receipt_card_digits}
-                  </span>
-                </div>
-              )}
             </div>
           </div>
 

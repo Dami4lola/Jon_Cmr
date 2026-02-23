@@ -21,9 +21,9 @@ class Timesheet(SQLModel, table=True):
     job_id: int = Field(foreign_key="job.id", index=True)
     date: dt.date = Field(index=True)
 
-    # Hours and distance
+    # Hours
     hours_worked: Decimal = Field(max_digits=4, decimal_places=2)  # 0.01-24.00
-    round_trip_kms: Decimal = Field(default=Decimal("0"), max_digits=6, decimal_places=2)
+    break_duration: Decimal = Field(default=Decimal("0"), max_digits=4, decimal_places=2)  # hours of break (tracked only)
 
     # Flags
     used_company_truck: bool = Field(default=False)
@@ -32,8 +32,6 @@ class Timesheet(SQLModel, table=True):
     # Expenses
     company_materials: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
     personal_materials: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
-    receipts_total: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
-    receipt_card_digits: str | None = Field(default=None, max_length=4)
 
     # Calculated pay (stored to preserve historical rates)
     calculated_pay: Decimal | None = Field(default=None, max_digits=10, decimal_places=2)
