@@ -1,7 +1,8 @@
 """
 Receipt model
 """
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlalchemy import LargeBinary
 from decimal import Decimal
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
@@ -18,7 +19,9 @@ class Receipt(SQLModel, table=True):
     timesheet_id: int = Field(foreign_key="timesheet.id", index=True)
 
     # File info
-    image_path: str  # Path to uploaded image
+    image_path: str = Field(default="")  # Legacy path (kept for backward compat)
+    content_type: str = Field(default="image/jpeg")  # MIME type
+    image_data: bytes | None = Field(default=None, sa_column=Column(LargeBinary))
     description: str | None = Field(default=None, max_length=200)
     amount: Decimal | None = Field(default=None, max_digits=8, decimal_places=2)
 

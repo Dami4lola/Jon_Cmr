@@ -2,6 +2,7 @@
 Timesheet API endpoints
 """
 from fastapi import APIRouter, HTTPException, status, UploadFile, File
+from fastapi.responses import Response
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 from datetime import datetime
@@ -339,32 +340,20 @@ def upload_receipts(
 
     uploaded = []
     for file in files:
-        # Generate unique filename
-        ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
-        filename = f"{uuid.uuid4()}{ext}"
+        # Read file content into memory
+        content = file.file.read()
+        content_type = file.content_type or "image/jpeg"
+        filename = file.filename or f"{uuid.uuid4()}.jpg"
 
-        # Create directory
-        upload_dir = os.path.join(
-            settings.UPLOAD_DIR,
-            "receipts",
-            str(timesheet.worker_id),
-            timesheet.date.strftime("%Y-%m"),
-        )
-        os.makedirs(upload_dir, exist_ok=True)
-
-        # Save file
-        file_path = os.path.join(upload_dir, filename)
-        with open(file_path, "wb") as f:
-            content = file.file.read()
-            f.write(content)
-
-        # Create receipt record
+        # Store image data in database (persists across Railway deploys)
         receipt = Receipt(
             timesheet_id=timesheet_id,
-            image_path=file_path,
+            image_path=filename,
+            content_type=content_type,
+            image_data=content,
         )
         session.add(receipt)
-        uploaded.append({"filename": filename, "path": file_path})
+        uploaded.append({"filename": filename})
 
     session.commit()
 
@@ -405,13 +394,57 @@ def get_timesheet_receipts(
             id=r.id,
             timesheet_id=r.timesheet_id,
             image_path=r.image_path,
-            image_url=f"/{r.image_path}" if not r.image_path.startswith("/") else r.image_path,
+            image_url=f"/api/timesheets/receipts/{r.id}/image",
             description=r.description,
             amount=r.amount,
             uploaded_at=r.uploaded_at,
         )
         for r in receipts
     ]
+
+
+@router.get("/receipts/{receipt_id}/image")
+def get_receipt_image(
+    receipt_id: int,
+    session: DBSession,
+    token: str | None = None,
+):
+    """Serve a receipt image from the database.
+    Accepts auth token via ?token= query param (needed for <img> tags).
+    """
+    from ..services.auth import decode_token
+    from ..models import User
+
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token required")
+
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    user_id = int(payload.get("sub", 0))
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    receipt = session.get(Receipt, receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")
+
+    if not db_user.is_manager:
+        timesheet = session.get(Timesheet, receipt.timesheet_id)
+        worker = session.exec(select(Worker).where(Worker.user_id == user_id)).first()
+        if not worker or timesheet.worker_id != worker.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    if not receipt.image_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image data not found")
+
+    return Response(
+        content=receipt.image_data,
+        media_type=receipt.content_type or "image/jpeg",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @router.delete("/receipts/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -441,10 +474,6 @@ def delete_receipt(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied",
             )
-
-    # Delete file from disk
-    if os.path.exists(receipt.image_path):
-        os.remove(receipt.image_path)
 
     session.delete(receipt)
     session.commit()

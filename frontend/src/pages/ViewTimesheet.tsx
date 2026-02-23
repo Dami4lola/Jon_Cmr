@@ -193,7 +193,9 @@ export function ViewTimesheet() {
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {receipts.map((receipt) => {
-                  const imgSrc = receipt.image_url || `/uploads/${receipt.image_path}`;
+                  const token = localStorage.getItem('access_token');
+                  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+                  const imgSrc = `${apiBase}/timesheets/receipts/${receipt.id}/image?token=${token}`;
                   return (
                     <a
                       key={receipt.id}
