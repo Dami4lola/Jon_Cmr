@@ -50,9 +50,15 @@ export function Calendar() {
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
     events.forEach((event) => {
-      const date = event.start.split('T')[0];
-      if (!map[date]) map[date] = [];
-      map[date].push(event);
+      const start = new Date(event.start.split('T')[0] + 'T00:00:00');
+      const end = event.end ? new Date(event.end.split('T')[0] + 'T00:00:00') : start;
+      const current = new Date(start);
+      while (current <= end) {
+        const dateKey = current.toISOString().split('T')[0];
+        if (!map[dateKey]) map[dateKey] = [];
+        map[dateKey].push(event);
+        current.setDate(current.getDate() + 1);
+      }
     });
     return map;
   }, [events]);
