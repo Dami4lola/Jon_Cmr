@@ -46,7 +46,7 @@ class Settings:
     # AWS S3
     AWS_ACCESS_KEY_ID: str = config("AWS_ACCESS_KEY_ID", default="")
     AWS_SECRET_ACCESS_KEY: str = config("AWS_SECRET_ACCESS_KEY", default="")
-    AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", default="obatek-receipts")
+    AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", default="justjonreceipts")
     AWS_S3_REGION: str = config("AWS_S3_REGION", default="us-east-1")
 
     # Email (Resend)
