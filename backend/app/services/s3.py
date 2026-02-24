@@ -1,0 +1,66 @@
+"""
+AWS S3 utility for receipt image storage.
+"""
+import boto3
+import uuid
+from urllib.parse import urlparse
+
+from ..config import settings
+
+
+def get_s3_client():
+    """Create and return a boto3 S3 client using config credentials."""
+    return boto3.client(
+        "s3",
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_S3_REGION,
+    )
+
+
+def upload_file_to_s3(file_bytes: bytes, filename: str, content_type: str) -> str:
+    """
+    Upload a file to S3 and return the public URL.
+
+    Args:
+        file_bytes: Raw file content
+        filename: Original filename
+        content_type: MIME type (e.g. 'image/jpeg')
+
+    Returns:
+        The public URL string for the uploaded object.
+    """
+    s3 = get_s3_client()
+    key = f"receipts/{uuid.uuid4()}_{filename}"
+
+    s3.put_object(
+        Bucket=settings.AWS_S3_BUCKET_NAME,
+        Key=key,
+        Body=file_bytes,
+        ContentType=content_type,
+    )
+
+    public_url = (
+        f"https://{settings.AWS_S3_BUCKET_NAME}"
+        f".s3.{settings.AWS_S3_REGION}.amazonaws.com/{key}"
+    )
+    return public_url
+
+
+def delete_file_from_s3(public_url: str) -> None:
+    """
+    Delete a file from S3 given its public URL.
+
+    Extracts the object key from the URL and deletes it.
+    """
+    parsed = urlparse(public_url)
+    # Key is the path without leading slash
+    key = parsed.path.lstrip("/")
+    if not key:
+        return
+
+    s3 = get_s3_client()
+    s3.delete_object(
+        Bucket=settings.AWS_S3_BUCKET_NAME,
+        Key=key,
+    )

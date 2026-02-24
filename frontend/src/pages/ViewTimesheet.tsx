@@ -98,7 +98,7 @@ export function ViewTimesheet() {
                 {timesheet.job?.description}
               </p>
               <p className="text-sm text-gray-600">
-                {timesheet.job?.client?.name}
+                {timesheet.job?.client_name}
               </p>
             </div>
           </div>
@@ -192,29 +192,24 @@ export function ViewTimesheet() {
                 Receipt Images ({receipts.length})
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {receipts.map((receipt) => {
-                  const token = localStorage.getItem('access_token');
-                  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-                  const imgSrc = `${apiBase}/timesheets/receipts/${receipt.id}/image?token=${token}`;
-                  return (
-                    <a
-                      key={receipt.id}
-                      href={imgSrc}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block border border-gray-200 rounded-lg overflow-hidden hover:border-obatek transition-colors"
-                    >
-                      <img
-                        src={imgSrc}
-                        alt={receipt.description || `Receipt ${receipt.id}`}
-                        className="w-full h-32 object-cover"
-                      />
-                      {receipt.description && (
-                        <p className="text-xs text-gray-600 p-2 truncate">{receipt.description}</p>
-                      )}
-                    </a>
-                  );
-                })}
+                {receipts.map((receipt) => (
+                  <a
+                    key={receipt.id}
+                    href={receipt.image_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block border border-gray-200 rounded-lg overflow-hidden hover:border-obatek transition-colors"
+                  >
+                    <img
+                      src={receipt.image_url}
+                      alt={receipt.description || `Receipt ${receipt.id}`}
+                      className="w-full h-32 object-cover"
+                    />
+                    {receipt.description && (
+                      <p className="text-xs text-gray-600 p-2 truncate">{receipt.description}</p>
+                    )}
+                  </a>
+                ))}
               </div>
             </div>
           )}

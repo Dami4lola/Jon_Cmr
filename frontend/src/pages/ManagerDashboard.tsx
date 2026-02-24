@@ -733,7 +733,7 @@ export function ManagerDashboard() {
                       {ts.worker?.name || 'Unknown'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {ts.job?.client?.name} - {ts.job?.description}
+                      {ts.job?.client_name} - {ts.job?.description}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatDate(ts.date)}

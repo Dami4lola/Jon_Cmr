@@ -102,9 +102,6 @@ export function getUserFriendlyMessage(error: AxiosError<ApiError>): string {
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
   timeout: 30000, // 30 second timeout
 });
 
@@ -157,11 +154,8 @@ export const uploadFile = async (
   const formData = new FormData();
   formData.append(fieldName, file);
 
-  const response = await api.post(endpoint, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  // Let axios auto-set Content-Type with correct multipart boundary
+  const response = await api.post(endpoint, formData);
 
   return response.data;
 };
@@ -176,11 +170,8 @@ export const uploadFiles = async (
     formData.append(fieldName, file);
   });
 
-  const response = await api.post(endpoint, formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  // Let axios auto-set Content-Type with correct multipart boundary
+  const response = await api.post(endpoint, formData);
 
   return response.data;
 };

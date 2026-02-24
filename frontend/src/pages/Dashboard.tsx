@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { timesheetsApi } from '../api/timesheets';
@@ -10,6 +11,7 @@ import type { TimesheetCreate, Timesheet } from '../types';
 export function Dashboard() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -58,9 +60,9 @@ export function Dashboard() {
         setUploadingReceipts(true);
         try {
           await timesheetsApi.uploadReceipts(newTimesheet.id, receiptFiles);
-        } catch {
-          // Timesheet was created but receipt upload failed
-          console.error('Receipt upload failed');
+        } catch (err) {
+          console.error('Receipt upload failed', err);
+          alert('Timesheet saved but receipt upload failed. Please try uploading receipts again.');
         } finally {
           setUploadingReceipts(false);
         }
@@ -488,14 +490,15 @@ export function Dashboard() {
         ) : (
           <div className="divide-y">
             {timesheets.map((ts: Timesheet) => (
-              <div key={ts.id} className="p-4 hover:bg-gray-50">
+              <div key={ts.id} className="p-4 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/timesheets/${ts.id}`)}>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-gray-900">
-                      {ts.job?.client?.name} - {ts.job?.description}
+                      {ts.job?.client_name} - {ts.job?.description}
                     </p>
                     <p className="text-sm text-gray-600">
                       {formatDate(ts.date)} | {ts.hours_worked} hours{parseFloat(ts.break_duration) > 0 ? ` | ${ts.break_duration}h break` : ''}
+                      {ts.receipt_count > 0 && ` | ${ts.receipt_count} receipt${ts.receipt_count > 1 ? 's' : ''}`}
                     </p>
                   </div>
                   <div className="text-right">

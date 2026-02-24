@@ -66,8 +66,7 @@ class ReceiptResponse(BaseModel):
     """Receipt response"""
     id: int
     timesheet_id: int
-    image_path: str
-    image_url: str  # Computed URL for frontend
+    image_url: str  # Public S3 URL
     description: str | None
     amount: Decimal | None
     uploaded_at: dt.datetime

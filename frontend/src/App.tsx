@@ -53,14 +53,7 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/timesheets/:id"
-          element={
-            <ProtectedRoute requireManager>
-              <ViewTimesheet />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/timesheets/:id" element={<ViewTimesheet />} />
         <Route
           path="/invoices"
           element={

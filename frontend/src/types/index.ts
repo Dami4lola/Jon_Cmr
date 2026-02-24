@@ -112,6 +112,20 @@ export interface CalendarEvent {
   description: string;
 }
 
+// Brief types for nested responses
+export interface JobBrief {
+  id: number;
+  description: string;
+  client_name: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface WorkerBrief {
+  id: number;
+  name: string;
+}
+
 // Timesheet Types
 export interface Timesheet {
   id: number;
@@ -127,8 +141,8 @@ export interface Timesheet {
   calculated_pay?: string;
   receipt_count: number;
   created_at: string;
-  worker?: Worker;
-  job?: Job;
+  worker?: WorkerBrief;
+  job?: JobBrief;
 }
 
 export interface TimesheetCreate {
@@ -167,8 +181,7 @@ export interface InvoiceCreate {
 export interface Receipt {
   id: number;
   timesheet_id: number;
-  image_path: string;
-  image_url?: string;
+  image_url: string;  // Public S3 URL
   description?: string;
   amount?: string;
   uploaded_at: string;

@@ -2,12 +2,10 @@
 Timesheet API endpoints
 """
 from fastapi import APIRouter, HTTPException, status, UploadFile, File
-from fastapi.responses import Response
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 from datetime import datetime
 from decimal import Decimal
-import os
 import uuid
 
 from ..config import settings
@@ -22,6 +20,7 @@ from ..schemas.timesheet import (
 from ..schemas.worker import WorkerBrief
 from ..schemas.job import JobBrief
 from ..services.payout import calculate_payout, calculate_payout_breakdown
+from ..services.s3 import upload_file_to_s3, delete_file_from_s3
 from .deps import DBSession, CurrentUser, CurrentWorker, ManagerUser
 
 router = APIRouter()
@@ -318,7 +317,7 @@ def upload_receipts(
     current_user: CurrentUser,
     files: list[UploadFile] = File(...),
 ):
-    """Upload receipt images for a timesheet"""
+    """Upload receipt images for a timesheet — stores in AWS S3"""
     timesheet = session.get(Timesheet, timesheet_id)
 
     if not timesheet:
@@ -340,20 +339,22 @@ def upload_receipts(
 
     uploaded = []
     for file in files:
-        # Read file content into memory
+        # Read file content
         content = file.file.read()
         content_type = file.content_type or "image/jpeg"
         filename = file.filename or f"{uuid.uuid4()}.jpg"
 
-        # Store image data in database (persists across Railway deploys)
+        # Upload to S3 and get public URL
+        public_url = upload_file_to_s3(content, filename, content_type)
+
+        # Save URL to database
         receipt = Receipt(
             timesheet_id=timesheet_id,
-            image_path=filename,
+            public_url=public_url,
             content_type=content_type,
-            image_data=content,
         )
         session.add(receipt)
-        uploaded.append({"filename": filename})
+        uploaded.append({"filename": filename, "url": public_url})
 
     session.commit()
 
@@ -393,8 +394,7 @@ def get_timesheet_receipts(
         ReceiptResponse(
             id=r.id,
             timesheet_id=r.timesheet_id,
-            image_path=r.image_path,
-            image_url=f"/api/timesheets/receipts/{r.id}/image",
+            image_url=r.public_url,
             description=r.description,
             amount=r.amount,
             uploaded_at=r.uploaded_at,
@@ -403,57 +403,13 @@ def get_timesheet_receipts(
     ]
 
 
-@router.get("/receipts/{receipt_id}/image")
-def get_receipt_image(
-    receipt_id: int,
-    session: DBSession,
-    token: str | None = None,
-):
-    """Serve a receipt image from the database.
-    Accepts auth token via ?token= query param (needed for <img> tags).
-    """
-    from ..services.auth import decode_token
-    from ..models import User
-
-    if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token required")
-
-    payload = decode_token(token)
-    if not payload or payload.get("type") != "access":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    user_id = int(payload.get("sub", 0))
-    db_user = session.get(User, user_id)
-    if not db_user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-
-    receipt = session.get(Receipt, receipt_id)
-    if not receipt:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")
-
-    if not db_user.is_manager:
-        timesheet = session.get(Timesheet, receipt.timesheet_id)
-        worker = session.exec(select(Worker).where(Worker.user_id == user_id)).first()
-        if not worker or timesheet.worker_id != worker.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-
-    if not receipt.image_data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image data not found")
-
-    return Response(
-        content=receipt.image_data,
-        media_type=receipt.content_type or "image/jpeg",
-        headers={"Cache-Control": "private, max-age=3600"},
-    )
-
-
 @router.delete("/receipts/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_receipt(
     receipt_id: int,
     session: DBSession,
     current_user: CurrentUser,
 ):
-    """Delete a receipt"""
+    """Delete a receipt — removes from S3 and database"""
     receipt = session.get(Receipt, receipt_id)
 
     if not receipt:
@@ -474,6 +430,13 @@ def delete_receipt(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied",
             )
+
+    # Delete from S3
+    if receipt.public_url:
+        try:
+            delete_file_from_s3(receipt.public_url)
+        except Exception:
+            pass  # Don't fail the delete if S3 cleanup fails
 
     session.delete(receipt)
     session.commit()

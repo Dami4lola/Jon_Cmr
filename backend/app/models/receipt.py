@@ -1,8 +1,7 @@
 """
 Receipt model
 """
-from sqlmodel import SQLModel, Field, Relationship, Column
-from sqlalchemy import LargeBinary
+from sqlmodel import SQLModel, Field, Relationship
 from decimal import Decimal
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
@@ -12,16 +11,16 @@ if TYPE_CHECKING:
 
 
 class Receipt(SQLModel, table=True):
-    """Receipt image model"""
+    """Receipt image model — images stored in AWS S3"""
     __tablename__ = "receipt"
 
     id: int | None = Field(default=None, primary_key=True)
     timesheet_id: int = Field(foreign_key="timesheet.id", index=True)
 
-    # File info
-    image_path: str = Field(default="")  # Legacy path (kept for backward compat)
+    # S3 storage
+    public_url: str = Field(default="")  # Public S3 URL
     content_type: str = Field(default="image/jpeg")  # MIME type
-    image_data: bytes | None = Field(default=None, sa_column=Column(LargeBinary))
+
     description: str | None = Field(default=None, max_length=200)
     amount: Decimal | None = Field(default=None, max_digits=8, decimal_places=2)
 
