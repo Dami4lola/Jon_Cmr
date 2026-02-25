@@ -43,7 +43,7 @@ export function Invoices() {
   });
 
   // Fetch preview when job is selected
-  const { data: preview, isFetching: loadingPreview } = useQuery({
+  const { data: preview, isFetching: loadingPreview } = useQuery<InvoicePreview>({
     queryKey: ['invoice-preview', selectedJobId],
     queryFn: () => invoicesApi.previewForJob(selectedJobId!),
     enabled: !!selectedJobId && step === 'select',
