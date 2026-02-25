@@ -61,6 +61,16 @@ export function Invoices() {
     }
   }, [preview]);
 
+  // Pre-populate scope of work from job description when job is selected
+  useEffect(() => {
+    if (selectedJobId) {
+      const job = jobs.find((j: Job) => j.id === selectedJobId);
+      if (job?.description) {
+        setScopeOfWork(job.description);
+      }
+    }
+  }, [selectedJobId, jobs]);
+
   const invoicedJobIds = new Set(invoices.map((inv: Invoice) => inv.job_id));
   const uninvoicedJobs = jobs.filter(
     (job: Job) => job.is_completed && !invoicedJobIds.has(job.id)
