@@ -1,7 +1,10 @@
 """
 Invoice API endpoints
 """
+import logging
 from fastapi import APIRouter, HTTPException, status
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import Response
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
@@ -47,6 +50,14 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
         .where(Timesheet.job_id == job.id)
         .options(selectinload(Timesheet.worker))
     ).all()
+
+    logger.info(f"Invoice calc for job {job.id}: found {len(timesheets)} timesheets")
+    for ts in timesheets:
+        logger.info(
+            f"  Timesheet {ts.id}: worker={ts.worker.name if ts.worker else 'None'}, "
+            f"hours={ts.hours_worked}, rate={ts.worker.hourly_rate if ts.worker else 'N/A'}, "
+            f"personal_materials={ts.personal_materials}, company_materials={ts.company_materials}"
+        )
 
     total_labour_hours = Decimal("0")
     labour_amount = Decimal("0")
