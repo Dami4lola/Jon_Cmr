@@ -417,17 +417,22 @@ export function Dashboard() {
                 + Add Receipt Photos
               </button>
               {receiptFiles.length > 0 && (
-                <div className="mt-2 space-y-1">
+                <div className="mt-2 grid grid-cols-3 gap-2">
                   {receiptFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between bg-gray-50 px-3 py-1.5 rounded text-sm">
-                      <span className="text-gray-700 truncate">{file.name}</span>
+                    <div key={index} className="relative group">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                      />
                       <button
                         type="button"
                         onClick={() => removeFile(index)}
-                        className="text-red-500 hover:text-red-700 ml-2 text-xs font-medium"
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        Remove
+                        X
                       </button>
+                      <p className="text-xs text-gray-500 mt-1 truncate">{file.name}</p>
                     </div>
                   ))}
                 </div>
