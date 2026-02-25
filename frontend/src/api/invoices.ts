@@ -1,5 +1,5 @@
 import api from './client';
-import type { Invoice, InvoiceCreate } from '../types';
+import type { Invoice, InvoiceCreate, InvoicePreview } from '../types';
 
 export const invoicesApi = {
   list: async (params?: {
@@ -13,6 +13,11 @@ export const invoicesApi = {
 
   get: async (id: number): Promise<Invoice> => {
     const response = await api.get(`/invoices/${id}`);
+    return response.data;
+  },
+
+  previewForJob: async (jobId: number): Promise<InvoicePreview> => {
+    const response = await api.get(`/invoices/preview/job/${jobId}`);
     return response.data;
   },
 

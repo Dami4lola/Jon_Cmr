@@ -1,7 +1,8 @@
 """
-PDF Invoice Generation for OBATEK - Ported from Django
+PDF Invoice Generation for Just Jon Handyman Services
 Uses ReportLab to generate professional invoices
 """
+import os
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -12,68 +13,106 @@ from reportlab.lib.enums import TA_RIGHT
 
 from ..models import Invoice, Job, Client
 
-# Theme Configuration (Matches the blue theme)
-THEME_COLOR = colors.HexColor("#2c5f78")  # Muted Teal/Blue
+# Company info
+COMPANY_NAME = "Just Jon Industries INC."
+COMPANY_ADDRESS = "867 Brooke Valley Road, Perth, ON"
+COMPANY_HST = "HST# 709114680RT0001"
+COMPANY_PHONE = "613-200-9362"
+COMPANY_EMAIL = "justjonindustries@gmail.com"
+
+# Theme
+THEME_COLOR = colors.HexColor("#1a1a2e")
+ACCENT_COLOR = colors.HexColor("#2c5f78")
 TEXT_COLOR = colors.HexColor("#333333")
-ALT_ROW_COLOR = colors.HexColor("#f2f2f2")  # Light Gray for banding
+LIGHT_BG = colors.HexColor("#f8f9fa")
+BORDER_COLOR = colors.HexColor("#dee2e6")
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "justjon_logo.png")
 
 
 def draw_header_footer(canvas, doc):
-    """
-    Draws the static background elements (Blue Header/Footer bars)
-    that stay consistent on every page.
-    """
+    """Draw static header and footer on every page."""
     canvas.saveState()
+    page_width, page_height = letter
 
-    # --- Header Blue Bar ---
-    header_height = 1.2 * inch
+    # --- HEADER ---
+    header_height = 1.4 * inch
     canvas.setFillColor(THEME_COLOR)
-    canvas.rect(0, letter[1] - header_height, letter[0], header_height, fill=1, stroke=0)
+    canvas.rect(0, page_height - header_height, page_width, header_height, fill=1, stroke=0)
 
-    # --- Header Text (White) ---
+    # Left side: Company info
     canvas.setFillColor(colors.white)
+    left_x = 0.5 * inch
+    top_y = page_height - 0.35 * inch
 
-    # "INVOICE" Title (Left)
-    canvas.setFont("Helvetica", 32)
-    canvas.drawString(0.5 * inch, letter[1] - 0.8 * inch, "INVOICE")
+    canvas.setFont("Helvetica-Bold", 24)
+    canvas.drawString(left_x, top_y, "INVOICE")
 
-    # Company Info (Right)
-    canvas.setFont("Helvetica-Bold", 12)
-    right_margin = letter[0] - 0.5 * inch
-    top_text_y = letter[1] - 0.4 * inch
-
-    canvas.drawRightString(right_margin, top_text_y, "OBATEK")
-
-    canvas.setFont("Helvetica", 10)
-    canvas.drawRightString(right_margin, top_text_y - 14, "Professional Services")
-    canvas.drawRightString(right_margin, top_text_y - 28, "Ottawa, Ontario")
-    canvas.drawRightString(right_margin, top_text_y - 42, "contact@obatek.com")
-
-    # --- Footer Blue Bar ---
-    footer_height = 0.6 * inch
-    canvas.setFillColor(THEME_COLOR)
-    canvas.rect(0, 0, letter[0], footer_height, fill=1, stroke=0)
-
-    # Footer Text
-    canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawCentredString(letter[0] / 2, 0.25 * inch, "Thank you for your business!")
+    canvas.drawString(left_x, top_y - 24, COMPANY_NAME)
+
+    canvas.setFont("Helvetica", 9)
+    canvas.drawString(left_x, top_y - 38, COMPANY_ADDRESS)
+    canvas.drawString(left_x, top_y - 50, COMPANY_HST)
+    canvas.drawString(left_x, top_y - 62, f"{COMPANY_PHONE}  |  {COMPANY_EMAIL}")
+
+    # Right side: Logo or text fallback
+    right_x = page_width - 0.5 * inch
+    if os.path.exists(LOGO_PATH):
+        try:
+            canvas.drawImage(
+                LOGO_PATH,
+                right_x - 1.8 * inch,
+                page_height - header_height + 0.2 * inch,
+                width=1.8 * inch,
+                height=1.0 * inch,
+                preserveAspectRatio=True,
+                anchor="sw",
+                mask="auto",
+            )
+        except Exception:
+            _draw_logo_text(canvas, right_x, top_y)
+    else:
+        _draw_logo_text(canvas, right_x, top_y)
+
+    # --- FOOTER ---
+    footer_top = 0.85 * inch
+    canvas.setStrokeColor(BORDER_COLOR)
+    canvas.setLineWidth(0.5)
+    canvas.line(0.5 * inch, footer_top, page_width - 0.5 * inch, footer_top)
+
+    canvas.setFillColor(TEXT_COLOR)
+    canvas.setFont("Helvetica", 8)
+    y = footer_top - 14
+    canvas.drawString(0.5 * inch, y, f"E-transfer or cheque payable to {COMPANY_NAME}")
+    canvas.drawString(0.5 * inch, y - 12, "Total payable upon receipt. Overdue accounts subject to 2% monthly interest.")
+
+    # Powered by OBATEK (bottom right)
+    canvas.setFont("Helvetica", 7)
+    canvas.setFillColor(colors.HexColor("#999999"))
+    canvas.drawRightString(right_x, 0.3 * inch, "Powered by OBATEK")
 
     canvas.restoreState()
 
 
+def _draw_logo_text(canvas, right_x, top_y):
+    """Fallback: draw company name as styled text instead of logo image."""
+    canvas.setFont("Helvetica-Bold", 14)
+    canvas.setFillColor(colors.white)
+    canvas.drawRightString(right_x, top_y - 10, "Just Jon")
+    canvas.setFont("Helvetica", 10)
+    canvas.drawRightString(right_x, top_y - 26, "Handyman Services")
+
+
 def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client) -> bytes:
-    """
-    Generate a PDF invoice and return it as bytes
-    """
+    """Generate a PDF invoice and return it as bytes."""
     buffer = BytesIO()
 
-    # Increase top margin to avoid overlapping with our custom header
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        topMargin=1.5 * inch,
-        bottomMargin=0.75 * inch,
+        topMargin=1.7 * inch,
+        bottomMargin=1.1 * inch,
         leftMargin=0.5 * inch,
         rightMargin=0.5 * inch,
     )
@@ -81,190 +120,164 @@ def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client) -> bytes:
     elements = []
     styles = getSampleStyleSheet()
 
-    # --- Styles ---
     label_style = ParagraphStyle(
-        "Label",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=10,
-        textColor=TEXT_COLOR,
-        leading=14,
+        "Label", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=9,
+        textColor=TEXT_COLOR, leading=13,
     )
-
     value_style = ParagraphStyle(
-        "Value",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=10,
-        textColor=TEXT_COLOR,
-        leading=14,
+        "Value", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9,
+        textColor=TEXT_COLOR, leading=13,
     )
-
-    bill_to_header_style = ParagraphStyle(
-        "BillToHeader",
-        parent=styles["Normal"],
-        fontName="Helvetica-Bold",
-        fontSize=10,
-        alignment=TA_RIGHT,
-        textColor=TEXT_COLOR,
+    bill_to_header = ParagraphStyle(
+        "BillToHeader", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=9,
+        alignment=TA_RIGHT, textColor=TEXT_COLOR,
     )
-
-    bill_to_text_style = ParagraphStyle(
-        "BillToText",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=10,
-        alignment=TA_RIGHT,
-        textColor=TEXT_COLOR,
-        leading=14,
+    bill_to_text = ParagraphStyle(
+        "BillToText", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9,
+        alignment=TA_RIGHT, textColor=TEXT_COLOR, leading=13,
+    )
+    section_heading = ParagraphStyle(
+        "SectionHeading", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=11,
+        textColor=THEME_COLOR, spaceAfter=6, spaceBefore=12,
+    )
+    scope_style = ParagraphStyle(
+        "ScopeText", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9,
+        textColor=TEXT_COLOR, leading=14, spaceAfter=12,
     )
 
     # ==============================
-    # 1. TOP SECTION (Invoice Meta & Bill To)
+    # 1. INVOICE META & BILL TO
     # ==============================
-
-    # Left Side: Invoice Details
     inv_data = [
-        [
-            Paragraph("Invoice No.", label_style),
-            Paragraph(str(invoice.invoice_number), value_style),
-        ],
-        [
-            Paragraph("Date of Issue", label_style),
-            Paragraph(invoice.created_date.strftime("%B %d, %Y"), value_style),
-        ],
-        [
-            Paragraph("Due Date", label_style),
-            Paragraph(
-                invoice.due_date.strftime("%B %d, %Y") if invoice.due_date else "Upon Receipt",
-                value_style,
-            ),
-        ],
+        [Paragraph("Invoice No.", label_style), Paragraph(str(invoice.invoice_number), value_style)],
+        [Paragraph("Date", label_style), Paragraph(invoice.created_date.strftime("%B %d, %Y"), value_style)],
+        [Paragraph("Due Date", label_style), Paragraph(
+            invoice.due_date.strftime("%B %d, %Y") if invoice.due_date else "Upon Receipt", value_style,
+        )],
     ]
 
-    t_left = Table(inv_data, colWidths=[1.2 * inch, 2 * inch])
-    t_left.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
-        )
-    )
+    t_left = Table(inv_data, colWidths=[1.0 * inch, 2.2 * inch])
+    t_left.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
 
-    # Right Side: Bill To
     address_parts = [client.name]
     if client.address:
         address_parts.extend(client.address.split("\n"))
 
-    bill_to_flowables = [Paragraph("<b>Bill To</b>", bill_to_header_style)]
+    bill_to_flowables = [Paragraph("<b>Bill To</b>", bill_to_header)]
     for part in address_parts:
-        bill_to_flowables.append(Paragraph(part, bill_to_text_style))
+        bill_to_flowables.append(Paragraph(part, bill_to_text))
 
-    # Master Table to hold Left and Right side by side
     top_table_data = [[t_left, bill_to_flowables]]
     t_top = Table(top_table_data, colWidths=[3.75 * inch, 3.75 * inch])
-    t_top.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-            ]
-        )
-    )
+    t_top.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+    ]))
 
     elements.append(t_top)
-    elements.append(Spacer(1, 0.5 * inch))
+    elements.append(Spacer(1, 0.3 * inch))
 
     # ==============================
-    # 2. PRICING TABLE
+    # 2. SCOPE OF WORK
     # ==============================
+    if invoice.scope_of_work:
+        elements.append(Paragraph("SCOPE OF WORK", section_heading))
+        elements.append(Paragraph(invoice.scope_of_work, scope_style))
+        elements.append(Spacer(1, 0.1 * inch))
 
-    headers = ["Item", "Description", "Hours", "Rate", "Amount"]
-    data = [headers]
+    # ==============================
+    # 3. CHARGES SUMMARY TABLE
+    # ==============================
+    elements.append(Paragraph("CHARGES SUMMARY", section_heading))
 
-    # Row 1 (The Job)
-    data.append(
-        [
-            "1",
-            job.description[:80] + "..." if len(job.description) > 80 else job.description,
-            "-",
-            "-",
-            f"${invoice.subtotal:,.2f}",
-        ]
-    )
+    charges_header = ["Description", "Detail", "Amount"]
+    charges_data = [charges_header]
 
-    col_widths = [0.6 * inch, 3.4 * inch, 0.8 * inch, 1.0 * inch, 1.7 * inch]
-    t_pricing = Table(data, colWidths=col_widths)
+    hours_display = f"{invoice.total_labour_hours:,.2f} hrs"
+    charges_data.append(["Labour", hours_display, f"${invoice.labour_amount:,.2f}"])
 
-    pricing_style = [
-        # Header Row Styling
+    km_display = f"{invoice.total_distance_km:,.1f} km @ $1.00/km"
+    charges_data.append(["Travel", km_display, f"${invoice.travel_amount:,.2f}"])
+
+    charges_data.append(["Materials (before tax)", "", f"${invoice.materials_amount:,.2f}"])
+
+    if invoice.inventory_materials > 0:
+        charges_data.append(["Inventory Materials Used", "", f"${invoice.inventory_materials:,.2f}"])
+
+    if invoice.dump_fee > 0:
+        charges_data.append(["Dump Fee", "", f"${invoice.dump_fee:,.2f}"])
+
+    col_widths = [2.8 * inch, 2.4 * inch, 2.3 * inch]
+    t_charges = Table(charges_data, colWidths=col_widths)
+
+    charges_style = [
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("TEXTCOLOR", (0, 0), (-1, 0), TEXT_COLOR),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-        ("TOPPADDING", (0, 0), (-1, 0), 12),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, TEXT_COLOR),
-        ("LINEABOVE", (0, 0), (-1, 0), 1, TEXT_COLOR),
-        # General Alignment
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-        # Row Padding
-        ("TOPPADDING", (0, 1), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 1), (-1, -1), 8),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_COLOR),
+        ("BACKGROUND", (0, 0), (-1, 0), LIGHT_BG),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, BORDER_COLOR),
+        ("LINEBELOW", (0, -1), (-1, -1), 1, BORDER_COLOR),
+        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (0, -1), 6),
     ]
 
-    # Zebra Striping
-    for i in range(1, len(data)):
-        bg_color = colors.white if i % 2 == 0 else ALT_ROW_COLOR
-        pricing_style.append(("BACKGROUND", (0, i), (-1, i), bg_color))
+    for i in range(1, len(charges_data)):
+        if i % 2 == 0:
+            charges_style.append(("BACKGROUND", (0, i), (-1, i), LIGHT_BG))
 
-    t_pricing.setStyle(TableStyle(pricing_style))
-    elements.append(t_pricing)
-
+    t_charges.setStyle(TableStyle(charges_style))
+    elements.append(t_charges)
     elements.append(Spacer(1, 0.2 * inch))
 
     # ==============================
-    # 3. TOTALS SECTION
+    # 4. TOTALS
     # ==============================
-
     totals_data = [
         ["Subtotal", f"${invoice.subtotal:,.2f}"],
-        ["Discount", "$0.00"],
-        ["HST (13%)", f"${invoice.hst_amount:,.2f}"],
-        ["Total", f"${invoice.total:,.2f}"],
+        [f"HST (13%) - {COMPANY_HST}", f"${invoice.hst_amount:,.2f}"],
+        ["Total Due", f"${invoice.total:,.2f}"],
     ]
 
-    t_totals = Table(totals_data, colWidths=[1.5 * inch, 1.7 * inch])
-    t_totals.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-                ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-                ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_COLOR),
-                # Bold and Highlight the Final Total
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                ("BACKGROUND", (1, -1), (1, -1), colors.HexColor("#d9edf7")),
-                ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
-                ("TOPPADDING", (0, -1), (-1, -1), 8),
-            ]
-        )
-    )
+    t_totals = Table(totals_data, colWidths=[2.5 * inch, 1.5 * inch])
+    t_totals.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_COLOR),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LINEABOVE", (0, -1), (-1, -1), 1.5, THEME_COLOR),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, -1), (-1, -1), 12),
+        ("TEXTCOLOR", (0, -1), (-1, -1), THEME_COLOR),
+        ("TOPPADDING", (0, -1), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 10),
+    ]))
 
-    # Align totals to the far right
-    totals_wrapper = Table([[None, t_totals]], colWidths=[4.3 * inch, 3.2 * inch])
+    totals_wrapper = Table([[None, t_totals]], colWidths=[3.5 * inch, 4.0 * inch])
     elements.append(totals_wrapper)
-
-    elements.append(Spacer(1, 0.5 * inch))
+    elements.append(Spacer(1, 0.3 * inch))
 
     # ==============================
-    # 4. NOTES (Optional)
+    # 5. NOTES
     # ==============================
     if invoice.notes:
-        elements.append(Paragraph("<b>Notes:</b>", styles["Normal"]))
-        elements.append(Paragraph(invoice.notes, styles["Normal"]))
+        elements.append(Paragraph("<b>Notes</b>", label_style))
+        elements.append(Spacer(1, 4))
+        elements.append(Paragraph(invoice.notes, value_style))
 
-    # Build PDF with the custom header/footer callback
     doc.build(elements, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
 
     buffer.seek(0)

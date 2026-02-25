@@ -30,10 +30,24 @@ class Invoice(SQLModel, table=True):
     created_date: date = Field(default_factory=date.today)
     due_date: date | None = Field(default=None)
 
-    # Amounts
-    subtotal: Decimal = Field(max_digits=10, decimal_places=2)
+    # Amounts (aggregates)
+    subtotal: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     hst_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
-    total: Decimal = Field(max_digits=10, decimal_places=2)
+    total: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+
+    # Charge breakdown (frozen at creation time)
+    labour_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    travel_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    materials_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    inventory_materials: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    dump_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+
+    # Display detail fields
+    total_labour_hours: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
+    total_distance_km: Decimal = Field(default=Decimal("0"), max_digits=6, decimal_places=2)
+
+    # Scope of work (narrative description for PDF)
+    scope_of_work: str | None = Field(default=None)
 
     # Status
     status: str = Field(default=InvoiceStatus.DRAFT.value, max_length=10)

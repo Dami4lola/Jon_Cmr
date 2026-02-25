@@ -6,16 +6,85 @@ from fastapi.responses import Response
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
-from ..models import Invoice, Job, Client
-from ..schemas.invoice import InvoiceCreate, InvoiceResponse, InvoiceStatusUpdate
+from ..models import Invoice, Job, Client, Timesheet, Receipt
+from ..schemas.invoice import (
+    InvoiceCreate,
+    InvoiceResponse,
+    InvoicePreview,
+    InvoiceStatusUpdate,
+)
 from ..schemas.job import JobBrief
 from ..schemas.client import ClientBrief
 from ..services.invoice_pdf import generate_invoice_pdf
 from .deps import DBSession, ManagerUser
 
 router = APIRouter()
+
+MILEAGE_RATE = Decimal("1.00")
+MINIMUM_HOURS = Decimal("4.0")
+HST_RATE = Decimal("0.13")
+
+
+def _round_hours(hours_worked: Decimal) -> Decimal:
+    """Round hours to nearest 0.25 and apply 4-hour minimum."""
+    hours_float = float(hours_worked)
+    rounded = Decimal(str(round(hours_float * 4) / 4))
+    return max(rounded, MINIMUM_HOURS)
+
+
+def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
+    """
+    Auto-calculate all invoice line items from job timesheet/receipt data.
+    """
+    timesheets = session.exec(
+        select(Timesheet)
+        .where(Timesheet.job_id == job.id)
+        .options(selectinload(Timesheet.worker))
+    ).all()
+
+    total_labour_hours = Decimal("0")
+    labour_amount = Decimal("0")
+    for ts in timesheets:
+        billable = _round_hours(ts.hours_worked)
+        total_labour_hours += billable
+        labour_amount += billable * ts.worker.hourly_rate
+
+    labour_amount = labour_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    distance_km = job.calculated_distance_km or Decimal("0")
+    travel_amount = (distance_km * MILEAGE_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    receipts = session.exec(
+        select(Receipt)
+        .join(Timesheet, Receipt.timesheet_id == Timesheet.id)
+        .where(Timesheet.job_id == job.id)
+        .where(Receipt.amount.isnot(None))
+    ).all()
+    materials_amount = sum((r.amount for r in receipts), Decimal("0"))
+    materials_amount = materials_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    inventory_materials = data.inventory_materials if data else Decimal("0")
+    dump_fee = data.dump_fee if data else Decimal("0")
+
+    subtotal = labour_amount + travel_amount + materials_amount + inventory_materials + dump_fee
+    include_hst = data.include_hst if data else True
+    hst_amount = (subtotal * HST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_hst else Decimal("0")
+    total = subtotal + hst_amount
+
+    return {
+        "total_labour_hours": total_labour_hours,
+        "labour_amount": labour_amount,
+        "total_distance_km": distance_km,
+        "travel_amount": travel_amount,
+        "materials_amount": materials_amount,
+        "inventory_materials": inventory_materials,
+        "dump_fee": dump_fee,
+        "subtotal": subtotal,
+        "hst_amount": hst_amount,
+        "total": total,
+    }
 
 
 def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceResponse:
@@ -30,6 +99,14 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
         total=invoice.total,
         status=invoice.status,
         notes=invoice.notes,
+        scope_of_work=invoice.scope_of_work,
+        labour_amount=invoice.labour_amount,
+        travel_amount=invoice.travel_amount,
+        materials_amount=invoice.materials_amount,
+        inventory_materials=invoice.inventory_materials,
+        dump_fee=invoice.dump_fee,
+        total_labour_hours=invoice.total_labour_hours,
+        total_distance_km=invoice.total_distance_km,
         job=JobBrief(
             id=job.id,
             description=job.description,
@@ -51,7 +128,6 @@ def generate_invoice_number(session) -> str:
     year = date.today().year
     prefix = f"INV-{year}-"
 
-    # Find last invoice number for this year
     statement = (
         select(Invoice)
         .where(Invoice.invoice_number.startswith(prefix))
@@ -99,8 +175,7 @@ def create_invoice(
     current_user: ManagerUser,
     data: InvoiceCreate | None = None,
 ):
-    """Create an invoice for a job (manager only)"""
-    # Get job with client
+    """Create an invoice for a job. Auto-calculates from timesheets/receipts, manager can override."""
     statement = (
         select(Job)
         .where(Job.id == job_id)
@@ -114,27 +189,48 @@ def create_invoice(
             detail="Job not found",
         )
 
-    # Check if invoice already exists
     if job.invoice:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invoice {job.invoice.invoice_number} already exists for this job",
         )
 
-    # Calculate amounts
-    subtotal = job.estimate_amount or Decimal("0.00")
-    hst_amount = subtotal * Decimal("0.13")
-    total = subtotal + hst_amount
+    amounts = _calculate_invoice_amounts(session, job, data)
 
-    # Create invoice
+    # Apply manager overrides if provided
+    if data:
+        if data.labour_amount is not None:
+            amounts["labour_amount"] = data.labour_amount
+        if data.travel_amount is not None:
+            amounts["travel_amount"] = data.travel_amount
+        if data.materials_amount is not None:
+            amounts["materials_amount"] = data.materials_amount
+        if data.total_labour_hours is not None:
+            amounts["total_labour_hours"] = data.total_labour_hours
+        if data.total_distance_km is not None:
+            amounts["total_distance_km"] = data.total_distance_km
+
+        # Recalculate totals after overrides
+        amounts["subtotal"] = (
+            amounts["labour_amount"]
+            + amounts["travel_amount"]
+            + amounts["materials_amount"]
+            + amounts["inventory_materials"]
+            + amounts["dump_fee"]
+        )
+        if data.include_hst:
+            amounts["hst_amount"] = (amounts["subtotal"] * HST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        else:
+            amounts["hst_amount"] = Decimal("0")
+        amounts["total"] = amounts["subtotal"] + amounts["hst_amount"]
+
     invoice = Invoice(
         job_id=job_id,
         invoice_number=generate_invoice_number(session),
-        subtotal=subtotal,
-        hst_amount=hst_amount,
-        total=total,
+        scope_of_work=data.scope_of_work if data else None,
         due_date=date.today() + timedelta(days=30),
         notes=data.notes if data else "Payment due within 30 days.",
+        **amounts,
     )
 
     session.add(invoice)
@@ -142,6 +238,39 @@ def create_invoice(
     session.refresh(invoice)
 
     return invoice_to_response(invoice, job, job.client)
+
+
+@router.get("/preview/job/{job_id}", response_model=InvoicePreview)
+def preview_invoice(
+    job_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """Preview auto-calculated invoice amounts for a job before creation"""
+    job = session.exec(
+        select(Job)
+        .where(Job.id == job_id)
+        .options(selectinload(Job.client))
+    ).first()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    amounts = _calculate_invoice_amounts(session, job, None)
+
+    return InvoicePreview(
+        labour_hours=amounts["total_labour_hours"],
+        labour_amount=amounts["labour_amount"],
+        travel_km=amounts["total_distance_km"],
+        travel_amount=amounts["travel_amount"],
+        materials_amount=amounts["materials_amount"],
+        subtotal=amounts["subtotal"],
+        hst_amount=amounts["hst_amount"],
+        total=amounts["total"],
+    )
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
@@ -188,10 +317,8 @@ def download_invoice_pdf(
             detail="Invoice not found",
         )
 
-    # Generate PDF
     pdf_content = generate_invoice_pdf(invoice, invoice.job, invoice.job.client)
 
-    # Set disposition (inline for browser view, attachment for download)
     disposition = "inline" if inline else "attachment"
     filename = f"Invoice_{invoice.invoice_number}.pdf"
 
@@ -225,7 +352,6 @@ def update_invoice_status(
             detail="Invoice not found",
         )
 
-    # Validate status
     valid_statuses = ["draft", "sent", "paid", "overdue"]
     if data.status not in valid_statuses:
         raise HTTPException(

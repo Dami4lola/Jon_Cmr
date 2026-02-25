@@ -168,13 +168,40 @@ export interface Invoice {
   total: string;
   status: 'draft' | 'sent' | 'paid' | 'overdue';
   notes?: string;
+  scope_of_work?: string;
+  labour_amount: string;
+  travel_amount: string;
+  materials_amount: string;
+  inventory_materials: string;
+  dump_fee: string;
+  total_labour_hours: string;
+  total_distance_km: string;
   job?: Job;
+  client?: ClientBrief;
 }
 
 export interface InvoiceCreate {
-  due_date?: string;
-  notes?: string;
+  scope_of_work?: string;
+  labour_amount?: number;
+  travel_amount?: number;
+  materials_amount?: number;
+  inventory_materials?: number;
+  dump_fee?: number;
+  total_labour_hours?: number;
+  total_distance_km?: number;
   include_hst?: boolean;
+  notes?: string;
+}
+
+export interface InvoicePreview {
+  labour_hours: string;
+  labour_amount: string;
+  travel_km: string;
+  travel_amount: string;
+  materials_amount: string;
+  subtotal: string;
+  hst_amount: string;
+  total: string;
 }
 
 // Receipt Types
