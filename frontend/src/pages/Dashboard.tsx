@@ -45,6 +45,7 @@ export function Dashboard() {
 
   // Receipt file upload state
   const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
+  const receiptFilesRef = useRef<File[]>([]);
   const [uploadingReceipts, setUploadingReceipts] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,10 +56,11 @@ export function Dashboard() {
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const newTimesheet = await timesheetsApi.create(data);
-      if (receiptFiles.length > 0) {
+      const filesToUpload = receiptFilesRef.current;
+      if (filesToUpload.length > 0) {
         setUploadingReceipts(true);
         try {
-          await timesheetsApi.uploadReceipts(newTimesheet.id, receiptFiles);
+          await timesheetsApi.uploadReceipts(newTimesheet.id, filesToUpload);
         } catch (err) {
           console.error('Receipt upload failed', err);
           alert('Timesheet saved but receipt upload failed. Please try uploading receipts again.');
@@ -87,6 +89,7 @@ export function Dashboard() {
       personal_materials: 0,
     });
     setReceiptFiles([]);
+    receiptFilesRef.current = [];
     setPayoutPreview(null);
   };
 
@@ -99,13 +102,21 @@ export function Dashboard() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selectedFiles = Array.from(e.target.files);
-      setReceiptFiles((prev) => [...prev, ...selectedFiles]);
+      setReceiptFiles((prev) => {
+        const updated = [...prev, ...selectedFiles];
+        receiptFilesRef.current = updated;
+        return updated;
+      });
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeFile = (index: number) => {
-    setReceiptFiles((prev) => prev.filter((_, i) => i !== index));
+    setReceiptFiles((prev) => {
+      const updated = prev.filter((_, i) => i !== index);
+      receiptFilesRef.current = updated;
+      return updated;
+    });
   };
 
   const handlePreviewPayout = async () => {
