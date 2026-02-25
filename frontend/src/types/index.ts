@@ -199,6 +199,7 @@ export interface InvoicePreview {
   travel_km: string;
   travel_amount: string;
   materials_amount: string;
+  inventory_materials: string;
   subtotal: string;
   hst_amount: string;
   total: string;

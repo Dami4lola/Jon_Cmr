@@ -57,6 +57,7 @@ export function Invoices() {
       setTravelAmount(parseFloat(preview.travel_amount));
       setTravelKm(parseFloat(preview.travel_km));
       setMaterialsAmount(parseFloat(preview.materials_amount));
+      setInventoryMaterials(parseFloat(preview.inventory_materials));
     }
   }, [preview]);
 

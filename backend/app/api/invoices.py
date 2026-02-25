@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from ..models import Invoice, Job, Client, Timesheet, Receipt
+from ..models import Invoice, Job, Client, Timesheet
 from ..schemas.invoice import (
     InvoiceCreate,
     InvoiceResponse,
@@ -36,7 +36,11 @@ def _round_hours(hours_worked: Decimal) -> Decimal:
 
 def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     """
-    Auto-calculate all invoice line items from job timesheet/receipt data.
+    Auto-calculate all invoice line items from job timesheet data.
+    - Labour hours: sum of hours_worked from timesheets (rounded, 4hr min per timesheet)
+    - Labour amount: billable hours × worker hourly rate
+    - Materials: sum of personal_materials from timesheets
+    - Inventory materials: sum of company_materials from timesheets
     """
     timesheets = session.exec(
         select(Timesheet)
@@ -46,26 +50,22 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
 
     total_labour_hours = Decimal("0")
     labour_amount = Decimal("0")
+    materials_amount = Decimal("0")
+    inventory_materials = Decimal("0")
     for ts in timesheets:
         billable = _round_hours(ts.hours_worked)
         total_labour_hours += billable
         labour_amount += billable * ts.worker.hourly_rate
+        materials_amount += ts.personal_materials or Decimal("0")
+        inventory_materials += ts.company_materials or Decimal("0")
 
     labour_amount = labour_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    materials_amount = materials_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    inventory_materials = inventory_materials.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     distance_km = job.calculated_distance_km or Decimal("0")
     travel_amount = (distance_km * MILEAGE_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-    receipts = session.exec(
-        select(Receipt)
-        .join(Timesheet, Receipt.timesheet_id == Timesheet.id)
-        .where(Timesheet.job_id == job.id)
-        .where(Receipt.amount.isnot(None))
-    ).all()
-    materials_amount = sum((r.amount for r in receipts), Decimal("0"))
-    materials_amount = materials_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    inventory_materials = data.inventory_materials if data else Decimal("0")
     dump_fee = data.dump_fee if data else Decimal("0")
 
     subtotal = labour_amount + travel_amount + materials_amount + inventory_materials + dump_fee
@@ -267,6 +267,7 @@ def preview_invoice(
         travel_km=amounts["total_distance_km"],
         travel_amount=amounts["travel_amount"],
         materials_amount=amounts["materials_amount"],
+        inventory_materials=amounts["inventory_materials"],
         subtotal=amounts["subtotal"],
         hst_amount=amounts["hst_amount"],
         total=amounts["total"],

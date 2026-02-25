@@ -30,6 +30,7 @@ class InvoicePreview(BaseModel):
     travel_km: Decimal
     travel_amount: Decimal
     materials_amount: Decimal
+    inventory_materials: Decimal
     subtotal: Decimal
     hst_amount: Decimal
     total: Decimal
