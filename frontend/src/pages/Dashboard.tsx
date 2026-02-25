@@ -53,9 +53,8 @@ export function Dashboard() {
 
   // Create timesheet mutation
   const createMutation = useMutation({
-    mutationFn: timesheetsApi.create,
-    onSuccess: async (newTimesheet) => {
-      // Upload receipt files if any were selected
+    mutationFn: async (data: typeof formData) => {
+      const newTimesheet = await timesheetsApi.create(data);
       if (receiptFiles.length > 0) {
         setUploadingReceipts(true);
         try {
@@ -67,6 +66,9 @@ export function Dashboard() {
           setUploadingReceipts(false);
         }
       }
+      return newTimesheet;
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
       setShowForm(false);
       resetForm();
@@ -95,10 +97,10 @@ export function Dashboard() {
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setReceiptFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFiles = Array.from(e.target.files);
+      setReceiptFiles((prev) => [...prev, ...selectedFiles]);
     }
-    // Reset input so the same file can be selected again
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 

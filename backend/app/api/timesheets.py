@@ -7,6 +7,9 @@ from sqlalchemy.orm import selectinload
 from datetime import datetime
 from decimal import Decimal
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..config import settings
 from ..models import Timesheet, Worker, Job, Receipt
@@ -338,16 +341,17 @@ def upload_receipts(
             )
 
     uploaded = []
+    logger.info(f"Receipt upload: timesheet_id={timesheet_id}, file_count={len(files)}")
+
     for file in files:
-        # Read file content
         content = file.file.read()
         content_type = file.content_type or "image/jpeg"
         filename = file.filename or f"{uuid.uuid4()}.jpg"
 
-        # Upload to S3 and get public URL
+        logger.info(f"Processing file: {filename}, type={content_type}, size={len(content)} bytes")
+
         public_url = upload_file_to_s3(content, filename, content_type)
 
-        # Save URL to database
         receipt = Receipt(
             timesheet_id=timesheet_id,
             public_url=public_url,
@@ -357,6 +361,7 @@ def upload_receipts(
         uploaded.append({"filename": filename, "url": public_url})
 
     session.commit()
+    logger.info(f"Receipt upload complete: {len(uploaded)} files saved")
 
     return {"uploaded": len(uploaded), "files": uploaded}
 

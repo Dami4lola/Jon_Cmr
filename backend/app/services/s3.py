@@ -3,9 +3,12 @@ AWS S3 utility for receipt image storage.
 """
 import boto3
 import uuid
+import logging
 from urllib.parse import urlparse
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def get_s3_client():
@@ -33,17 +36,24 @@ def upload_file_to_s3(file_bytes: bytes, filename: str, content_type: str) -> st
     s3 = get_s3_client()
     key = f"receipts/{uuid.uuid4()}_{filename}"
 
-    s3.put_object(
-        Bucket=settings.AWS_S3_BUCKET_NAME,
-        Key=key,
-        Body=file_bytes,
-        ContentType=content_type,
-    )
+    logger.info(f"Uploading to S3: bucket={settings.AWS_S3_BUCKET_NAME}, region={settings.AWS_S3_REGION}, key={key}, size={len(file_bytes)} bytes")
+
+    try:
+        s3.put_object(
+            Bucket=settings.AWS_S3_BUCKET_NAME,
+            Key=key,
+            Body=file_bytes,
+            ContentType=content_type,
+        )
+    except Exception as e:
+        logger.error(f"S3 upload failed: {e}")
+        raise
 
     public_url = (
         f"https://{settings.AWS_S3_BUCKET_NAME}"
         f".s3.{settings.AWS_S3_REGION}.amazonaws.com/{key}"
     )
+    logger.info(f"S3 upload success: {public_url}")
     return public_url
 
 
