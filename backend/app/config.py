@@ -36,7 +36,7 @@ class Settings:
     # Office address for distance calculations
     OFFICE_ADDRESS: str = config(
         "OFFICE_ADDRESS",
-        default="244 Bell Street North, K1R 5T7, Ottawa, Ontario, Canada"
+        default="867 Brooke Valley Road, Perth, Ontario, Canada"
     )
 
     # Company card digits (comma-separated list of last 4 digits)
