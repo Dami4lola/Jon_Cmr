@@ -1,34 +1,37 @@
 #!/bin/bash
 set -e
 
-# Create base tables (user, job, client, worker, etc.) if they don't exist
-# This must run BEFORE alembic so migrations can reference these tables
+# Create base tables, check state, and stamp alembic — all in one process
 python -c "
-from app.database import create_db_and_tables
-create_db_and_tables()
-print('Base tables created/verified')
-"
-
-# If alembic_version table doesn't exist but the database has tables,
-# stamp at head so alembic doesn't re-run migrations on existing tables
-python -c "
-from app.database import engine
+import subprocess
+from app.database import create_db_and_tables, engine
+from app.config import settings
 from sqlalchemy import inspect
-with engine.connect() as conn:
-    inspector = inspect(conn)
-    tables = inspector.get_table_names()
-    has_alembic = 'alembic_version' in tables
-    if not has_alembic and 'job' in tables:
-        import subprocess
-        subprocess.run(['alembic', 'stamp', 'head'], check=True)
-        print('Stamped alembic at head (fresh database with tables)')
-    elif has_alembic:
-        print('Alembic version table exists, will upgrade normally')
-    else:
-        print('No tables found, unexpected state')
+
+print(f'DATABASE_URL starts with: {str(engine.url)[:30]}...')
+
+# Create all base tables (user, job, client, worker, timesheet, etc.)
+create_db_and_tables()
+
+# Verify and handle alembic
+inspector = inspect(engine)
+tables = inspector.get_table_names()
+print(f'Tables after create_all: {sorted(tables)}')
+
+has_alembic = 'alembic_version' in tables
+has_job = 'job' in tables
+
+if has_job and not has_alembic:
+    subprocess.run(['alembic', 'stamp', 'head'], check=True)
+    print('Stamped alembic at head (fresh database)')
+elif has_alembic:
+    print('Alembic exists, will upgrade normally')
+elif not has_job:
+    print('ERROR: create_all did not create tables!')
+    exit(1)
 "
 
-# Run pending migrations
+# Run pending migrations (no-op on fresh DB since we stamped head)
 alembic upgrade head
 
 # Start the application
