@@ -25,6 +25,7 @@ def job_to_response(job: Job) -> JobResponse:
         scheduled_time=job.scheduled_time,
         estimated_duration=job.estimated_duration,
         is_completed=job.is_completed,
+        is_redseal_trade=job.is_redseal_trade,
         estimate_amount=job.estimate_amount,
         calculated_distance_km=job.calculated_distance_km,
         address_override=job.address_override,
@@ -104,6 +105,7 @@ def create_job(
         estimated_duration=data.estimated_duration,
         estimate_amount=data.estimate_amount,
         address_override=data.address_override,
+        is_redseal_trade=data.is_redseal_trade,
     )
 
     # Calculate distance

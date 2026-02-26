@@ -21,11 +21,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Drop existing malformed tables (safe - they're empty)
-    op.execute("DROP TABLE IF EXISTS inspection_photo CASCADE")
-    op.execute("DROP TABLE IF EXISTS job_inspection CASCADE")
+    # Skip if tables already exist (prevent data loss on re-run)
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(op.get_bind())
+    if 'job_inspection' in inspector.get_table_names():
+        return
 
-    # Recreate with correct schema
     op.create_table(
         'job_inspection',
         sa.Column('id', sa.Integer(), nullable=False),
