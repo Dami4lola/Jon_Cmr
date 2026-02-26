@@ -258,6 +258,44 @@ def get_job_distance(
     }
 
 
+@router.post("/recalculate-distances")
+def recalculate_all_distances(
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """Recalculate distances for all jobs missing distance data (manager only)"""
+    statement = (
+        select(Job)
+        .where(Job.calculated_distance_km.is_(None))
+        .options(selectinload(Job.client))
+    )
+    jobs = session.exec(statement).all()
+
+    updated = []
+    failed = []
+    for job in jobs:
+        job_address = job.get_job_address()
+        if not job_address:
+            failed.append({"job_id": job.id, "reason": "No address"})
+            continue
+        distance = calculate_distance(job_address)
+        if distance:
+            job.calculated_distance_km = distance
+            session.add(job)
+            updated.append({"job_id": job.id, "distance_km": float(distance), "address": job_address})
+        else:
+            failed.append({"job_id": job.id, "reason": "API returned no result", "address": job_address})
+
+    session.commit()
+
+    return {
+        "updated": len(updated),
+        "failed": len(failed),
+        "details": updated,
+        "errors": failed,
+    }
+
+
 @router.put("/{job_id}", response_model=JobResponse)
 def update_job(
     job_id: int,
