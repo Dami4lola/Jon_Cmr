@@ -28,6 +28,7 @@ router = APIRouter()
 MILEAGE_RATE = Decimal("1.00")
 MINIMUM_HOURS = Decimal("4.0")
 LABOUR_RATE = Decimal("80.00")  # $80/hr per tech for invoicing
+REDSEAL_RATE = Decimal("100.00")  # $100/hr for Red Seal trades (plumbing, etc.)
 HST_RATE = Decimal("0.13")
 
 
@@ -67,7 +68,8 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     for ts in timesheets:
         billable = _round_hours(ts.hours_worked)
         total_labour_hours += billable
-        labour_amount += billable * LABOUR_RATE
+        rate = REDSEAL_RATE if job.is_redseal_trade else LABOUR_RATE
+        labour_amount += billable * rate
         materials_amount += ts.personal_materials or Decimal("0")
         inventory_materials += ts.company_materials or Decimal("0")
 

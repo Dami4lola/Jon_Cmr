@@ -20,6 +20,7 @@ class JobCreate(BaseModel):
     estimated_duration: Decimal | None = Field(default=None, ge=0, le=99.99)
     estimate_amount: Decimal | None = Field(default=None, ge=0)
     address_override: str | None = None
+    is_redseal_trade: bool = False
     assigned_worker_ids: List[int] = []
 
 
@@ -34,6 +35,7 @@ class JobUpdate(BaseModel):
     is_completed: bool | None = None
     estimate_amount: Decimal | None = None
     address_override: str | None = None
+    is_redseal_trade: bool | None = None
     assigned_worker_ids: List[int] | None = None
 
 
@@ -46,6 +48,7 @@ class JobResponse(BaseModel):
     scheduled_time: time | None
     estimated_duration: Decimal | None
     is_completed: bool
+    is_redseal_trade: bool
     estimate_amount: Decimal | None
     calculated_distance_km: Decimal | None
     address_override: str | None

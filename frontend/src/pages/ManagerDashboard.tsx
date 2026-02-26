@@ -23,6 +23,7 @@ export function ManagerDashboard() {
     estimated_duration: undefined,
     estimate_amount: undefined,
     address_override: '',
+    is_redseal_trade: false,
     assigned_worker_ids: [],
   });
   const [editFormData, setEditFormData] = useState<JobCreate>({
@@ -34,6 +35,7 @@ export function ManagerDashboard() {
     estimated_duration: undefined,
     estimate_amount: undefined,
     address_override: '',
+    is_redseal_trade: false,
     assigned_worker_ids: [],
   });
   const [clientFormData, setClientFormData] = useState<ClientCreate>({
@@ -82,6 +84,7 @@ export function ManagerDashboard() {
         estimated_duration: undefined,
         estimate_amount: undefined,
         address_override: '',
+        is_redseal_trade: false,
         assigned_worker_ids: [],
       });
     },
@@ -187,6 +190,7 @@ export function ManagerDashboard() {
       estimated_duration: job.estimated_duration ? parseFloat(job.estimated_duration) : undefined,
       estimate_amount: job.estimate_amount ? parseFloat(job.estimate_amount) : undefined,
       address_override: job.address_override || '',
+      is_redseal_trade: job.is_redseal_trade || false,
       assigned_worker_ids: job.workers?.map((w) => w.id) || [],
     });
   };
@@ -357,6 +361,27 @@ export function ManagerDashboard() {
                   placeholder="Leave blank to use client's address"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, is_redseal_trade: !formData.is_redseal_trade })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    formData.is_redseal_trade ? 'bg-red-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      formData.is_redseal_trade ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="text-sm font-medium text-gray-700">
+                  Red Seal Trade {formData.is_redseal_trade && <span className="text-red-600">(Billed at $100/hr)</span>}
+                </span>
+              </label>
             </div>
 
             {workers.length > 0 && (
@@ -612,6 +637,27 @@ export function ManagerDashboard() {
                     placeholder="Leave blank to use client's address"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <button
+                    type="button"
+                    onClick={() => setEditFormData({ ...editFormData, is_redseal_trade: !editFormData.is_redseal_trade })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      editFormData.is_redseal_trade ? 'bg-red-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        editFormData.is_redseal_trade ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className="text-sm font-medium text-gray-700">
+                    Red Seal Trade {editFormData.is_redseal_trade && <span className="text-red-600">(Billed at $100/hr)</span>}
+                  </span>
+                </label>
               </div>
 
               {workers.length > 0 && (

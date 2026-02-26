@@ -47,7 +47,7 @@ class Settings:
     AWS_ACCESS_KEY_ID: str = config("AWS_ACCESS_KEY_ID", default="")
     AWS_SECRET_ACCESS_KEY: str = config("AWS_SECRET_ACCESS_KEY", default="")
     AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", default="justjonreceipts")
-    AWS_S3_REGION: str = config("AWS_S3_REGION", default="us-east-1")
+    AWS_S3_REGION: str = config("AWS_S3_REGION", default="us-east-2")
 
     # Email (Resend)
     RESEND_API_KEY: str | None = config("RESEND_API_KEY", default=None)

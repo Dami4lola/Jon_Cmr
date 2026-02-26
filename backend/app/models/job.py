@@ -40,6 +40,9 @@ class Job(SQLModel, table=True):
     is_completed: bool = Field(default=False, index=True)
     estimate_amount: Decimal | None = Field(default=None, max_digits=10, decimal_places=2)
 
+    # Trade type
+    is_redseal_trade: bool = Field(default=False)
+
     # Distance calculation
     calculated_distance_km: Decimal | None = Field(default=None, max_digits=6, decimal_places=2)
 

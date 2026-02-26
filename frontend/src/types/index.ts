@@ -80,6 +80,7 @@ export interface Job {
   scheduled_time?: string;
   estimated_duration?: string;
   is_completed: boolean;
+  is_redseal_trade: boolean;
   estimate_amount?: string;
   calculated_distance_km?: string;
   address_override?: string;
@@ -97,6 +98,7 @@ export interface JobCreate {
   estimated_duration?: number;
   estimate_amount?: number;
   address_override?: string;
+  is_redseal_trade?: boolean;
   assigned_worker_ids?: number[];
 }
 
