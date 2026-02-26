@@ -10,6 +10,8 @@ from sqlalchemy import inspect
 
 print(f'DATABASE_URL starts with: {str(engine.url)[:30]}...')
 
+# Import all models so SQLModel.metadata knows about them
+import app.models  # noqa
 # Create all base tables (user, job, client, worker, timesheet, etc.)
 create_db_and_tables()
 
