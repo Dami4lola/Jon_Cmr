@@ -36,6 +36,9 @@ class Timesheet(SQLModel, table=True):
     # Calculated pay (stored to preserve historical rates)
     calculated_pay: Decimal | None = Field(default=None, max_digits=10, decimal_places=2)
 
+    # Payroll status
+    is_paid: bool = Field(default=False, index=True)
+
     # Timestamps
     created_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)
     updated_at: dt.datetime = Field(default_factory=dt.datetime.utcnow)

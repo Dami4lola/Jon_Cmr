@@ -67,6 +67,7 @@ def list_timesheets(
     """
     statement = (
         select(Timesheet)
+        .where(Timesheet.is_paid == False)
         .options(
             selectinload(Timesheet.worker),
             selectinload(Timesheet.job).selectinload(Job.client),

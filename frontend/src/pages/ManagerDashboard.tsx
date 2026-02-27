@@ -5,6 +5,7 @@ import { timesheetsApi } from '../api/timesheets';
 import { jobsApi } from '../api/jobs';
 import { clientsApi, ClientCreate } from '../api/clients';
 import { workersApi } from '../api/workers';
+import { payrollApi } from '../api/payroll';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { Timesheet, Job, Client, Worker, JobCreate } from '../types';
 
@@ -44,6 +45,14 @@ export function ManagerDashboard() {
     email: '',
     address: '',
   });
+
+  // Payroll state
+  const [showPayrollModal, setShowPayrollModal] = useState(false);
+  const [payrollStartDate, setPayrollStartDate] = useState('');
+  const [payrollEndDate, setPayrollEndDate] = useState('');
+  const [payrollProcessing, setPayrollProcessing] = useState(false);
+  const [payrollError, setPayrollError] = useState<string | null>(null);
+  const [payrollSuccess, setPayrollSuccess] = useState<string | null>(null);
 
   // Fetch all recent timesheets
   const { data: timesheets = [], isLoading: loadingTimesheets } = useQuery({
@@ -179,6 +188,44 @@ export function ManagerDashboard() {
     createClientMutation.mutate(clientFormData);
   };
 
+  const handleProcessPayroll = async () => {
+    if (!payrollStartDate || !payrollEndDate) return;
+    setPayrollProcessing(true);
+    setPayrollError(null);
+    setPayrollSuccess(null);
+    try {
+      const blob = await payrollApi.processPayroll(payrollStartDate, payrollEndDate);
+      // Trigger browser download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Payroll_${payrollStartDate}_${payrollEndDate}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setPayrollSuccess('Payroll processed and downloaded successfully. Timesheets have been archived.');
+      // Refetch timesheets so archived ones disappear
+      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: Blob } };
+      if (error.response?.data instanceof Blob) {
+        // Parse error from blob response
+        const text = await error.response.data.text();
+        try {
+          const json = JSON.parse(text);
+          setPayrollError(json.detail || 'Failed to process payroll');
+        } catch {
+          setPayrollError('Failed to process payroll');
+        }
+      } else {
+        setPayrollError('Failed to process payroll');
+      }
+    } finally {
+      setPayrollProcessing(false);
+    }
+  };
+
   const handleEditJob = (job: Job) => {
     setEditingJob(job);
     setEditFormData({
@@ -234,12 +281,24 @@ export function ManagerDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Manager Dashboard</h1>
-        <button
-          onClick={() => setShowCreateJob(!showCreateJob)}
-          className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
-        >
-          {showCreateJob ? 'Cancel' : 'Create Job'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              setShowPayrollModal(true);
+              setPayrollError(null);
+              setPayrollSuccess(null);
+            }}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
+          >
+            Process Payroll
+          </button>
+          <button
+            onClick={() => setShowCreateJob(!showCreateJob)}
+            className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+          >
+            {showCreateJob ? 'Cancel' : 'Create Job'}
+          </button>
+        </div>
       </div>
 
       {/* Create Job Form */}
@@ -711,6 +770,109 @@ export function ManagerDashboard() {
                 </p>
               )}
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Payroll Processing Modal */}
+      {showPayrollModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-4">Process Payroll</h2>
+
+            {payrollSuccess ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-green-800 text-sm">{payrollSuccess}</p>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowPayrollModal(false);
+                      setPayrollStartDate('');
+                      setPayrollEndDate('');
+                      setPayrollSuccess(null);
+                    }}
+                    className="px-4 py-2 bg-obatek text-white rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={payrollStartDate}
+                    onChange={(e) => setPayrollStartDate(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={payrollEndDate}
+                    onChange={(e) => setPayrollEndDate(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  />
+                </div>
+
+                {payrollStartDate && payrollEndDate && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-amber-800 text-sm">
+                      This will process all unpaid timesheets between{' '}
+                      <strong>{payrollStartDate}</strong> and <strong>{payrollEndDate}</strong>,
+                      generate payroll PDFs for each worker, and archive the timesheets.
+                    </p>
+                  </div>
+                )}
+
+                {payrollError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-red-800 text-sm">{payrollError}</p>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPayrollModal(false);
+                      setPayrollStartDate('');
+                      setPayrollEndDate('');
+                      setPayrollError(null);
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleProcessPayroll}
+                    disabled={payrollProcessing || !payrollStartDate || !payrollEndDate}
+                    className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {payrollProcessing ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Processing...
+                      </>
+                    ) : (
+                      'Process & Download'
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

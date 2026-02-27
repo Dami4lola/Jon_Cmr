@@ -295,6 +295,12 @@ export interface InspectionCreate {
   scope_change_notes?: string;
 }
 
+// Payroll Types
+export interface PayrollProcessRequest {
+  start_date: string;
+  end_date: string;
+}
+
 // API Response Types
 export interface PaginatedResponse<T> {
   items: T[];
