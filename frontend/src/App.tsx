@@ -18,6 +18,7 @@ import { ViewInspection } from './pages/ViewInspection';
 import { Invoices } from './pages/Invoices';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { ViewTimesheet } from './pages/ViewTimesheet';
+import { CompletedJobs } from './pages/CompletedJobs';
 
 function App() {
   return (
@@ -50,6 +51,14 @@ function App() {
           element={
             <ProtectedRoute requireManager>
               <ManagerDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/completed-jobs"
+          element={
+            <ProtectedRoute requireManager>
+              <CompletedJobs />
             </ProtectedRoute>
           }
         />

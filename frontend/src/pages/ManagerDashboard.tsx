@@ -1205,9 +1205,13 @@ export function ManagerDashboard() {
           <p className="text-sm text-gray-600">Active Jobs</p>
           <p className="text-2xl font-bold text-gray-900">{activeJobs.length}</p>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
+        <div
+          className="bg-white rounded-lg shadow p-4 cursor-pointer hover:ring-2 hover:ring-green-300 transition-all"
+          onClick={() => navigate('/completed-jobs')}
+        >
           <p className="text-sm text-gray-600">Completed Jobs</p>
           <p className="text-2xl font-bold text-green-600">{completedJobs.length}</p>
+          <p className="text-xs text-gray-400 mt-1">Click to view &rarr;</p>
         </div>
       </div>
 

@@ -41,6 +41,7 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
         company_materials=timesheet.company_materials,
         personal_materials=timesheet.personal_materials,
         calculated_pay=timesheet.calculated_pay,
+        is_paid=timesheet.is_paid,
         receipt_count=len(timesheet.receipts) if timesheet.receipts else 0,
         created_at=timesheet.created_at,
         worker=WorkerBrief(id=timesheet.worker.id, name=timesheet.worker.name),
@@ -92,6 +93,62 @@ def list_timesheets(
     timesheets = session.exec(statement).all()
 
     return [timesheet_to_response(ts) for ts in timesheets]
+
+
+@router.get("/by-job/{job_id}", response_model=list[TimesheetResponse])
+def list_timesheets_by_job(
+    job_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """
+    List ALL timesheets for a job (including paid ones). Manager only.
+    Used on the completed jobs page to review historical timesheets.
+    """
+    statement = (
+        select(Timesheet)
+        .where(Timesheet.job_id == job_id)
+        .options(
+            selectinload(Timesheet.worker),
+            selectinload(Timesheet.job).selectinload(Job.client),
+            selectinload(Timesheet.receipts),
+        )
+        .order_by(Timesheet.date.desc())
+    )
+    timesheets = session.exec(statement).all()
+    return [timesheet_to_response(ts) for ts in timesheets]
+
+
+@router.post("/{timesheet_id}/mark-unpaid", response_model=TimesheetResponse)
+def mark_timesheet_unpaid(
+    timesheet_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """Mark a paid timesheet as unpaid so it can be re-processed in payroll."""
+    statement = (
+        select(Timesheet)
+        .where(Timesheet.id == timesheet_id)
+        .options(
+            selectinload(Timesheet.worker),
+            selectinload(Timesheet.job).selectinload(Job.client),
+            selectinload(Timesheet.receipts),
+        )
+    )
+    timesheet = session.exec(statement).first()
+
+    if not timesheet:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Timesheet not found",
+        )
+
+    timesheet.is_paid = False
+    session.add(timesheet)
+    session.commit()
+    session.refresh(timesheet)
+
+    return timesheet_to_response(timesheet)
 
 
 @router.get("/summary")

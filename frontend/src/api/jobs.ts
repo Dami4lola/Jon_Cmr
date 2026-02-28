@@ -55,6 +55,11 @@ export const jobsApi = {
     return response.data;
   },
 
+  markActive: async (id: number): Promise<Job> => {
+    const response = await api.put(`/jobs/${id}`, { is_completed: false });
+    return response.data;
+  },
+
   uploadPhotos: async (jobId: number, files: File[]): Promise<JobPhoto[]> => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));

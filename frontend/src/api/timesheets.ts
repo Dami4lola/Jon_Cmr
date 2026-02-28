@@ -33,6 +33,16 @@ export const timesheetsApi = {
     await api.delete(`/timesheets/${id}`);
   },
 
+  listByJob: async (jobId: number): Promise<Timesheet[]> => {
+    const response = await api.get(`/timesheets/by-job/${jobId}`);
+    return response.data;
+  },
+
+  markUnpaid: async (id: number): Promise<Timesheet> => {
+    const response = await api.post(`/timesheets/${id}/mark-unpaid`);
+    return response.data;
+  },
+
   uploadReceipts: async (timesheetId: number, files: File[]): Promise<Receipt[]> => {
     const result = await uploadFiles(`/timesheets/${timesheetId}/receipts`, files, 'files');
     return result as Receipt[];
