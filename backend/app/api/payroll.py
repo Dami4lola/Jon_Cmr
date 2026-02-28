@@ -6,6 +6,7 @@ import zipfile
 from collections import defaultdict
 from io import BytesIO
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -38,28 +39,20 @@ def _round_hours(hours_worked: Decimal) -> Decimal:
     return max(rounded, MINIMUM_HOURS)
 
 
-@router.post("/process-period")
-def process_payroll_period(
-    data: PayrollProcessRequest,
-    session: DBSession,
-    current_user: ManagerUser,
-):
+def _build_payroll_summaries(
+    session: object,
+    start_date: date,
+    end_date: date,
+) -> tuple[list[PayrollWorkerSummary], list[Timesheet]]:
     """
-    Process payroll for a date range.
-    Generates per-worker PDF summaries, archives timesheets, returns ZIP.
+    Build payroll summaries for all workers with unpaid timesheets in date range.
+    Returns (worker_summaries, timesheets).
     """
-    if data.end_date < data.start_date:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="End date must be after start date",
-        )
-
-    # 1. Query unpaid timesheets in date range
     statement = (
         select(Timesheet)
         .where(
-            Timesheet.date >= data.start_date,
-            Timesheet.date <= data.end_date,
+            Timesheet.date >= start_date,
+            Timesheet.date <= end_date,
             Timesheet.is_paid == False,
         )
         .options(
@@ -76,13 +69,11 @@ def process_payroll_period(
             detail="No unpaid timesheets found in the selected date range",
         )
 
-    # 2. Group by worker
+    # Group by worker
     grouped: dict[int, list[Timesheet]] = defaultdict(list)
     for ts in timesheets:
         grouped[ts.worker_id].append(ts)
 
-    # 3. Build summaries and generate PDFs
-    worker_pdfs: list[tuple[str, bytes]] = []  # (filename, pdf_bytes)
     worker_summaries: list[PayrollWorkerSummary] = []
 
     for worker_id, worker_timesheets in grouped.items():
@@ -167,32 +158,75 @@ def process_payroll_period(
         )
         worker_summaries.append(summary)
 
-        # Generate PDF (before marking as paid — atomic safety)
+    return worker_summaries, timesheets
+
+
+@router.post("/preview-period", response_model=list[PayrollWorkerSummary])
+def preview_payroll_period(
+    data: PayrollProcessRequest,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """
+    Preview payroll for a date range without processing.
+    Returns worker summaries for review before committing.
+    """
+    if data.end_date < data.start_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End date must be after start date",
+        )
+
+    summaries, _ = _build_payroll_summaries(session, data.start_date, data.end_date)
+    return summaries
+
+
+@router.post("/process-period")
+def process_payroll_period(
+    data: PayrollProcessRequest,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """
+    Process payroll for a date range.
+    Generates per-worker PDF summaries, archives timesheets, returns ZIP.
+    """
+    if data.end_date < data.start_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End date must be after start date",
+        )
+
+    summaries, timesheets = _build_payroll_summaries(session, data.start_date, data.end_date)
+
+    # Generate PDFs
+    worker_pdfs: list[tuple[str, bytes]] = []
+    for summary in summaries:
         pdf_bytes = generate_payroll_pdf(summary, data.start_date, data.end_date)
-        safe_name = worker.name.replace(" ", "_").replace("/", "_")
+        safe_name = summary.worker_name.replace(" ", "_").replace("/", "_")
         filename = f"Payroll_{safe_name}_{data.start_date}_{data.end_date}.pdf"
         worker_pdfs.append((filename, pdf_bytes))
 
-    # 4. All PDFs generated successfully — now mark timesheets as paid (atomic)
+    # All PDFs generated successfully — now mark timesheets as paid (atomic)
     for ts in timesheets:
         ts.is_paid = True
         session.add(ts)
     session.commit()
 
     logger.info(
-        f"Payroll processed: {len(worker_summaries)} workers, "
+        f"Payroll processed: {len(summaries)} workers, "
         f"{len(timesheets)} timesheets archived "
         f"({data.start_date} to {data.end_date})"
     )
 
-    # 5. Create ZIP in memory
+    # Create ZIP in memory
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for filename, pdf_bytes in worker_pdfs:
             zf.writestr(filename, pdf_bytes)
     zip_buffer.seek(0)
 
-    # 6. Return ZIP response
+    # Return ZIP response
     zip_filename = f"Payroll_{data.start_date}_{data.end_date}.zip"
     return Response(
         content=zip_buffer.getvalue(),

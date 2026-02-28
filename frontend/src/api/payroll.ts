@@ -1,6 +1,15 @@
 import api from './client';
+import type { PayrollWorkerSummary } from '../types';
 
 export const payrollApi = {
+  previewPayroll: async (startDate: string, endDate: string): Promise<PayrollWorkerSummary[]> => {
+    const response = await api.post('/payroll/preview-period', {
+      start_date: startDate,
+      end_date: endDate,
+    });
+    return response.data;
+  },
+
   processPayroll: async (startDate: string, endDate: string): Promise<Blob> => {
     const response = await api.post(
       '/payroll/process-period',

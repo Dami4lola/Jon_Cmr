@@ -7,7 +7,7 @@ import { clientsApi, ClientCreate } from '../api/clients';
 import { workersApi } from '../api/workers';
 import { payrollApi } from '../api/payroll';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Timesheet, Job, Client, Worker, JobCreate } from '../types';
+import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary } from '../types';
 
 export function ManagerDashboard() {
   const navigate = useNavigate();
@@ -57,6 +57,10 @@ export function ManagerDashboard() {
   const [payrollProcessing, setPayrollProcessing] = useState(false);
   const [payrollError, setPayrollError] = useState<string | null>(null);
   const [payrollSuccess, setPayrollSuccess] = useState<string | null>(null);
+  const [payrollStep, setPayrollStep] = useState<'dates' | 'review' | 'done'>('dates');
+  const [payrollPreview, setPayrollPreview] = useState<PayrollWorkerSummary[]>([]);
+  const [payrollPreviewLoading, setPayrollPreviewLoading] = useState(false);
+  const [currentWorkerIndex, setCurrentWorkerIndex] = useState(0);
 
   // Fetch all recent timesheets
   const { data: timesheets = [], isLoading: loadingTimesheets } = useQuery({
@@ -152,6 +156,22 @@ export function ManagerDashboard() {
     },
   });
 
+  // Delete job mutation
+  const deleteJobMutation = useMutation({
+    mutationFn: jobsApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+  });
+
+  // Delete timesheet mutation
+  const deleteTimesheetMutation = useMutation({
+    mutationFn: timesheetsApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+    },
+  });
+
   // Calculate totals
   const totalPayout = timesheets.reduce(
     (sum: number, ts: Timesheet) => sum + (parseFloat(ts.calculated_pay || '0') || 0),
@@ -207,6 +227,23 @@ export function ManagerDashboard() {
     createClientMutation.mutate(clientFormData);
   };
 
+  const handlePreviewPayroll = async () => {
+    if (!payrollStartDate || !payrollEndDate) return;
+    setPayrollPreviewLoading(true);
+    setPayrollError(null);
+    try {
+      const summaries = await payrollApi.previewPayroll(payrollStartDate, payrollEndDate);
+      setPayrollPreview(summaries);
+      setCurrentWorkerIndex(0);
+      setPayrollStep('review');
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } } };
+      setPayrollError(error.response?.data?.detail || 'Failed to load payroll preview');
+    } finally {
+      setPayrollPreviewLoading(false);
+    }
+  };
+
   const handleProcessPayroll = async () => {
     if (!payrollStartDate || !payrollEndDate) return;
     setPayrollProcessing(true);
@@ -224,6 +261,7 @@ export function ManagerDashboard() {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       setPayrollSuccess('Payroll processed and downloaded successfully. Timesheets have been archived.');
+      setPayrollStep('done');
       // Refetch timesheets so archived ones disappear
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
     } catch (err: unknown) {
@@ -890,63 +928,56 @@ export function ManagerDashboard() {
 
       {/* Payroll Processing Modal */}
       {showPayrollModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
-            <h2 className="text-lg font-semibold mb-4">Process Payroll</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 my-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">
+                {payrollStep === 'dates' && 'Process Payroll — Select Dates'}
+                {payrollStep === 'review' && `Process Payroll — Review Worker ${currentWorkerIndex + 1} of ${payrollPreview.length}`}
+                {payrollStep === 'done' && 'Process Payroll — Complete'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowPayrollModal(false);
+                  setPayrollStartDate('');
+                  setPayrollEndDate('');
+                  setPayrollError(null);
+                  setPayrollSuccess(null);
+                  setPayrollStep('dates');
+                  setPayrollPreview([]);
+                  setCurrentWorkerIndex(0);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-            {payrollSuccess ? (
+            {/* Step 1: Date Selection */}
+            {payrollStep === 'dates' && (
               <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <p className="text-green-800 text-sm">{payrollSuccess}</p>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => {
-                      setShowPayrollModal(false);
-                      setPayrollStartDate('');
-                      setPayrollEndDate('');
-                      setPayrollSuccess(null);
-                    }}
-                    className="px-4 py-2 bg-obatek text-white rounded-lg font-medium hover:bg-obatek-dark transition-colors"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={payrollStartDate}
-                    onChange={(e) => setPayrollStartDate(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    value={payrollEndDate}
-                    onChange={(e) => setPayrollEndDate(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                  />
-                </div>
-
-                {payrollStartDate && payrollEndDate && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <p className="text-amber-800 text-sm">
-                      This will process all unpaid timesheets between{' '}
-                      <strong>{payrollStartDate}</strong> and <strong>{payrollEndDate}</strong>,
-                      generate payroll PDFs for each worker, and archive the timesheets.
-                    </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={payrollStartDate}
+                      onChange={(e) => setPayrollStartDate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                    />
                   </div>
-                )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={payrollEndDate}
+                      onChange={(e) => setPayrollEndDate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
 
                 {payrollError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -968,21 +999,190 @@ export function ManagerDashboard() {
                     Cancel
                   </button>
                   <button
-                    onClick={handleProcessPayroll}
-                    disabled={payrollProcessing || !payrollStartDate || !payrollEndDate}
-                    className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    onClick={handlePreviewPayroll}
+                    disabled={payrollPreviewLoading || !payrollStartDate || !payrollEndDate}
+                    className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
-                    {payrollProcessing ? (
+                    {payrollPreviewLoading ? (
                       <>
                         <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
-                        Processing...
+                        Loading...
                       </>
                     ) : (
-                      'Process & Download'
+                      'Preview Payroll'
                     )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: Worker-by-Worker Review */}
+            {payrollStep === 'review' && payrollPreview.length > 0 && (() => {
+              const worker = payrollPreview[currentWorkerIndex];
+              return (
+                <div className="space-y-4">
+                  {/* Worker header */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h3 className="font-semibold text-gray-900 text-lg">{worker.worker_name}</h3>
+                    <div className="grid grid-cols-3 gap-4 mt-3 text-sm">
+                      <div>
+                        <span className="text-gray-500">Hours</span>
+                        <p className="font-semibold">{parseFloat(worker.total_hours).toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Labour</span>
+                        <p className="font-semibold">{formatCurrency(worker.total_labour)}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Total Payout</span>
+                        <p className="font-bold text-obatek">{formatCurrency(worker.grand_total)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Entries table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Hours</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Labour</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">KM</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Materials</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {worker.entries.map((entry, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-gray-600">{entry.date}</td>
+                            <td className="px-3 py-2 text-gray-900">{entry.customer_name}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {parseFloat(entry.billable_hours).toFixed(2)}
+                              {parseFloat(entry.billable_hours) > parseFloat(entry.hours_worked) && (
+                                <span className="text-amber-500 ml-1" title="4-hour minimum applied">*</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(entry.labour_cost)}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{parseFloat(entry.km_distance).toFixed(1)}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {parseFloat(entry.personal_materials) > 0 ? formatCurrency(entry.personal_materials) : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Totals summary */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="grid grid-cols-2 gap-1 text-sm">
+                      <span className="text-gray-600">Labour</span>
+                      <span className="text-right font-medium">{formatCurrency(worker.total_labour)}</span>
+                      <span className="text-gray-600">KM ({parseFloat(worker.total_km).toFixed(1)} km)</span>
+                      <span className="text-right font-medium">{formatCurrency(worker.total_km_cost)}</span>
+                      {parseFloat(worker.total_personal_materials) > 0 && (
+                        <>
+                          <span className="text-gray-600">Materials</span>
+                          <span className="text-right font-medium">{formatCurrency(worker.total_personal_materials)}</span>
+                        </>
+                      )}
+                      {worker.charges_hst && (
+                        <>
+                          <span className="text-gray-600 pt-1 border-t mt-1">HST (Labour)</span>
+                          <span className="text-right font-medium pt-1 border-t mt-1">{formatCurrency(worker.labour_hst)}</span>
+                          <span className="text-gray-600">HST (KM)</span>
+                          <span className="text-right font-medium">{formatCurrency(worker.km_hst)}</span>
+                          {parseFloat(worker.materials_hst) > 0 && (
+                            <>
+                              <span className="text-gray-600">HST (Materials)</span>
+                              <span className="text-right font-medium">{formatCurrency(worker.materials_hst)}</span>
+                            </>
+                          )}
+                        </>
+                      )}
+                      <span className="font-semibold text-gray-900 pt-1 border-t mt-1">Total Payout</span>
+                      <span className="text-right font-bold text-obatek pt-1 border-t mt-1">{formatCurrency(worker.grand_total)}</span>
+                    </div>
+                  </div>
+
+                  {payrollError && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                      <p className="text-red-800 text-sm">{payrollError}</p>
+                    </div>
+                  )}
+
+                  {/* Navigation */}
+                  <div className="flex justify-between pt-2">
+                    <button
+                      onClick={() => {
+                        if (currentWorkerIndex > 0) {
+                          setCurrentWorkerIndex(currentWorkerIndex - 1);
+                        } else {
+                          setPayrollStep('dates');
+                        }
+                      }}
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                    >
+                      {currentWorkerIndex > 0 ? 'Previous Worker' : 'Back'}
+                    </button>
+                    <div className="flex gap-2">
+                      {currentWorkerIndex < payrollPreview.length - 1 ? (
+                        <button
+                          onClick={() => setCurrentWorkerIndex(currentWorkerIndex + 1)}
+                          className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+                        >
+                          Next Worker
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleProcessPayroll}
+                          disabled={payrollProcessing}
+                          className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                        >
+                          {payrollProcessing ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                              Processing...
+                            </>
+                          ) : (
+                            `Confirm All & Download (${payrollPreview.length} workers)`
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Step 3: Done */}
+            {payrollStep === 'done' && (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-green-800 text-sm">{payrollSuccess}</p>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowPayrollModal(false);
+                      setPayrollStartDate('');
+                      setPayrollEndDate('');
+                      setPayrollSuccess(null);
+                      setPayrollStep('dates');
+                      setPayrollPreview([]);
+                      setCurrentWorkerIndex(0);
+                    }}
+                    className="px-4 py-2 bg-obatek text-white rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+                  >
+                    Done
                   </button>
                 </div>
               </div>
@@ -1046,6 +1246,8 @@ export function ManagerDashboard() {
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                     Payout
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -1075,6 +1277,22 @@ export function ManagerDashboard() {
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-obatek text-right">
                       {ts.calculated_pay ? formatCurrency(ts.calculated_pay) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('Are you sure you want to delete this timesheet?')) {
+                            deleteTimesheetMutation.mutate(ts.id);
+                          }
+                        }}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                        title="Delete timesheet"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1141,6 +1359,17 @@ export function ManagerDashboard() {
                         className="text-sm text-green-600 hover:underline"
                       >
                         Complete
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Are you sure you want to delete this job?')) {
+                            deleteJobMutation.mutate(job.id);
+                          }
+                        }}
+                        disabled={deleteJobMutation.isPending}
+                        className="text-sm text-red-600 hover:underline"
+                      >
+                        Delete
                       </button>
                     </div>
                   </div>

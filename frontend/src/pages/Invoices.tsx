@@ -49,17 +49,7 @@ export function Invoices() {
     enabled: !!selectedJobId && step === 'select',
   });
 
-  // Populate form when preview loads
-  useEffect(() => {
-    if (preview) {
-      setLabourAmount(parseFloat(preview.labour_amount));
-      setLabourHours(parseFloat(preview.labour_hours));
-      setTravelAmount(parseFloat(preview.travel_amount));
-      setTravelKm(parseFloat(preview.travel_km));
-      setMaterialsAmount(parseFloat(preview.materials_amount));
-      setInventoryMaterials(parseFloat(preview.inventory_materials));
-    }
-  }, [preview]);
+  // Note: Form values are populated in handleNext() to avoid overwriting user edits
 
   // Pre-populate scope of work from job description when job is selected
   useEffect(() => {
@@ -109,6 +99,13 @@ export function Invoices() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: invoicesApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    },
+  });
+
   const handleDownload = async (invoice: Invoice) => {
     try {
       await invoicesApi.downloadPdfToFile(invoice.id, invoice.invoice_number);
@@ -134,7 +131,15 @@ export function Invoices() {
   };
 
   const handleNext = () => {
-    if (selectedJobId) setStep('details');
+    if (selectedJobId && preview) {
+      setLabourAmount(parseFloat(preview.labour_amount));
+      setLabourHours(parseFloat(preview.labour_hours));
+      setTravelAmount(parseFloat(preview.travel_amount));
+      setTravelKm(parseFloat(preview.travel_km));
+      setMaterialsAmount(parseFloat(preview.materials_amount));
+      setInventoryMaterials(parseFloat(preview.inventory_materials));
+      setStep('details');
+    }
   };
 
   return (
@@ -213,15 +218,30 @@ export function Invoices() {
                       </select>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDownload(invoice)}
-                        className="text-obatek hover:text-obatek-dark transition-colors"
-                        title="Download PDF"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleDownload(invoice)}
+                          className="text-obatek hover:text-obatek-dark transition-colors"
+                          title="Download PDF"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to delete this invoice?')) {
+                              deleteMutation.mutate(invoice.id);
+                            }
+                          }}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Delete invoice"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -306,7 +326,7 @@ export function Invoices() {
                   </button>
                   <button
                     onClick={handleNext}
-                    disabled={!selectedJobId || loadingPreview}
+                    disabled={!selectedJobId || loadingPreview || !preview}
                     className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
                   >
                     Next

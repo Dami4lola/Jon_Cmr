@@ -311,6 +311,36 @@ export interface PayrollProcessRequest {
   end_date: string;
 }
 
+export interface PayrollEntryDetail {
+  date: string;
+  customer_name: string;
+  job_description: string;
+  hours_worked: string;
+  billable_hours: string;
+  labour_rate: string;
+  labour_cost: string;
+  km_distance: string;
+  km_rate: string;
+  km_cost: string;
+  personal_materials: string;
+}
+
+export interface PayrollWorkerSummary {
+  worker_id: number;
+  worker_name: string;
+  entries: PayrollEntryDetail[];
+  total_hours: string;
+  total_labour: string;
+  total_km: string;
+  total_km_cost: string;
+  total_personal_materials: string;
+  labour_hst: string;
+  km_hst: string;
+  materials_hst: string;
+  grand_total: string;
+  charges_hst: boolean;
+}
+
 // API Response Types
 export interface PaginatedResponse<T> {
   items: T[];
