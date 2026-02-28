@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from .timesheet import Timesheet
     from .invoice import Invoice
     from .inspection import JobInspection
+    from .job_photo import JobPhoto
 
 
 class JobWorkerLink(SQLModel, table=True):
@@ -28,7 +29,8 @@ class Job(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     client_id: int = Field(foreign_key="client.id", index=True)
-    description: str  # Detailed job description
+    title: str = Field(max_length=100)  # Brief job title (shown in lists)
+    details: str | None = Field(default=None)  # Full job description (shown in detail view)
 
     # Scheduling
     start_date: date | None = Field(default=None, index=True)
@@ -58,6 +60,7 @@ class Job(SQLModel, table=True):
     timesheets: List["Timesheet"] = Relationship(back_populates="job")
     invoice: Optional["Invoice"] = Relationship(back_populates="job")
     inspections: List["JobInspection"] = Relationship(back_populates="job")
+    photos: List["JobPhoto"] = Relationship(back_populates="job")
 
     def get_job_address(self, client_address: str | None = None) -> str:
         """Returns job address - uses override if set, else client address"""

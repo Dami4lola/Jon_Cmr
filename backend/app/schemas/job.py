@@ -3,17 +3,30 @@ Job schemas
 """
 from pydantic import BaseModel, Field
 from decimal import Decimal
-from datetime import date, time
+from datetime import date, time, datetime
 from typing import List
+
 
 from .client import ClientBrief
 from .worker import WorkerBrief
 
 
+class JobPhotoResponse(BaseModel):
+    """Job photo response"""
+    id: int
+    public_url: str
+    caption: str | None
+    uploaded_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class JobCreate(BaseModel):
     """Create job"""
     client_id: int
-    description: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1, max_length=100)
+    details: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     scheduled_time: time | None = None
@@ -27,7 +40,8 @@ class JobCreate(BaseModel):
 class JobUpdate(BaseModel):
     """Update job"""
     client_id: int | None = None
-    description: str | None = None
+    title: str | None = None
+    details: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     scheduled_time: time | None = None
@@ -42,7 +56,8 @@ class JobUpdate(BaseModel):
 class JobResponse(BaseModel):
     """Job response"""
     id: int
-    description: str
+    title: str
+    details: str | None
     start_date: date | None
     end_date: date | None
     scheduled_time: time | None
@@ -57,6 +72,7 @@ class JobResponse(BaseModel):
     # Nested objects
     client: ClientBrief
     assigned_workers: List[WorkerBrief]
+    photos: List[JobPhotoResponse] = []
 
     class Config:
         from_attributes = True
@@ -65,7 +81,7 @@ class JobResponse(BaseModel):
 class JobBrief(BaseModel):
     """Brief job info for nested responses"""
     id: int
-    description: str
+    title: str
     client_name: str
     start_date: date | None
     end_date: date | None

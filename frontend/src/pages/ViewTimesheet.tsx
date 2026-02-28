@@ -95,7 +95,7 @@ export function ViewTimesheet() {
                 Job
               </h3>
               <p className="text-lg font-semibold text-gray-900">
-                {timesheet.job?.description}
+                {timesheet.job?.title}
               </p>
               <p className="text-sm text-gray-600">
                 {timesheet.job?.client_name}

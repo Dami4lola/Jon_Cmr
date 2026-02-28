@@ -111,7 +111,7 @@ def process_payroll_period(
             entry = PayrollEntryDetail(
                 date=ts.date,
                 customer_name=client_name,
-                job_description=ts.job.description if ts.job else "",
+                job_description=ts.job.title if ts.job else "",
                 hours_worked=ts.hours_worked,
                 billable_hours=billable_hours,
                 labour_rate=worker.hourly_rate,

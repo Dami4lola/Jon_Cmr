@@ -123,7 +123,7 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
         total_distance_km=invoice.total_distance_km,
         job=JobBrief(
             id=job.id,
-            description=job.description,
+            title=job.title,
             client_name=client.name,
             start_date=job.start_date,
             end_date=job.end_date,

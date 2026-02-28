@@ -46,7 +46,7 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
         worker=WorkerBrief(id=timesheet.worker.id, name=timesheet.worker.name),
         job=JobBrief(
             id=timesheet.job.id,
-            description=timesheet.job.description,
+            title=timesheet.job.title,
             client_name=timesheet.job.client.name if timesheet.job.client else "",
             start_date=timesheet.job.start_date,
             end_date=timesheet.job.end_date,

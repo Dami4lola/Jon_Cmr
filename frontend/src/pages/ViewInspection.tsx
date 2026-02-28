@@ -42,7 +42,7 @@ export function ViewInspection() {
           <h1 className="text-2xl font-bold text-gray-900">{inspectionType}</h1>
           {inspection.job && (
             <p className="text-gray-600">
-              {inspection.job.client?.name} - {inspection.job.description}
+              {inspection.job.client?.name} - {inspection.job.title}
             </p>
           )}
         </div>

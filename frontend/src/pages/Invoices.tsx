@@ -65,8 +65,8 @@ export function Invoices() {
   useEffect(() => {
     if (selectedJobId) {
       const job = jobs.find((j: Job) => j.id === selectedJobId);
-      if (job?.description) {
-        setScopeOfWork(job.description);
+      if (job?.details || job?.title) {
+        setScopeOfWork(job.details || job.title);
       }
     }
   }, [selectedJobId, jobs]);
@@ -187,7 +187,7 @@ export function Invoices() {
                       {invoice.invoice_number}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {invoice.client?.name || invoice.job?.client?.name} - {invoice.job?.description}
+                      {invoice.client?.name || invoice.job?.client?.name} - {invoice.job?.title}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatDate(invoice.created_date)}
@@ -265,7 +265,7 @@ export function Invoices() {
                     <option value="">Choose a completed job...</option>
                     {uninvoicedJobs.map((job: Job) => (
                       <option key={job.id} value={job.id}>
-                        {job.client?.name} - {job.description}
+                        {job.client?.name} - {job.title}
                       </option>
                     ))}
                   </select>

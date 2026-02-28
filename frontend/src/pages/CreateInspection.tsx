@@ -130,7 +130,7 @@ export function CreateInspection() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">{inspectionType}</h1>
         <p className="text-gray-600">
-          {job.client?.name} - {job.description}
+          {job.client?.name} - {job.title}
         </p>
       </div>
 

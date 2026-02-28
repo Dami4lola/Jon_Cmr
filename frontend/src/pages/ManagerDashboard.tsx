@@ -17,7 +17,8 @@ export function ManagerDashboard() {
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [formData, setFormData] = useState<JobCreate>({
     client_id: 0,
-    description: '',
+    title: '',
+    details: '',
     start_date: '',
     end_date: '',
     scheduled_time: '',
@@ -29,7 +30,8 @@ export function ManagerDashboard() {
   });
   const [editFormData, setEditFormData] = useState<JobCreate>({
     client_id: 0,
-    description: '',
+    title: '',
+    details: '',
     start_date: '',
     end_date: '',
     scheduled_time: '',
@@ -39,6 +41,8 @@ export function ManagerDashboard() {
     is_redseal_trade: false,
     assigned_worker_ids: [],
   });
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [editPhotoFiles, setEditPhotoFiles] = useState<File[]>([]);
   const [clientFormData, setClientFormData] = useState<ClientCreate>({
     name: '',
     phone_number: '',
@@ -80,13 +84,22 @@ export function ManagerDashboard() {
 
   // Create job mutation
   const createJobMutation = useMutation({
-    mutationFn: jobsApi.create,
+    mutationFn: async (data: JobCreate) => {
+      const job = await jobsApi.create(data);
+      // Upload photos if any were selected
+      if (photoFiles.length > 0) {
+        await jobsApi.uploadPhotos(job.id, photoFiles);
+      }
+      return job;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       setShowCreateJob(false);
+      setPhotoFiles([]);
       setFormData({
         client_id: 0,
-        description: '',
+        title: '',
+        details: '',
         start_date: '',
         end_date: '',
         scheduled_time: '',
@@ -117,11 +130,17 @@ export function ManagerDashboard() {
 
   // Update job mutation
   const updateJobMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<JobCreate> }) =>
-      jobsApi.update(id, data),
+    mutationFn: async ({ id, data }: { id: number; data: Partial<JobCreate> }) => {
+      const job = await jobsApi.update(id, data);
+      if (editPhotoFiles.length > 0) {
+        await jobsApi.uploadPhotos(id, editPhotoFiles);
+      }
+      return job;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       setEditingJob(null);
+      setEditPhotoFiles([]);
     },
   });
 
@@ -149,7 +168,7 @@ export function ManagerDashboard() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.client_id || !formData.description.trim()) return;
+    if (!formData.client_id || !formData.title.trim()) return;
 
     const submitData: JobCreate = {
       ...formData,
@@ -230,7 +249,8 @@ export function ManagerDashboard() {
     setEditingJob(job);
     setEditFormData({
       client_id: job.client_id,
-      description: job.description,
+      title: job.title,
+      details: job.details || '',
       start_date: job.start_date || '',
       end_date: job.end_date || '',
       scheduled_time: job.scheduled_time || '',
@@ -263,7 +283,7 @@ export function ManagerDashboard() {
 
   const handleUpdateJob = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingJob || !editFormData.client_id || !editFormData.description.trim()) return;
+    if (!editingJob || !editFormData.client_id || !editFormData.title.trim()) return;
 
     const submitData: Partial<JobCreate> = {
       ...editFormData,
@@ -330,17 +350,31 @@ export function ManagerDashboard() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description *
+                  Job Title *
                 </label>
                 <input
                   type="text"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                  placeholder="Job description"
+                  placeholder="e.g. Kitchen renovation"
+                  maxLength={100}
                   required
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Details
+              </label>
+              <textarea
+                value={formData.details || ''}
+                onChange={(e) => setFormData({ ...formData, details: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                placeholder="Full job details, notes, scope of work..."
+                rows={3}
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -471,6 +505,22 @@ export function ManagerDashboard() {
               </div>
             )}
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Photos
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => setPhotoFiles(Array.from(e.target.files || []))}
+                className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-obatek/10 file:text-obatek hover:file:bg-obatek/20"
+              />
+              {photoFiles.length > 0 && (
+                <p className="text-xs text-gray-500 mt-1">{photoFiles.length} photo(s) selected</p>
+              )}
+            </div>
+
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -481,7 +531,7 @@ export function ManagerDashboard() {
               </button>
               <button
                 type="submit"
-                disabled={createJobMutation.isPending || !formData.client_id || !formData.description.trim()}
+                disabled={createJobMutation.isPending || !formData.client_id || !formData.title.trim()}
                 className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
               >
                 {createJobMutation.isPending ? 'Creating...' : 'Create Job'}
@@ -606,14 +656,15 @@ export function ManagerDashboard() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description *
+                    Job Title *
                   </label>
                   <input
                     type="text"
-                    value={editFormData.description}
-                    onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                    value={editFormData.title}
+                    onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                    placeholder="Job description"
+                    placeholder="e.g. Kitchen renovation"
+                    maxLength={100}
                     required
                   />
                 </div>
@@ -747,6 +798,69 @@ export function ManagerDashboard() {
                 </div>
               )}
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Details
+                </label>
+                <textarea
+                  value={editFormData.details || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, details: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="Full job details, notes, scope of work..."
+                  rows={3}
+                />
+              </div>
+
+              {/* Existing Photos */}
+              {editingJob.photos && editingJob.photos.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Existing Photos
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {editingJob.photos.map((photo) => (
+                      <div key={photo.id} className="relative group">
+                        <img
+                          src={photo.public_url}
+                          alt="Job photo"
+                          className="w-20 h-20 object-cover rounded-lg border"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await jobsApi.deletePhoto(editingJob.id, photo.id);
+                            queryClient.invalidateQueries({ queryKey: ['jobs'] });
+                            setEditingJob({
+                              ...editingJob,
+                              photos: editingJob.photos?.filter((p) => p.id !== photo.id),
+                            });
+                          }}
+                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Add Photos
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => setEditPhotoFiles(Array.from(e.target.files || []))}
+                  className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-obatek/10 file:text-obatek hover:file:bg-obatek/20"
+                />
+                {editPhotoFiles.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">{editPhotoFiles.length} photo(s) selected</p>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -757,7 +871,7 @@ export function ManagerDashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={updateJobMutation.isPending || !editFormData.client_id || !editFormData.description.trim()}
+                  disabled={updateJobMutation.isPending || !editFormData.client_id || !editFormData.title.trim()}
                   className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
                 >
                   {updateJobMutation.isPending ? 'Saving...' : 'Save Changes'}
@@ -941,7 +1055,7 @@ export function ManagerDashboard() {
                       {ts.worker?.name || 'Unknown'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {ts.job?.client_name} - {ts.job?.description}
+                      {ts.job?.client_name} - {ts.job?.title}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatDate(ts.date)}
@@ -985,7 +1099,7 @@ export function ManagerDashboard() {
               <div key={job.id} className="p-4 hover:bg-gray-50">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <p className="font-medium text-gray-900">{job.description}</p>
+                    <p className="font-medium text-gray-900">{job.title}</p>
                     <p className="text-sm text-gray-600">
                       {job.client?.name} | {job.job_address}
                     </p>

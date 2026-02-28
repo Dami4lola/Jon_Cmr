@@ -294,7 +294,7 @@ export function Dashboard() {
                   <option value={0}>Select a job...</option>
                   {jobs.map((job) => (
                     <option key={job.id} value={job.id}>
-                      {job.client?.name} - {job.description}
+                      {job.client?.name} - {job.title}
                     </option>
                   ))}
                 </select>
@@ -512,7 +512,7 @@ export function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-gray-900">
-                      {ts.job?.client_name} - {ts.job?.description}
+                      {ts.job?.client_name} - {ts.job?.title}
                     </p>
                     <p className="text-sm text-gray-600">
                       {formatDate(ts.date)} | {ts.hours_worked} hours{parseFloat(ts.break_duration) > 0 ? ` | ${ts.break_duration}h break` : ''}
@@ -548,7 +548,7 @@ export function Dashboard() {
               <div key={job.id} className="p-4 hover:bg-gray-50">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <p className="font-medium text-gray-900">{job.description}</p>
+                    <p className="font-medium text-gray-900">{job.title}</p>
                     <p className="text-sm text-gray-600 mt-1">
                       {job.client?.name} | {job.job_address}
                     </p>

@@ -1,5 +1,5 @@
 import api from './client';
-import type { Job, JobCreate, CalendarEvent } from '../types';
+import type { Job, JobCreate, JobPhoto, CalendarEvent } from '../types';
 
 export const jobsApi = {
   list: async (params?: {
@@ -53,5 +53,18 @@ export const jobsApi = {
   markCompleted: async (id: number): Promise<Job> => {
     const response = await api.put(`/jobs/${id}`, { is_completed: true });
     return response.data;
+  },
+
+  uploadPhotos: async (jobId: number, files: File[]): Promise<JobPhoto[]> => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    const response = await api.post(`/jobs/${jobId}/photos`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  deletePhoto: async (jobId: number, photoId: number): Promise<void> => {
+    await api.delete(`/jobs/${jobId}/photos/${photoId}`);
   },
 };

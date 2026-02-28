@@ -69,7 +69,7 @@ function JobInspectionCard({ job }: { job: Job }) {
     <div className="bg-white rounded-lg shadow p-4">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h3 className="font-semibold text-gray-900">{job.description}</h3>
+          <h3 className="font-semibold text-gray-900">{job.title}</h3>
           <p className="text-sm text-gray-600">
             {job.client?.name} | {job.job_address}
           </p>

@@ -21,7 +21,9 @@ def get_s3_client():
     )
 
 
-def upload_file_to_s3(file_bytes: bytes, filename: str, content_type: str) -> str:
+def upload_file_to_s3(
+    file_bytes: bytes, filename: str, content_type: str, prefix: str = "receipts"
+) -> str:
     """
     Upload a file to S3 and return the public URL.
 
@@ -29,12 +31,13 @@ def upload_file_to_s3(file_bytes: bytes, filename: str, content_type: str) -> st
         file_bytes: Raw file content
         filename: Original filename
         content_type: MIME type (e.g. 'image/jpeg')
+        prefix: S3 key prefix (default 'receipts')
 
     Returns:
         The public URL string for the uploaded object.
     """
     s3 = get_s3_client()
-    key = f"receipts/{uuid.uuid4()}_{filename}"
+    key = f"{prefix}/{uuid.uuid4()}_{filename}"
 
     logger.info(f"Uploading to S3: bucket={settings.AWS_S3_BUCKET_NAME}, region={settings.AWS_S3_REGION}, key={key}, size={len(file_bytes)} bytes")
 

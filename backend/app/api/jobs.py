@@ -1,16 +1,22 @@
 """
 Job API endpoints
 """
-from fastapi import APIRouter, HTTPException, status, Body
+import logging
+from uuid import uuid4
+
+from fastapi import APIRouter, HTTPException, UploadFile, File, status, Body
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 
-from ..models import Job, Worker, Client, JobWorkerLink
-from ..schemas.job import JobCreate, JobUpdate, JobResponse, CalendarEvent
+from ..models import Job, Worker, Client, JobWorkerLink, JobPhoto
+from ..schemas.job import JobCreate, JobUpdate, JobResponse, JobPhotoResponse, CalendarEvent
 from ..schemas.client import ClientBrief
 from ..schemas.worker import WorkerBrief
 from ..services.distance import calculate_distance, get_distance_info
+from ..services.s3 import upload_file_to_s3, delete_file_from_s3
 from .deps import DBSession, CurrentUser, CurrentWorker, ManagerUser
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -19,7 +25,8 @@ def job_to_response(job: Job) -> JobResponse:
     """Convert Job model to response schema"""
     return JobResponse(
         id=job.id,
-        description=job.description,
+        title=job.title,
+        details=job.details,
         start_date=job.start_date,
         end_date=job.end_date,
         scheduled_time=job.scheduled_time,
@@ -40,6 +47,15 @@ def job_to_response(job: Job) -> JobResponse:
             WorkerBrief(id=w.id, name=w.name)
             for w in job.assigned_workers
         ],
+        photos=[
+            JobPhotoResponse(
+                id=p.id,
+                public_url=p.public_url,
+                caption=p.caption,
+                uploaded_at=p.uploaded_at,
+            )
+            for p in (job.photos or [])
+        ],
     )
 
 
@@ -56,7 +72,7 @@ def list_jobs(
     """
     statement = (
         select(Job)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
 
     # Filter by completion status if specified
@@ -98,7 +114,8 @@ def create_job(
     # Create job
     job = Job(
         client_id=data.client_id,
-        description=data.description,
+        title=data.title,
+        details=data.details,
         start_date=data.start_date,
         end_date=data.end_date,
         scheduled_time=data.scheduled_time,
@@ -131,7 +148,7 @@ def create_job(
     statement = (
         select(Job)
         .where(Job.id == job.id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
     job = session.exec(statement).first()
 
@@ -171,14 +188,14 @@ def get_calendar_events(
     for job in jobs:
         event = CalendarEvent(
             id=job.id,
-            title=f"{job.client.name} - {job.description[:30]}",
+            title=f"{job.client.name} - {job.title}",
             start=job.start_date,
             end=job.end_date,
             time=job.scheduled_time.strftime("%H:%M") if job.scheduled_time else None,
             duration=str(job.estimated_duration) if job.estimated_duration else None,
             client=job.client.name,
             address=job.get_job_address(),
-            description=job.description,
+            description=job.details or job.title,
         )
         events.append(event)
 
@@ -195,7 +212,7 @@ def get_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
     job = session.exec(statement).first()
 
@@ -307,7 +324,7 @@ def update_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
     job = session.exec(statement).first()
 
@@ -352,7 +369,7 @@ def update_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
     job = session.exec(statement).first()
 
@@ -370,7 +387,7 @@ def assign_workers_to_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
     job = session.exec(statement).first()
 
@@ -397,7 +414,7 @@ def assign_workers_to_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
     job = session.exec(statement).first()
 
@@ -420,4 +437,83 @@ def delete_job(
         )
 
     session.delete(job)
+    session.commit()
+
+
+@router.post("/{job_id}/photos", response_model=list[JobPhotoResponse], status_code=status.HTTP_201_CREATED)
+def upload_job_photos(
+    job_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+    files: list[UploadFile] = File(...),
+):
+    """Upload photos to a job (manager only)"""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    uploaded = []
+    for file in files:
+        if not file.content_type or not file.content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File '{file.filename}' is not an image",
+            )
+
+        contents = file.file.read()
+        public_url = upload_file_to_s3(
+            file_bytes=contents,
+            filename=file.filename or "photo.jpg",
+            content_type=file.content_type,
+            prefix=f"jobs/{job_id}",
+        )
+
+        photo = JobPhoto(
+            job_id=job_id,
+            public_url=public_url,
+            content_type=file.content_type,
+        )
+        session.add(photo)
+        session.commit()
+        session.refresh(photo)
+        uploaded.append(
+            JobPhotoResponse(
+                id=photo.id,
+                public_url=photo.public_url,
+                caption=photo.caption,
+                uploaded_at=photo.uploaded_at,
+            )
+        )
+
+    return uploaded
+
+
+@router.delete("/{job_id}/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_job_photo(
+    job_id: int,
+    photo_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """Delete a job photo (manager only)"""
+    photo = session.exec(
+        select(JobPhoto).where(JobPhoto.id == photo_id, JobPhoto.job_id == job_id)
+    ).first()
+
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Photo not found",
+        )
+
+    # Delete from S3
+    try:
+        delete_file_from_s3(photo.public_url)
+    except Exception as e:
+        logger.warning(f"Failed to delete S3 object for photo {photo_id}: {e}")
+
+    session.delete(photo)
     session.commit()

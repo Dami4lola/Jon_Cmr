@@ -71,10 +71,18 @@ export interface ClientBrief {
 }
 
 // Job Types
+export interface JobPhoto {
+  id: number;
+  public_url: string;
+  caption?: string;
+  uploaded_at: string;
+}
+
 export interface Job {
   id: number;
   client_id: number;
-  description: string;
+  title: string;
+  details?: string;
   start_date?: string;
   end_date?: string;
   scheduled_time?: string;
@@ -87,11 +95,13 @@ export interface Job {
   client?: ClientBrief;
   job_address?: string;
   workers?: Worker[];
+  photos?: JobPhoto[];
 }
 
 export interface JobCreate {
   client_id: number;
-  description: string;
+  title: string;
+  details?: string;
   start_date?: string;
   end_date?: string;
   scheduled_time?: string;
@@ -117,7 +127,7 @@ export interface CalendarEvent {
 // Brief types for nested responses
 export interface JobBrief {
   id: number;
-  description: string;
+  title: string;
   client_name: string;
   start_date?: string;
   end_date?: string;

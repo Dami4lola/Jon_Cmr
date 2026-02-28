@@ -11,6 +11,7 @@ from .invoice import Invoice
 from .receipt import Receipt
 from .purchase_item import PurchaseListItem
 from .inspection import JobInspection, InspectionPhoto
+from .job_photo import JobPhoto
 
 __all__ = [
     "Role",
@@ -20,6 +21,7 @@ __all__ = [
     "Client",
     "Job",
     "JobWorkerLink",
+    "JobPhoto",
     "Timesheet",
     "Invoice",
     "Receipt",

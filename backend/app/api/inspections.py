@@ -43,7 +43,7 @@ def inspection_to_response(inspection: JobInspection) -> InspectionResponse:
         scope_change_notes=inspection.scope_change_notes,
         job=JobBrief(
             id=inspection.job.id,
-            description=inspection.job.description,
+            title=inspection.job.title,
             client_name=inspection.job.client.name if inspection.job.client else "",
             start_date=inspection.job.start_date,
             end_date=inspection.job.end_date,
