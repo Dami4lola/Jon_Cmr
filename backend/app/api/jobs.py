@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, status, Body
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 
-from ..models import Job, Worker, Client, JobWorkerLink, JobPhoto
-from ..schemas.job import JobCreate, JobUpdate, JobResponse, JobPhotoResponse, CalendarEvent
+from ..models import Job, Worker, Client, JobWorkerLink, JobWorkerSchedule, JobPhoto
+from ..schemas.job import JobCreate, JobUpdate, JobResponse, JobPhotoResponse, CalendarEvent, WorkerScheduleEntry
 from ..schemas.client import ClientBrief
 from ..schemas.worker import WorkerBrief
 from ..services.distance import calculate_distance, get_distance_info
@@ -47,6 +47,10 @@ def job_to_response(job: Job) -> JobResponse:
             WorkerBrief(id=w.id, name=w.name)
             for w in job.assigned_workers
         ],
+        worker_schedule=[
+            WorkerScheduleEntry(worker_id=ws.worker_id, date=ws.date)
+            for ws in (job.worker_schedule or [])
+        ],
         photos=[
             JobPhotoResponse(
                 id=p.id,
@@ -72,7 +76,7 @@ def list_jobs(
     """
     statement = (
         select(Job)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
     )
 
     # Filter by completion status if specified
@@ -134,9 +138,20 @@ def create_job(
     session.add(job)
     session.commit()
 
+    # Save worker schedule entries
+    if data.worker_schedule:
+        for entry in data.worker_schedule:
+            schedule = JobWorkerSchedule(job_id=job.id, worker_id=entry.worker_id, date=entry.date)
+            session.add(schedule)
+        # Derive assigned_worker_ids from schedule
+        schedule_worker_ids = set(e.worker_id for e in data.worker_schedule)
+        all_worker_ids = schedule_worker_ids | set(data.assigned_worker_ids or [])
+    else:
+        all_worker_ids = set(data.assigned_worker_ids or [])
+
     # Assign workers
-    if data.assigned_worker_ids:
-        for worker_id in data.assigned_worker_ids:
+    if all_worker_ids:
+        for worker_id in all_worker_ids:
             worker = session.get(Worker, worker_id)
             if worker:
                 link = JobWorkerLink(job_id=job.id, worker_id=worker_id)
@@ -148,7 +163,7 @@ def create_job(
     statement = (
         select(Job)
         .where(Job.id == job.id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
     )
     job = session.exec(statement).first()
 
@@ -212,7 +227,7 @@ def get_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
     )
     job = session.exec(statement).first()
 
@@ -324,7 +339,7 @@ def update_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
     )
     job = session.exec(statement).first()
 
@@ -335,9 +350,25 @@ def update_job(
         )
 
     # Update fields
-    update_data = data.model_dump(exclude_unset=True, exclude={"assigned_worker_ids"})
+    update_data = data.model_dump(exclude_unset=True, exclude={"assigned_worker_ids", "worker_schedule"})
     for key, value in update_data.items():
         setattr(job, key, value)
+
+    # Handle worker schedule
+    if data.worker_schedule is not None:
+        # Remove existing schedule entries
+        for sched in session.exec(select(JobWorkerSchedule).where(JobWorkerSchedule.job_id == job_id)).all():
+            session.delete(sched)
+        # Add new schedule entries
+        for entry in data.worker_schedule:
+            schedule = JobWorkerSchedule(job_id=job_id, worker_id=entry.worker_id, date=entry.date)
+            session.add(schedule)
+        # Merge worker IDs from schedule and explicit assignments
+        schedule_worker_ids = set(e.worker_id for e in data.worker_schedule)
+        explicit_ids = set(data.assigned_worker_ids) if data.assigned_worker_ids is not None else set()
+        merged_ids = schedule_worker_ids | explicit_ids
+        # Replace assigned_worker_ids with merged set
+        data.assigned_worker_ids = list(merged_ids) if merged_ids else []
 
     # Handle worker assignments
     if data.assigned_worker_ids is not None:
@@ -369,7 +400,7 @@ def update_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
     )
     job = session.exec(statement).first()
 
@@ -387,7 +418,7 @@ def assign_workers_to_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
     )
     job = session.exec(statement).first()
 
@@ -414,7 +445,7 @@ def assign_workers_to_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
     )
     job = session.exec(statement).first()
 

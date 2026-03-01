@@ -96,6 +96,7 @@ export interface Job {
   job_address?: string;
   workers?: Worker[];
   photos?: JobPhoto[];
+  worker_schedule?: WorkerScheduleEntry[];
 }
 
 export interface JobCreate {
@@ -110,6 +111,12 @@ export interface JobCreate {
   address_override?: string;
   is_redseal_trade?: boolean;
   assigned_worker_ids?: number[];
+  worker_schedule?: WorkerScheduleEntry[];
+}
+
+export interface WorkerScheduleEntry {
+  worker_id: number;
+  date: string;
 }
 
 export interface CalendarEvent {
@@ -187,6 +194,7 @@ export interface Invoice {
   materials_amount: string;
   inventory_materials: string;
   dump_fee: string;
+  admin_fee: string;
   total_labour_hours: string;
   total_distance_km: string;
   job?: Job;
@@ -200,6 +208,7 @@ export interface InvoiceCreate {
   materials_amount?: number;
   inventory_materials?: number;
   dump_fee?: number;
+  admin_fee?: number;
   total_labour_hours?: number;
   total_distance_km?: number;
   include_hst?: boolean;
@@ -213,6 +222,7 @@ export interface InvoicePreview {
   travel_amount: string;
   materials_amount: string;
   inventory_materials: string;
+  admin_fee: string;
   subtotal: string;
   hst_amount: string;
   total: string;

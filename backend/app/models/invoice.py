@@ -41,6 +41,7 @@ class Invoice(SQLModel, table=True):
     materials_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     inventory_materials: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     dump_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    admin_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
 
     # Display detail fields
     total_labour_hours: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)

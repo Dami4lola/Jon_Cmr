@@ -16,7 +16,7 @@ from .middleware import LoggingMiddleware, register_exception_handlers
 logger = logging.getLogger(__name__)
 
 # Import routers
-from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients, users, payroll
+from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients, users, payroll, settings as settings_api
 
 
 @asynccontextmanager
@@ -78,6 +78,7 @@ app.include_router(purchases.router, prefix="/api/purchases", tags=["Purchase Li
 app.include_router(inspections.router, prefix="/api/inspections", tags=["Inspections"])
 app.include_router(users.router, prefix="/api/users", tags=["User Management"])
 app.include_router(payroll.router, prefix="/api/payroll", tags=["Payroll"])
+app.include_router(settings_api.router, prefix="/api/settings", tags=["Settings"])
 
 
 @app.get("/")

@@ -11,6 +11,12 @@ from .client import ClientBrief
 from .worker import WorkerBrief
 
 
+class WorkerScheduleEntry(BaseModel):
+    """Single day assignment for a worker"""
+    worker_id: int
+    date: date
+
+
 class JobPhotoResponse(BaseModel):
     """Job photo response"""
     id: int
@@ -35,6 +41,7 @@ class JobCreate(BaseModel):
     address_override: str | None = None
     is_redseal_trade: bool = False
     assigned_worker_ids: List[int] = []
+    worker_schedule: List[WorkerScheduleEntry] = []
 
 
 class JobUpdate(BaseModel):
@@ -51,6 +58,7 @@ class JobUpdate(BaseModel):
     address_override: str | None = None
     is_redseal_trade: bool | None = None
     assigned_worker_ids: List[int] | None = None
+    worker_schedule: List[WorkerScheduleEntry] | None = None
 
 
 class JobResponse(BaseModel):
@@ -72,6 +80,7 @@ class JobResponse(BaseModel):
     # Nested objects
     client: ClientBrief
     assigned_workers: List[WorkerBrief]
+    worker_schedule: List[WorkerScheduleEntry] = []
     photos: List[JobPhotoResponse] = []
 
     class Config:

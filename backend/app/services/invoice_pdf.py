@@ -84,7 +84,7 @@ def draw_header_footer(canvas, doc):
     canvas.setFillColor(TEXT_COLOR)
     canvas.setFont("Helvetica", 8)
     y = footer_top - 14
-    canvas.drawString(0.5 * inch, y, f"E-transfer or cheque payable to {COMPANY_NAME}")
+    canvas.drawString(0.5 * inch, y, f"E-transfer to {COMPANY_EMAIL} or cheque payable to {COMPANY_NAME}")
     canvas.drawString(0.5 * inch, y - 12, "Total payable upon receipt. Overdue accounts subject to 2% monthly interest.")
 
     # Powered by OBATEK (bottom right)
@@ -216,6 +216,9 @@ def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client) -> bytes:
 
     if invoice.dump_fee > 0:
         charges_data.append(["Dump Fee", "", f"${invoice.dump_fee:,.2f}"])
+
+    if invoice.admin_fee > 0:
+        charges_data.append(["Admin Fee", "", f"${invoice.admin_fee:,.2f}"])
 
     col_widths = [2.8 * inch, 2.4 * inch, 2.3 * inch]
     t_charges = Table(charges_data, colWidths=col_widths)

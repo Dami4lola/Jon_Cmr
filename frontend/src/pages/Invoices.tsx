@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { invoicesApi } from '../api/invoices';
+import { invoicesApi, settingsApi } from '../api/invoices';
 import { jobsApi } from '../api/jobs';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { Invoice, InvoicePreview, Job } from '../types';
@@ -26,7 +26,10 @@ export function Invoices() {
   const [materialsAmount, setMaterialsAmount] = useState(0);
   const [inventoryMaterials, setInventoryMaterials] = useState(0);
   const [dumpFee, setDumpFee] = useState(0);
+  const [adminFee, setAdminFee] = useState(0);
   const [includeHst, setIncludeHst] = useState(true);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [invoiceStartNumber, setInvoiceStartNumber] = useState(1);
   const [scopeOfWork, setScopeOfWork] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -67,7 +70,7 @@ export function Invoices() {
   );
 
   // Calculated totals
-  const subtotal = labourAmount + travelAmount + materialsAmount + inventoryMaterials + dumpFee;
+  const subtotal = labourAmount + travelAmount + materialsAmount + inventoryMaterials + dumpFee + adminFee;
   const hstAmount = includeHst ? subtotal * 0.13 : 0;
   const total = subtotal + hstAmount;
 
@@ -80,6 +83,7 @@ export function Invoices() {
         materials_amount: materialsAmount,
         inventory_materials: inventoryMaterials,
         dump_fee: dumpFee,
+        admin_fee: adminFee,
         total_labour_hours: labourHours,
         total_distance_km: travelKm,
         include_hst: includeHst,
@@ -106,6 +110,23 @@ export function Invoices() {
     },
   });
 
+  const saveStartNumberMutation = useMutation({
+    mutationFn: (value: number) => settingsApi.setInvoiceStartNumber(value),
+    onSuccess: () => {
+      setShowSettingsModal(false);
+    },
+  });
+
+  const handleOpenSettings = async () => {
+    try {
+      const data = await settingsApi.getInvoiceStartNumber();
+      setInvoiceStartNumber(data.value);
+    } catch {
+      setInvoiceStartNumber(1);
+    }
+    setShowSettingsModal(true);
+  };
+
   const handleDownload = async (invoice: Invoice) => {
     try {
       await invoicesApi.downloadPdfToFile(invoice.id, invoice.invoice_number);
@@ -125,6 +146,7 @@ export function Invoices() {
     setMaterialsAmount(0);
     setInventoryMaterials(0);
     setDumpFee(0);
+    setAdminFee(0);
     setIncludeHst(true);
     setScopeOfWork('');
     setNotes('');
@@ -146,14 +168,26 @@ export function Invoices() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-        {uninvoicedJobs.length > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+            onClick={handleOpenSettings}
+            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            title="Invoice settings"
           >
-            Create Invoice
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
           </button>
-        )}
+          {uninvoicedJobs.length > 0 && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+            >
+              Create Invoice
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Invoice List */}
@@ -418,6 +452,16 @@ export function Invoices() {
                         />
                       </div>
                     </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Admin Fee ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={adminFee}
+                        onChange={(e) => setAdminFee(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -494,6 +538,44 @@ export function Invoices() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Invoice Settings</h3>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Next invoice number starts at
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={invoiceStartNumber}
+                onChange={(e) => setInvoiceStartNumber(parseInt(e.target.value) || 1)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                New invoices will use at least this number (e.g., 18 gives INV-2026-0018).
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => saveStartNumberMutation.mutate(invoiceStartNumber)}
+                disabled={saveStartNumberMutation.isPending}
+                className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+              >
+                {saveStartNumberMutation.isPending ? 'Saving...' : 'Save'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from decimal import Decimal
 from datetime import date, time
 from typing import TYPE_CHECKING, List, Optional
+import datetime as dt
 
 if TYPE_CHECKING:
     from .client import Client
@@ -21,6 +22,15 @@ class JobWorkerLink(SQLModel, table=True):
 
     job_id: int = Field(foreign_key="job.id", primary_key=True)
     worker_id: int = Field(foreign_key="worker.id", primary_key=True)
+
+
+class JobWorkerSchedule(SQLModel, table=True):
+    """Day-level worker assignment for a job"""
+    __tablename__ = "job_worker_schedule"
+
+    job_id: int = Field(foreign_key="job.id", primary_key=True)
+    worker_id: int = Field(foreign_key="worker.id", primary_key=True)
+    date: dt.date = Field(primary_key=True)
 
 
 class Job(SQLModel, table=True):
@@ -61,6 +71,9 @@ class Job(SQLModel, table=True):
     invoice: Optional["Invoice"] = Relationship(back_populates="job")
     inspections: List["JobInspection"] = Relationship(back_populates="job")
     photos: List["JobPhoto"] = Relationship(back_populates="job")
+    worker_schedule: List["JobWorkerSchedule"] = Relationship(
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
     def get_job_address(self, client_address: str | None = None) -> str:
         """Returns job address - uses override if set, else client address"""

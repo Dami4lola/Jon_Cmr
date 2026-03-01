@@ -81,8 +81,9 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     travel_amount = (distance_km * MILEAGE_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     dump_fee = data.dump_fee if data else Decimal("0")
+    admin_fee = data.admin_fee if data else Decimal("0")
 
-    subtotal = labour_amount + travel_amount + materials_amount + inventory_materials + dump_fee
+    subtotal = labour_amount + travel_amount + materials_amount + inventory_materials + dump_fee + admin_fee
     include_hst = data.include_hst if data else True
     hst_amount = (subtotal * HST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_hst else Decimal("0")
     total = subtotal + hst_amount
@@ -95,6 +96,7 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
         "materials_amount": materials_amount,
         "inventory_materials": inventory_materials,
         "dump_fee": dump_fee,
+        "admin_fee": admin_fee,
         "subtotal": subtotal,
         "hst_amount": hst_amount,
         "total": total,
@@ -119,6 +121,7 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
         materials_amount=invoice.materials_amount,
         inventory_materials=invoice.inventory_materials,
         dump_fee=invoice.dump_fee,
+        admin_fee=invoice.admin_fee,
         total_labour_hours=invoice.total_labour_hours,
         total_distance_km=invoice.total_distance_km,
         job=JobBrief(
@@ -139,6 +142,8 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
 
 def generate_invoice_number(session) -> str:
     """Generate unique invoice number: INV-YYYY-NNNN"""
+    from ..models.settings import AppSettings
+
     year = date.today().year
     prefix = f"INV-{year}-"
 
@@ -154,6 +159,12 @@ def generate_invoice_number(session) -> str:
         new_num = last_num + 1
     else:
         new_num = 1
+
+    # Apply floor from settings
+    setting = session.get(AppSettings, "invoice_start_number")
+    if setting:
+        floor_num = int(setting.value)
+        new_num = max(new_num, floor_num)
 
     return f"{prefix}{new_num:04d}"
 
@@ -231,6 +242,7 @@ def create_invoice(
             + amounts["materials_amount"]
             + amounts["inventory_materials"]
             + amounts["dump_fee"]
+            + amounts["admin_fee"]
         )
         if data.include_hst:
             amounts["hst_amount"] = (amounts["subtotal"] * HST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -282,6 +294,7 @@ def preview_invoice(
         travel_amount=amounts["travel_amount"],
         materials_amount=amounts["materials_amount"],
         inventory_materials=amounts["inventory_materials"],
+        admin_fee=amounts["admin_fee"],
         subtotal=amounts["subtotal"],
         hst_amount=amounts["hst_amount"],
         total=amounts["total"],

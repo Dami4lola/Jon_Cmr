@@ -55,3 +55,15 @@ export const invoicesApi = {
     window.URL.revokeObjectURL(url);
   },
 };
+
+export const settingsApi = {
+  getInvoiceStartNumber: async (): Promise<{ value: number }> => {
+    const response = await api.get('/settings/invoice-start-number');
+    return response.data;
+  },
+
+  setInvoiceStartNumber: async (value: number): Promise<{ value: number }> => {
+    const response = await api.put('/settings/invoice-start-number', { value });
+    return response.data;
+  },
+};

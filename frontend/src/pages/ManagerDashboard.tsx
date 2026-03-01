@@ -7,7 +7,23 @@ import { clientsApi, ClientCreate } from '../api/clients';
 import { workersApi } from '../api/workers';
 import { payrollApi } from '../api/payroll';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary } from '../types';
+import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, WorkerScheduleEntry } from '../types';
+
+function getDateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(start + 'T00:00:00');
+  const last = new Date(end + 'T00:00:00');
+  while (current <= last) {
+    dates.push(current.toISOString().split('T')[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
 
 export function ManagerDashboard() {
   const navigate = useNavigate();
@@ -27,6 +43,7 @@ export function ManagerDashboard() {
     address_override: '',
     is_redseal_trade: false,
     assigned_worker_ids: [],
+    worker_schedule: [],
   });
   const [editFormData, setEditFormData] = useState<JobCreate>({
     client_id: 0,
@@ -40,6 +57,7 @@ export function ManagerDashboard() {
     address_override: '',
     is_redseal_trade: false,
     assigned_worker_ids: [],
+    worker_schedule: [],
   });
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [editPhotoFiles, setEditPhotoFiles] = useState<File[]>([]);
@@ -112,6 +130,7 @@ export function ManagerDashboard() {
         address_override: '',
         is_redseal_trade: false,
         assigned_worker_ids: [],
+        worker_schedule: [],
       });
     },
   });
@@ -197,6 +216,7 @@ export function ManagerDashboard() {
       scheduled_time: formData.scheduled_time || undefined,
       address_override: formData.address_override || undefined,
       assigned_worker_ids: formData.assigned_worker_ids?.length ? formData.assigned_worker_ids : undefined,
+      worker_schedule: formData.worker_schedule?.length ? formData.worker_schedule : undefined,
     };
 
     createJobMutation.mutate(submitData);
@@ -297,6 +317,7 @@ export function ManagerDashboard() {
       address_override: job.address_override || '',
       is_redseal_trade: job.is_redseal_trade || false,
       assigned_worker_ids: job.workers?.map((w) => w.id) || [],
+      worker_schedule: job.worker_schedule || [],
     });
   };
 
@@ -330,6 +351,7 @@ export function ManagerDashboard() {
       scheduled_time: editFormData.scheduled_time || undefined,
       address_override: editFormData.address_override || undefined,
       assigned_worker_ids: editFormData.assigned_worker_ids?.length ? editFormData.assigned_worker_ids : undefined,
+      worker_schedule: editFormData.worker_schedule?.length ? editFormData.worker_schedule : undefined,
     };
 
     updateJobMutation.mutate({ id: editingJob.id, data: submitData });
@@ -520,26 +542,79 @@ export function ManagerDashboard() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Assign Workers
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {workers.map((worker: Worker) => (
-                    <label
-                      key={worker.id}
-                      className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                        formData.assigned_worker_ids?.includes(worker.id)
-                          ? 'bg-obatek/10 border-obatek text-obatek'
-                          : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.assigned_worker_ids?.includes(worker.id) || false}
-                        onChange={() => handleWorkerToggle(worker.id)}
-                        className="sr-only"
-                      />
-                      <span className="text-sm">{worker.name}</span>
-                    </label>
-                  ))}
-                </div>
+                {formData.start_date && formData.end_date && formData.start_date <= formData.end_date ? (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="px-3 py-2 text-left font-medium text-gray-600 sticky left-0 bg-gray-50">Worker</th>
+                          {getDateRange(formData.start_date, formData.end_date).map((d) => (
+                            <th key={d} className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">
+                              {formatShortDate(d)}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {workers.map((worker: Worker) => (
+                          <tr key={worker.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
+                            {getDateRange(formData.start_date!, formData.end_date!).map((d) => {
+                              const isChecked = (formData.worker_schedule || []).some(
+                                (ws) => ws.worker_id === worker.id && ws.date === d
+                              );
+                              return (
+                                <td key={d} className="px-2 py-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      setFormData((prev) => {
+                                        const schedule = [...(prev.worker_schedule || [])];
+                                        const idx = schedule.findIndex(
+                                          (ws) => ws.worker_id === worker.id && ws.date === d
+                                        );
+                                        if (idx >= 0) {
+                                          schedule.splice(idx, 1);
+                                        } else {
+                                          schedule.push({ worker_id: worker.id, date: d });
+                                        }
+                                        const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
+                                        return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
+                                      });
+                                    }}
+                                    className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {workers.map((worker: Worker) => (
+                      <label
+                        key={worker.id}
+                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
+                          formData.assigned_worker_ids?.includes(worker.id)
+                            ? 'bg-obatek/10 border-obatek text-obatek'
+                            : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.assigned_worker_ids?.includes(worker.id) || false}
+                          onChange={() => handleWorkerToggle(worker.id)}
+                          className="sr-only"
+                        />
+                        <span className="text-sm">{worker.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -813,26 +888,79 @@ export function ManagerDashboard() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Assign Workers
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {workers.map((worker: Worker) => (
-                      <label
-                        key={worker.id}
-                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                          editFormData.assigned_worker_ids?.includes(worker.id)
-                            ? 'bg-obatek/10 border-obatek text-obatek'
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={editFormData.assigned_worker_ids?.includes(worker.id) || false}
-                          onChange={() => handleEditWorkerToggle(worker.id)}
-                          className="sr-only"
-                        />
-                        <span className="text-sm">{worker.name}</span>
-                      </label>
-                    ))}
-                  </div>
+                  {editFormData.start_date && editFormData.end_date && editFormData.start_date <= editFormData.end_date ? (
+                    <div className="overflow-x-auto border rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="px-3 py-2 text-left font-medium text-gray-600 sticky left-0 bg-gray-50">Worker</th>
+                            {getDateRange(editFormData.start_date, editFormData.end_date).map((d) => (
+                              <th key={d} className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">
+                                {formatShortDate(d)}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {workers.map((worker: Worker) => (
+                            <tr key={worker.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
+                              {getDateRange(editFormData.start_date!, editFormData.end_date!).map((d) => {
+                                const isChecked = (editFormData.worker_schedule || []).some(
+                                  (ws) => ws.worker_id === worker.id && ws.date === d
+                                );
+                                return (
+                                  <td key={d} className="px-2 py-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        setEditFormData((prev) => {
+                                          const schedule = [...(prev.worker_schedule || [])];
+                                          const idx = schedule.findIndex(
+                                            (ws) => ws.worker_id === worker.id && ws.date === d
+                                          );
+                                          if (idx >= 0) {
+                                            schedule.splice(idx, 1);
+                                          } else {
+                                            schedule.push({ worker_id: worker.id, date: d });
+                                          }
+                                          const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
+                                          return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
+                                        });
+                                      }}
+                                      className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {workers.map((worker: Worker) => (
+                        <label
+                          key={worker.id}
+                          className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
+                            editFormData.assigned_worker_ids?.includes(worker.id)
+                              ? 'bg-obatek/10 border-obatek text-obatek'
+                              : 'border-gray-300 hover:border-gray-400'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={editFormData.assigned_worker_ids?.includes(worker.id) || false}
+                            onChange={() => handleEditWorkerToggle(worker.id)}
+                            className="sr-only"
+                          />
+                          <span className="text-sm">{worker.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

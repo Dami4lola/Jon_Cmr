@@ -17,6 +17,7 @@ class InvoiceCreate(BaseModel):
     materials_amount: Decimal | None = None
     inventory_materials: Decimal = Decimal("0")
     dump_fee: Decimal = Decimal("0")
+    admin_fee: Decimal = Decimal("0")
     total_labour_hours: Decimal | None = None
     total_distance_km: Decimal | None = None
     include_hst: bool = True
@@ -31,6 +32,7 @@ class InvoicePreview(BaseModel):
     travel_amount: Decimal
     materials_amount: Decimal
     inventory_materials: Decimal
+    admin_fee: Decimal
     subtotal: Decimal
     hst_amount: Decimal
     total: Decimal
@@ -55,6 +57,7 @@ class InvoiceResponse(BaseModel):
     materials_amount: Decimal
     inventory_materials: Decimal
     dump_fee: Decimal
+    admin_fee: Decimal
     total_labour_hours: Decimal
     total_distance_km: Decimal
 
