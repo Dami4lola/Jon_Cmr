@@ -59,7 +59,8 @@ export function Invoices() {
     if (selectedJobId) {
       const job = jobs.find((j: Job) => j.id === selectedJobId);
       if (job?.details || job?.title) {
-        setScopeOfWork(job.details || job.title);
+        const parts = [job.title, job.details].filter(Boolean);
+      setScopeOfWork(parts.join('\n\n'));
       }
     }
   }, [selectedJobId, jobs]);
