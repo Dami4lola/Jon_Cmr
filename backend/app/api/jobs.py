@@ -193,7 +193,7 @@ def get_calendar_events(
 
     statement = (
         select(Job)
-        .options(selectinload(Job.client))
+        .options(selectinload(Job.client), selectinload(Job.worker_schedule))
         .where(Job.start_date.isnot(None))
         .where(Job.is_completed == False)
     )
@@ -208,18 +208,47 @@ def get_calendar_events(
 
     events = []
     for job in jobs:
-        event = CalendarEvent(
-            id=job.id,
-            title=f"{job.client.name} - {job.title}",
-            start=job.start_date,
-            end=job.end_date,
-            time=job.scheduled_time.strftime("%H:%M") if job.scheduled_time else None,
-            duration=str(job.estimated_duration) if job.estimated_duration else None,
-            client=job.client.name,
-            address=job.get_job_address(),
-            description=job.details or job.title,
-        )
-        events.append(event)
+        if not current_user.is_manager and worker:
+            my_dates = sorted(
+                ws.date for ws in (job.worker_schedule or []) if ws.worker_id == worker.id
+            )
+            if my_dates:
+                for d in my_dates:
+                    events.append(CalendarEvent(
+                        id=job.id,
+                        title=f"{job.client.name} - {job.title}",
+                        start=d,
+                        end=d,
+                        time=job.scheduled_time.strftime("%H:%M") if job.scheduled_time else None,
+                        duration=str(job.estimated_duration) if job.estimated_duration else None,
+                        client=job.client.name,
+                        address=job.get_job_address(),
+                        description=job.details or job.title,
+                    ))
+            else:
+                events.append(CalendarEvent(
+                    id=job.id,
+                    title=f"{job.client.name} - {job.title}",
+                    start=job.start_date,
+                    end=job.end_date,
+                    time=job.scheduled_time.strftime("%H:%M") if job.scheduled_time else None,
+                    duration=str(job.estimated_duration) if job.estimated_duration else None,
+                    client=job.client.name,
+                    address=job.get_job_address(),
+                    description=job.details or job.title,
+                ))
+        else:
+            events.append(CalendarEvent(
+                id=job.id,
+                title=f"{job.client.name} - {job.title}",
+                start=job.start_date,
+                end=job.end_date,
+                time=job.scheduled_time.strftime("%H:%M") if job.scheduled_time else None,
+                duration=str(job.estimated_duration) if job.estimated_duration else None,
+                client=job.client.name,
+                address=job.get_job_address(),
+                description=job.details or job.title,
+            ))
 
     return events
 
