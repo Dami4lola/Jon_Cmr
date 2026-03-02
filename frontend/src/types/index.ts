@@ -97,6 +97,7 @@ export interface Job {
   workers?: Worker[];
   photos?: JobPhoto[];
   worker_schedule?: WorkerScheduleEntry[];
+  my_scheduled_dates?: string[];
 }
 
 export interface JobCreate {

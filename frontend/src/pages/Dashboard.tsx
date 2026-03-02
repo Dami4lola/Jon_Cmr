@@ -574,13 +574,18 @@ export function Dashboard() {
                     <p className="text-sm text-gray-600 mt-1">
                       {job.client?.name} | {job.job_address}
                     </p>
-                    {job.start_date && (
+                    {job.my_scheduled_dates && job.my_scheduled_dates.length > 0 ? (
+                      <p className="text-sm font-medium text-obatek mt-1">
+                        Your days: {job.my_scheduled_dates.map(d => formatDate(d)).join(', ')}
+                        {job.scheduled_time && ` at ${job.scheduled_time}`}
+                      </p>
+                    ) : job.start_date ? (
                       <p className="text-sm font-medium text-obatek mt-1">
                         {formatDate(job.start_date)}
                         {job.end_date && job.end_date !== job.start_date && ` – ${formatDate(job.end_date)}`}
                         {job.scheduled_time && ` at ${job.scheduled_time}`}
                       </p>
-                    )}
+                    ) : null}
                     {job.client?.phone_number && (
                       <p className="text-sm text-gray-600 mt-1">
                         <span className="font-medium">Contact:</span>{' '}

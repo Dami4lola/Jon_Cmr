@@ -21,8 +21,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def job_to_response(job: Job) -> JobResponse:
+def job_to_response(job: Job, current_worker_id: int | None = None) -> JobResponse:
     """Convert Job model to response schema"""
+    schedule = job.worker_schedule or []
+    my_dates = sorted(
+        ws.date for ws in schedule if current_worker_id and ws.worker_id == current_worker_id
+    )
     return JobResponse(
         id=job.id,
         title=job.title,
@@ -49,8 +53,9 @@ def job_to_response(job: Job) -> JobResponse:
         ],
         worker_schedule=[
             WorkerScheduleEntry(worker_id=ws.worker_id, date=ws.date)
-            for ws in (job.worker_schedule or [])
+            for ws in schedule
         ],
+        my_scheduled_dates=my_dates,
         photos=[
             JobPhotoResponse(
                 id=p.id,
@@ -84,12 +89,14 @@ def list_jobs(
         statement = statement.where(Job.is_completed == completed)
 
     # Workers only see assigned jobs
+    worker_id = None
     if not current_user.is_manager:
         worker = session.exec(
             select(Worker).where(Worker.user_id == current_user.id)
         ).first()
         if not worker:
             return []
+        worker_id = worker.id
         statement = statement.join(JobWorkerLink).where(
             JobWorkerLink.worker_id == worker.id
         )
@@ -97,7 +104,7 @@ def list_jobs(
     statement = statement.order_by(Job.start_date.desc())
     jobs = session.exec(statement).all()
 
-    return [job_to_response(job) for job in jobs]
+    return [job_to_response(job, current_worker_id=worker_id) for job in jobs]
 
 
 @router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -238,11 +245,13 @@ def get_job(
         )
 
     # Workers can only view assigned jobs
+    worker_id = None
     if not current_user.is_manager:
         worker = session.exec(
             select(Worker).where(Worker.user_id == current_user.id)
         ).first()
         if worker:
+            worker_id = worker.id
             is_assigned = any(w.id == worker.id for w in job.assigned_workers)
             if not is_assigned:
                 raise HTTPException(
@@ -250,7 +259,7 @@ def get_job(
                     detail="You are not assigned to this job",
                 )
 
-    return job_to_response(job)
+    return job_to_response(job, current_worker_id=worker_id)
 
 
 @router.get("/{job_id}/distance")

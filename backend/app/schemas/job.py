@@ -81,6 +81,7 @@ class JobResponse(BaseModel):
     client: ClientBrief
     assigned_workers: List[WorkerBrief]
     worker_schedule: List[WorkerScheduleEntry] = []
+    my_scheduled_dates: List[date] = []
     photos: List[JobPhotoResponse] = []
 
     class Config:
