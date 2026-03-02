@@ -7,7 +7,7 @@ import { clientsApi, ClientCreate } from '../api/clients';
 import { workersApi } from '../api/workers';
 import { payrollApi } from '../api/payroll';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, WorkerScheduleEntry } from '../types';
+import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary } from '../types';
 
 function getDateRange(start: string, end: string): string[] {
   const dates: string[] = [];
