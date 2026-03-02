@@ -29,7 +29,7 @@ def upgrade() -> None:
     # Data migration: populate schedule from existing job_worker_link entries
     # For each assigned worker, create schedule entries for each day in the job's date range
     conn.execute(sa.text("""
-        INSERT OR IGNORE INTO job_worker_schedule (job_id, worker_id, date)
+        INSERT INTO job_worker_schedule (job_id, worker_id, date)
         SELECT jwl.job_id, jwl.worker_id, j.start_date
         FROM job_worker_link jwl
         JOIN job j ON j.id = jwl.job_id
@@ -38,6 +38,7 @@ def upgrade() -> None:
             SELECT 1 FROM job_worker_schedule jws
             WHERE jws.job_id = jwl.job_id AND jws.worker_id = jwl.worker_id
         )
+        ON CONFLICT DO NOTHING
     """))
 
 
