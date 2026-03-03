@@ -741,10 +741,10 @@ export function ManagerDashboard() {
 
       {/* Edit Job Modal */}
       {editingJob && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto py-8">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <h2 className="text-lg font-semibold mb-4">Edit Job</h2>
-            <form onSubmit={handleUpdateJob} className="space-y-4">
+            <form id="edit-job-form" onSubmit={handleUpdateJob} className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-2">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1027,29 +1027,29 @@ export function ManagerDashboard() {
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingJob(null)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={updateJobMutation.isPending || !editFormData.client_id || !editFormData.title.trim()}
-                  className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
-                >
-                  {updateJobMutation.isPending ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-
-              {updateJobMutation.isError && (
-                <p className="text-red-500 text-sm">
-                  Error: {(updateJobMutation.error as Error)?.message || 'Failed to update job'}
-                </p>
-              )}
             </form>
+            <div className="flex justify-end gap-2 pt-4 border-t mt-4">
+              <button
+                type="button"
+                onClick={() => setEditingJob(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); (document.querySelector('#edit-job-form') as HTMLFormElement)?.requestSubmit(); }}
+                disabled={updateJobMutation.isPending || !editFormData.client_id || !editFormData.title.trim()}
+                className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+              >
+                {updateJobMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+            {updateJobMutation.isError && (
+              <p className="text-red-500 text-sm">
+                Error: {(updateJobMutation.error as Error)?.message || 'Failed to update job'}
+              </p>
+            )}
           </div>
         </div>
       )}
