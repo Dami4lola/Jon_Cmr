@@ -397,6 +397,7 @@ def update_job(
         # Remove existing schedule entries
         for sched in session.exec(select(JobWorkerSchedule).where(JobWorkerSchedule.job_id == job_id)).all():
             session.delete(sched)
+        session.flush()
         # Add new schedule entries
         for entry in data.worker_schedule:
             schedule = JobWorkerSchedule(job_id=job_id, worker_id=entry.worker_id, date=entry.date)
@@ -405,17 +406,14 @@ def update_job(
         schedule_worker_ids = set(e.worker_id for e in data.worker_schedule)
         explicit_ids = set(data.assigned_worker_ids) if data.assigned_worker_ids is not None else set()
         merged_ids = schedule_worker_ids | explicit_ids
-        # Replace assigned_worker_ids with merged set
         data.assigned_worker_ids = list(merged_ids) if merged_ids else []
 
     # Handle worker assignments
     if data.assigned_worker_ids is not None:
         # Remove existing assignments
-        session.exec(
-            select(JobWorkerLink).where(JobWorkerLink.job_id == job_id)
-        )
         for link in session.exec(select(JobWorkerLink).where(JobWorkerLink.job_id == job_id)).all():
             session.delete(link)
+        session.flush()
 
         # Add new assignments
         for worker_id in data.assigned_worker_ids:
