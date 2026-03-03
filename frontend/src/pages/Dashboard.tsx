@@ -604,6 +604,19 @@ export function Dashboard() {
                     </div>
                   )}
                 </div>
+                {job.photos && job.photos.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {job.photos.map((photo) => (
+                      <a key={photo.id} href={photo.public_url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={photo.public_url}
+                          alt={photo.caption || 'Job photo'}
+                          className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition-opacity"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
