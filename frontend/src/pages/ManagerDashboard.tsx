@@ -306,7 +306,7 @@ export function ManagerDashboard() {
   const handleEditJob = (job: Job) => {
     setEditingJob(job);
     setEditFormData({
-      client_id: job.client_id,
+      client_id: job.client?.id || job.client_id,
       title: job.title,
       details: job.details || '',
       start_date: job.start_date || '',
@@ -316,7 +316,7 @@ export function ManagerDashboard() {
       estimate_amount: job.estimate_amount ? parseFloat(job.estimate_amount) : undefined,
       address_override: job.address_override || '',
       is_redseal_trade: job.is_redseal_trade || false,
-      assigned_worker_ids: job.workers?.map((w) => w.id) || [],
+      assigned_worker_ids: job.assigned_workers?.map((w) => w.id) || job.workers?.map((w) => w.id) || [],
       worker_schedule: job.worker_schedule || [],
     });
   };
@@ -1453,9 +1453,9 @@ export function ManagerDashboard() {
                     <p className="text-sm text-gray-600">
                       {job.client?.name} | {job.job_address}
                     </p>
-                    {job.workers && job.workers.length > 0 && (
+                    {job.assigned_workers && job.assigned_workers.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {job.workers.map((w) => (
+                        {job.assigned_workers.map((w) => (
                           <span
                             key={w.id}
                             className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full"

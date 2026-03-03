@@ -95,6 +95,7 @@ export interface Job {
   client?: ClientBrief;
   job_address?: string;
   workers?: Worker[];
+  assigned_workers?: WorkerBrief[];
   photos?: JobPhoto[];
   worker_schedule?: WorkerScheduleEntry[];
   my_scheduled_dates?: string[];
