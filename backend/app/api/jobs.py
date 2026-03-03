@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, UploadFile, File, status, Body
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy import delete as sa_delete
 
 from ..models import Job, Worker, Client, JobWorkerLink, JobWorkerSchedule, JobPhoto
 from ..schemas.job import JobCreate, JobUpdate, JobResponse, JobPhotoResponse, CalendarEvent, WorkerScheduleEntry
@@ -374,10 +375,21 @@ def update_job(
     current_user: ManagerUser,
 ):
     """Update a job (manager only)"""
+    # Validate worker IDs exist before touching the DB
+    if data.assigned_worker_ids is not None:
+        for wid in data.assigned_worker_ids:
+            if not session.get(Worker, wid):
+                raise HTTPException(status_code=400, detail=f"Worker {wid} not found")
+    if data.worker_schedule is not None:
+        for entry in data.worker_schedule:
+            if not session.get(Worker, entry.worker_id):
+                raise HTTPException(status_code=400, detail=f"Worker {entry.worker_id} not found")
+
+    # Load job WITHOUT worker_schedule to avoid identity map conflicts on replace
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
+        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos))
     )
     job = session.exec(statement).first()
 
@@ -387,18 +399,18 @@ def update_job(
             detail="Job not found",
         )
 
-    # Update fields
+    # Update scalar fields
     update_data = data.model_dump(exclude_unset=True, exclude={"assigned_worker_ids", "worker_schedule"})
     for key, value in update_data.items():
         setattr(job, key, value)
 
-    # Handle worker schedule
+    session.add(job)
+    session.flush()
+
+    # Handle worker schedule — use bulk SQL delete to avoid identity map conflicts
     if data.worker_schedule is not None:
-        # Remove existing schedule entries
-        for sched in session.exec(select(JobWorkerSchedule).where(JobWorkerSchedule.job_id == job_id)).all():
-            session.delete(sched)
+        session.exec(sa_delete(JobWorkerSchedule).where(JobWorkerSchedule.job_id == job_id))
         session.flush()
-        # Add new schedule entries
         for entry in data.worker_schedule:
             schedule = JobWorkerSchedule(job_id=job_id, worker_id=entry.worker_id, date=entry.date)
             session.add(schedule)
@@ -408,14 +420,10 @@ def update_job(
         merged_ids = schedule_worker_ids | explicit_ids
         data.assigned_worker_ids = list(merged_ids) if merged_ids else []
 
-    # Handle worker assignments
+    # Handle worker assignments — use bulk SQL delete
     if data.assigned_worker_ids is not None:
-        # Remove existing assignments
-        for link in session.exec(select(JobWorkerLink).where(JobWorkerLink.job_id == job_id)).all():
-            session.delete(link)
+        session.exec(sa_delete(JobWorkerLink).where(JobWorkerLink.job_id == job_id))
         session.flush()
-
-        # Add new assignments
         for worker_id in data.assigned_worker_ids:
             link = JobWorkerLink(job_id=job_id, worker_id=worker_id)
             session.add(link)
@@ -428,11 +436,14 @@ def update_job(
         if distance:
             job.calculated_distance_km = distance
 
-    session.add(job)
-    session.commit()
-    session.refresh(job)
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to update job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update job")
 
-    # Refresh with relationships
+    # Refresh with all relationships for response
     statement = (
         select(Job)
         .where(Job.id == job_id)
