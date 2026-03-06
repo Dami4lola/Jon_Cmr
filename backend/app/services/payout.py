@@ -48,7 +48,8 @@ def calculate_payout(timesheet: Timesheet, worker: Worker) -> Decimal:
 
     # 1. Round hours to nearest 0.25
     hours_float = float(timesheet.hours_worked)
-    rounded_hours = (round(hours_float * 4) / 4) - timesheet.break_duration
+    break_float = float(timesheet.break_duration)
+    rounded_hours = (round(hours_float * 4) / 4) - break_float 
     payable_hours = max(Decimal(str(rounded_hours)), MINIMUM_HOURS)
 
     # 2. Labor cost
