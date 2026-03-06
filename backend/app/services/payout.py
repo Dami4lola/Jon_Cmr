@@ -77,7 +77,8 @@ def calculate_payout_breakdown(timesheet: Timesheet, worker: Worker) -> dict:
 
     # 1. Hours calculation
     hours_float = float(timesheet.hours_worked)
-    rounded_hours = Decimal(str(round(hours_float * 4) / 4))
+    break_float = float(timesheet.break_duration)
+    rounded_hours = (round(hours_float * 4) / 4) - break_float
     billable_hours = max(rounded_hours, MINIMUM_HOURS)
     minimum_applied = rounded_hours < MINIMUM_HOURS
 
@@ -110,7 +111,8 @@ def calculate_hours_display(hours_worked: Decimal) -> dict:
     Returns both actual and billable hours.
     """
     hours_float = float(hours_worked)
-    rounded_hours = round(hours_float * 4) / 4
+    break_float = float(timesheet.break_duration)
+    rounded_hours = (round(hours_float * 4) / 4) - break_float
     billable_hours = max(rounded_hours, float(MINIMUM_HOURS))
 
     return {
