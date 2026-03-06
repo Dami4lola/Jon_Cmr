@@ -170,7 +170,7 @@ def generate_payroll_pdf(
         cell_label = f"{date_str} – {entry.customer_name}"
 
         hours_str = f"{entry.billable_hours:,.2f}"
-        if entry.billable_hours > entry.hours_worked:
+        if entry.billable_hours < entry.hours_worked:
             hours_str += "*"
 
         table_data.append([
