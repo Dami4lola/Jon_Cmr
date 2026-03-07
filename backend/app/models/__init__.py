@@ -13,6 +13,7 @@ from .purchase_item import PurchaseListItem
 from .inspection import JobInspection, InspectionPhoto
 from .job_photo import JobPhoto
 from .settings import AppSettings
+from .sms_log import SmsLog
 
 __all__ = [
     "Role",
@@ -31,4 +32,5 @@ __all__ = [
     "PurchaseListItem",
     "JobInspection",
     "InspectionPhoto",
+    "SmsLog",
 ]

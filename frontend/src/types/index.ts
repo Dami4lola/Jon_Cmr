@@ -363,6 +363,19 @@ export interface PaginatedResponse<T> {
   pages: number;
 }
 
+export interface SmsLog {
+  id: number;
+  job_id: number;
+  client_id: number;
+  phone_number: string;
+  message_body: string;
+  status: string;
+  twilio_sid?: string;
+  error_message?: string;
+  sent_at?: string;
+  created_at: string;
+}
+
 export interface ApiError {
   detail: string;
 }

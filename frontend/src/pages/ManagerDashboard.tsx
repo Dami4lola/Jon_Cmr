@@ -1478,6 +1478,11 @@ export function ManagerDashboard() {
                         Est: {formatCurrency(job.estimate_amount)}
                       </p>
                     )}
+                    {job.calculated_distance_km && (
+                      <span className="text-xs text-gray-500">
+                        {job.calculated_distance_km} km
+                      </span>
+                    )}
                     <div className="flex gap-2 mt-2 justify-end">
                       <button
                         onClick={() => handleEditJob(job)}

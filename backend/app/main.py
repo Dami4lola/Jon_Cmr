@@ -16,7 +16,7 @@ from .middleware import LoggingMiddleware, register_exception_handlers
 logger = logging.getLogger(__name__)
 
 # Import routers
-from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients, users, payroll, settings as settings_api
+from .api import auth, jobs, timesheets, invoices, purchases, inspections, workers, clients, users, payroll, settings as settings_api, sms
 
 
 @asynccontextmanager
@@ -38,8 +38,17 @@ async def lifespan(app: FastAPI):
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "receipts"), exist_ok=True)
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "inspections"), exist_ok=True)
 
+    # Start SMS reminder scheduler if Twilio is configured
+    if settings.TWILIO_ACCOUNT_SID:
+        from .services.scheduler import start_scheduler
+        start_scheduler()
+        logger.info("Twilio configured — SMS scheduler started")
+
     yield
-    # Shutdown: cleanup if needed
+    # Shutdown: stop scheduler if running
+    if settings.TWILIO_ACCOUNT_SID:
+        from .services.scheduler import scheduler
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(
@@ -79,6 +88,7 @@ app.include_router(inspections.router, prefix="/api/inspections", tags=["Inspect
 app.include_router(users.router, prefix="/api/users", tags=["User Management"])
 app.include_router(payroll.router, prefix="/api/payroll", tags=["Payroll"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["Settings"])
+app.include_router(sms.router, prefix="/api/sms", tags=["SMS"])
 
 
 @app.get("/")

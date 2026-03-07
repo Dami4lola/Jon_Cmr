@@ -1,10 +1,13 @@
 """
 Distance calculation service using Google Maps API
 """
+import logging
 import requests
 from decimal import Decimal
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_distance(destination: str) -> Decimal | None:
@@ -18,9 +21,11 @@ def calculate_distance(destination: str) -> Decimal | None:
         Round trip distance in kilometers, or None if calculation fails
     """
     if not settings.GOOGLE_MAPS_API_KEY:
+        logger.warning("GOOGLE_MAPS_API_KEY not set — skipping distance calculation")
         return None
 
     if not destination:
+        logger.warning("No destination address provided for distance calculation")
         return None
 
     try:
@@ -38,15 +43,18 @@ def calculate_distance(destination: str) -> Decimal | None:
         if data.get("status") == "OK":
             element = data["rows"][0]["elements"][0]
             if element.get("status") == "OK":
-                # Distance in meters, convert to km and double for round trip
                 distance_m = element["distance"]["value"]
                 round_trip_km = (distance_m / 1000) * 2
                 return Decimal(str(round(round_trip_km, 2)))
+            else:
+                logger.warning(f"Distance API element error for '{destination}': {element.get('status')}")
+        else:
+            logger.warning(f"Distance API error for '{destination}': {data.get('status')}")
 
-    except requests.RequestException:
-        pass
-    except (KeyError, IndexError):
-        pass
+    except requests.RequestException as e:
+        logger.error(f"Distance API request failed for '{destination}': {e}")
+    except (KeyError, IndexError) as e:
+        logger.error(f"Distance API invalid response for '{destination}': {e}")
 
     return None
 

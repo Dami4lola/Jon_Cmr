@@ -1,12 +1,16 @@
 """
 Client API endpoints
 """
+import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlmodel import select
 
-from ..models import Client
+from ..models import Client, Job
 from ..schemas.client import ClientCreate, ClientUpdate, ClientResponse
+from ..services.distance import calculate_distance
 from .deps import DBSession, ManagerUser
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -70,6 +74,7 @@ def update_client(
             detail="Client not found",
         )
 
+    old_address = client.address
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(client, key, value)
@@ -77,6 +82,19 @@ def update_client(
     session.add(client)
     session.commit()
     session.refresh(client)
+
+    # Recalculate distance for jobs using this client's address (no override)
+    if "address" in update_data and client.address != old_address:
+        jobs = session.exec(
+            select(Job).where(Job.client_id == client_id, Job.address_override == None)
+        ).all()
+        for job in jobs:
+            distance = calculate_distance(client.address)
+            if distance is not None:
+                job.calculated_distance_km = distance
+                session.add(job)
+        if jobs:
+            session.commit()
 
     return client
 

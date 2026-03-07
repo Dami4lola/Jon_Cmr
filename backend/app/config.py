@@ -52,6 +52,12 @@ class Settings:
     # Email (Resend)
     RESEND_API_KEY: str | None = config("RESEND_API_KEY", default=None)
 
+    # Twilio SMS
+    TWILIO_ACCOUNT_SID: str | None = config("TWILIO_ACCOUNT_SID", default=None)
+    TWILIO_AUTH_TOKEN: str | None = config("TWILIO_AUTH_TOKEN", default=None)
+    TWILIO_PHONE_NUMBER: str | None = config("TWILIO_PHONE_NUMBER", default=None)
+    SMS_REMINDER_HOURS_BEFORE: int = config("SMS_REMINDER_HOURS_BEFORE", default=24, cast=int)
+
     # Frontend URL (for building password reset links)
     FRONTEND_URL: str = config("FRONTEND_URL", default="http://localhost:5173")
 
