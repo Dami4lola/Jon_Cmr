@@ -32,13 +32,13 @@ MINIMUM_HOURS = Decimal("4.0")
 HST_RATE = Decimal("0.13")
 
 
-def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0")) -> Decimal:
-    """Round hours to nearest 0.25, subtract breaks, and apply 4-hour minimum."""
+def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
+    """Round hours to nearest 0.25, subtract breaks, and apply minimum."""
     hours_float = float(hours_worked)
     break_float = float(break_duration)
     rounded = round(hours_float * 4) / 4
     net_hours = rounded - break_float
-    return max(Decimal(str(net_hours)), MINIMUM_HOURS)
+    return max(Decimal(str(net_hours)), minimum_hours)
 
 
 def _build_payroll_summaries(
@@ -89,7 +89,8 @@ def _build_payroll_summaries(
         total_personal_materials = Decimal("0")
 
         for ts in worker_timesheets:
-            billable_hours = _round_hours(ts.hours_worked, ts.break_duration)
+            effective_min = ts.minimum_hours_override if ts.minimum_hours_override is not None else MINIMUM_HOURS
+            billable_hours = _round_hours(ts.hours_worked, ts.break_duration, effective_min)
             labour_cost = (billable_hours * worker.hourly_rate).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )

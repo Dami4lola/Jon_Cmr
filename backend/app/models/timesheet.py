@@ -33,6 +33,9 @@ class Timesheet(SQLModel, table=True):
     company_materials: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
     personal_materials: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
 
+    # Minimum hours override (NULL = use default 4hr, 0 = no minimum)
+    minimum_hours_override: Decimal | None = Field(default=None, max_digits=4, decimal_places=2)
+
     # Calculated pay (stored to preserve historical rates)
     calculated_pay: Decimal | None = Field(default=None, max_digits=10, decimal_places=2)
 

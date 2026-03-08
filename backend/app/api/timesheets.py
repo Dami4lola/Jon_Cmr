@@ -41,6 +41,7 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
         company_materials=timesheet.company_materials,
         personal_materials=timesheet.personal_materials,
         calculated_pay=timesheet.calculated_pay,
+        minimum_hours_override=timesheet.minimum_hours_override,
         is_paid=timesheet.is_paid,
         receipt_count=len(timesheet.receipts) if timesheet.receipts else 0,
         created_at=timesheet.created_at,

@@ -34,7 +34,7 @@ export function roundToQuarter(hours: number): number {
   return Math.round(hours * 4) / 4;
 }
 
-export function calculateMinimumHours(hours: number): number {
+export function calculateMinimumHours(hours: number, minimumHours: number = 4): number {
   const rounded = roundToQuarter(hours);
-  return Math.max(rounded, 4);
+  return Math.max(rounded, minimumHours);
 }

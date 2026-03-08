@@ -1192,7 +1192,7 @@ export function ManagerDashboard() {
                             <td className="px-3 py-2 text-right text-gray-600">
                               {parseFloat(entry.billable_hours).toFixed(2)}
                               {parseFloat(entry.billable_hours) > parseFloat(entry.hours_worked) && (
-                                <span className="text-amber-500 ml-1" title="4-hour minimum applied">*</span>
+                                <span className="text-amber-500 ml-1" title="Minimum hours applied">*</span>
                               )}
                             </td>
                             <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(entry.labour_cost)}</td>

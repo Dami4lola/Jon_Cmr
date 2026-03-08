@@ -24,7 +24,7 @@ export const timesheetsApi = {
     return response.data;
   },
 
-  update: async (id: number, data: Partial<TimesheetCreate>): Promise<Timesheet> => {
+  update: async (id: number, data: Partial<TimesheetCreate> & { minimum_hours_override?: number | null }): Promise<Timesheet> => {
     const response = await api.put(`/timesheets/${id}`, data);
     return response.data;
   },

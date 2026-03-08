@@ -160,6 +160,7 @@ export interface Timesheet {
   company_materials: string;
   personal_materials: string;
   calculated_pay?: string;
+  minimum_hours_override?: string | null;
   is_paid: boolean;
   receipt_count: number;
   created_at: string;
