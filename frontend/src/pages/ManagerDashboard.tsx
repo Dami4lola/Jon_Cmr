@@ -1317,7 +1317,7 @@ export function ManagerDashboard() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-600">Total Payouts</p>
           <p className="text-2xl font-bold text-obatek">{formatCurrency(totalPayout)}</p>
@@ -1336,6 +1336,14 @@ export function ManagerDashboard() {
         >
           <p className="text-sm text-gray-600">Completed Jobs</p>
           <p className="text-2xl font-bold text-green-600">{completedJobs.length}</p>
+          <p className="text-xs text-gray-400 mt-1">Click to view &rarr;</p>
+        </div>
+        <div
+          className="bg-white rounded-lg shadow p-4 cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all"
+          onClick={() => navigate('/paid-timesheets')}
+        >
+          <p className="text-sm text-gray-600">Paid Timesheets</p>
+          <p className="text-2xl font-bold text-blue-600">View</p>
           <p className="text-xs text-gray-400 mt-1">Click to view &rarr;</p>
         </div>
       </div>

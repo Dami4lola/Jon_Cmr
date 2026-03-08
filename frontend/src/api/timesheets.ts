@@ -33,6 +33,11 @@ export const timesheetsApi = {
     await api.delete(`/timesheets/${id}`);
   },
 
+  listPaid: async (): Promise<Timesheet[]> => {
+    const response = await api.get('/timesheets/paid');
+    return response.data;
+  },
+
   listByJob: async (jobId: number): Promise<Timesheet[]> => {
     const response = await api.get(`/timesheets/by-job/${jobId}`);
     return response.data;

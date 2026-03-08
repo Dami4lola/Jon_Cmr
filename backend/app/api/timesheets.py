@@ -96,6 +96,29 @@ def list_timesheets(
     return [timesheet_to_response(ts) for ts in timesheets]
 
 
+@router.get("/paid", response_model=list[TimesheetResponse])
+def list_paid_timesheets(
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """
+    List all paid timesheets. Manager only.
+    Used on the paid timesheets review page.
+    """
+    statement = (
+        select(Timesheet)
+        .where(Timesheet.is_paid == True)
+        .options(
+            selectinload(Timesheet.worker),
+            selectinload(Timesheet.job).selectinload(Job.client),
+            selectinload(Timesheet.receipts),
+        )
+        .order_by(Timesheet.date.desc())
+    )
+    timesheets = session.exec(statement).all()
+    return [timesheet_to_response(ts) for ts in timesheets]
+
+
 @router.get("/by-job/{job_id}", response_model=list[TimesheetResponse])
 def list_timesheets_by_job(
     job_id: int,

@@ -157,9 +157,6 @@ def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client) -> bytes:
     inv_data = [
         [Paragraph("Invoice No.", label_style), Paragraph(str(invoice.invoice_number), value_style)],
         [Paragraph("Date", label_style), Paragraph(invoice.created_date.strftime("%B %d, %Y"), value_style)],
-        [Paragraph("Due Date", label_style), Paragraph(
-            invoice.due_date.strftime("%B %d, %Y") if invoice.due_date else "Upon Receipt", value_style,
-        )],
     ]
 
     t_left = Table(inv_data, colWidths=[1.0 * inch, 2.2 * inch])

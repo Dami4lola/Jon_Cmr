@@ -19,6 +19,7 @@ import { Invoices } from './pages/Invoices';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { ViewTimesheet } from './pages/ViewTimesheet';
 import { CompletedJobs } from './pages/CompletedJobs';
+import { PaidTimesheets } from './pages/PaidTimesheets';
 
 function App() {
   return (
@@ -59,6 +60,14 @@ function App() {
           element={
             <ProtectedRoute requireManager>
               <CompletedJobs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/paid-timesheets"
+          element={
+            <ProtectedRoute requireManager>
+              <PaidTimesheets />
             </ProtectedRoute>
           }
         />
