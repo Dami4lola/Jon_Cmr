@@ -6,20 +6,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from ..models import Timesheet, Worker
 
 
-# Default minimum hours threshold for payout
-DEFAULT_MINIMUM_HOURS = Decimal("4.0")
-
 # HST rate (Ontario)
 HST_RATE = Decimal("1.13")
-
-
-def get_minimum_hours(timesheet: Timesheet) -> Decimal:
-    """Return the effective minimum hours for a timesheet.
-    Uses per-timesheet override if set, otherwise the default 4 hours.
-    """
-    if timesheet.minimum_hours_override is not None:
-        return timesheet.minimum_hours_override
-    return DEFAULT_MINIMUM_HOURS
 
 
 def validate_timesheet_values(timesheet: Timesheet) -> None:
@@ -55,12 +43,11 @@ def calculate_payout(timesheet: Timesheet, worker: Worker) -> Decimal:
 
     total = Decimal("0")
 
-    # 1. Round hours to nearest 0.25
+    # 1. Round hours to nearest 0.25 and subtract breaks
     hours_float = float(timesheet.hours_worked)
     break_float = float(timesheet.break_duration)
-    rounded_hours = (round(hours_float * 4) / 4) - break_float 
-    minimum = get_minimum_hours(timesheet)
-    payable_hours = max(Decimal(str(rounded_hours)), minimum)
+    rounded_hours = (round(hours_float * 4) / 4) - break_float
+    payable_hours = Decimal(str(max(rounded_hours, 0)))
 
     # 2. Labor cost
     labor = payable_hours * worker.hourly_rate
@@ -89,9 +76,7 @@ def calculate_payout_breakdown(timesheet: Timesheet, worker: Worker) -> dict:
     hours_float = float(timesheet.hours_worked)
     break_float = float(timesheet.break_duration)
     rounded_hours = (round(hours_float * 4) / 4) - break_float
-    minimum = get_minimum_hours(timesheet)
-    billable_hours = max(rounded_hours, minimum)
-    minimum_applied = rounded_hours < minimum
+    billable_hours = Decimal(str(max(rounded_hours, 0)))
 
     # 2. Labor cost
     labor_cost = billable_hours * worker.hourly_rate
@@ -107,7 +92,7 @@ def calculate_payout_breakdown(timesheet: Timesheet, worker: Worker) -> dict:
         "hours_worked": timesheet.hours_worked,
         "rounded_hours": rounded_hours,
         "billable_hours": billable_hours,
-        "minimum_applied": minimum_applied,
+        "minimum_applied": False,
         "labor_cost": labor_cost,
         "hst_applied": worker.charges_hst,
         "break_duration": timesheet.break_duration,
@@ -116,19 +101,19 @@ def calculate_payout_breakdown(timesheet: Timesheet, worker: Worker) -> dict:
     }
 
 
-def calculate_hours_display(hours_worked: Decimal, minimum_hours: Decimal = DEFAULT_MINIMUM_HOURS, break_duration: Decimal = Decimal("0")) -> dict:
+def calculate_hours_display(hours_worked: Decimal, break_duration: Decimal = Decimal("0")) -> dict:
     """
     Calculate display values for hours.
-    Returns both actual and billable hours.
+    Returns both actual and billable hours (no minimum applied for payroll).
     """
     hours_float = float(hours_worked)
     break_float = float(break_duration)
     rounded_hours = (round(hours_float * 4) / 4) - break_float
-    billable_hours = max(rounded_hours, float(minimum_hours))
+    billable_hours = max(rounded_hours, 0)
 
     return {
         "actual_hours": hours_worked,
         "rounded_hours": Decimal(str(rounded_hours)),
         "billable_hours": Decimal(str(billable_hours)),
-        "minimum_applied": rounded_hours < float(minimum_hours),
+        "minimum_applied": False,
     }

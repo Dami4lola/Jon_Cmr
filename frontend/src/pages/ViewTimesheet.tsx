@@ -1,17 +1,11 @@
-import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { timesheetsApi } from '../api/timesheets';
-import { useAuthStore } from '../store/authStore';
 import { formatCurrency, formatDate, roundToQuarter } from '../lib/utils';
 
 export function ViewTimesheet() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { isManager } = useAuthStore();
-  const [overrideValue, setOverrideValue] = useState<string>('');
-  const [showOverride, setShowOverride] = useState(false);
 
   const { data: timesheet, isLoading } = useQuery({
     queryKey: ['timesheets', id],
@@ -23,16 +17,6 @@ export function ViewTimesheet() {
     queryKey: ['timesheets', id, 'receipts'],
     queryFn: () => timesheetsApi.getReceipts(Number(id)),
     enabled: !!id,
-  });
-
-  const overrideMutation = useMutation({
-    mutationFn: (minHours: number | null) =>
-      timesheetsApi.update(Number(id), { minimum_hours_override: minHours }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
-      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
-      setShowOverride(false);
-    },
   });
 
   if (isLoading) {
@@ -53,18 +37,6 @@ export function ViewTimesheet() {
 
   const hoursWorked = parseFloat(timesheet.hours_worked);
   const roundedHours = roundToQuarter(hoursWorked);
-  const effectiveMinimum = timesheet.minimum_hours_override != null ? parseFloat(timesheet.minimum_hours_override) : 4;
-  const billableHours = Math.max(roundedHours, effectiveMinimum);
-  const minimumApplied = roundedHours < effectiveMinimum;
-
-  const handleSetOverride = () => {
-    const value = overrideValue.trim() === '' ? null : parseFloat(overrideValue);
-    overrideMutation.mutate(value);
-  };
-
-  const handleClearOverride = () => {
-    overrideMutation.mutate(null);
-  };
 
   return (
     <div className="space-y-4 max-w-3xl mx-auto">
@@ -135,7 +107,7 @@ export function ViewTimesheet() {
           {/* Hours Section */}
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Hours</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="border border-gray-200 rounded-lg p-3">
                 <p className="text-xs text-gray-500">Hours Worked</p>
                 <p className="text-xl font-bold text-gray-900">{hoursWorked}</p>
@@ -143,15 +115,6 @@ export function ViewTimesheet() {
               <div className="border border-gray-200 rounded-lg p-3">
                 <p className="text-xs text-gray-500">Rounded Hours</p>
                 <p className="text-xl font-bold text-gray-900">{roundedHours}</p>
-              </div>
-              <div className="border border-gray-200 rounded-lg p-3">
-                <p className="text-xs text-gray-500">Billable Hours</p>
-                <p className="text-xl font-bold text-gray-900">
-                  {billableHours}
-                  {minimumApplied && (
-                    <span className="text-xs text-amber-600 font-normal ml-1">(min)</span>
-                  )}
-                </p>
               </div>
               {parseFloat(timesheet.break_duration) > 0 && (
                 <div className="border border-gray-200 rounded-lg p-3">
@@ -162,61 +125,6 @@ export function ViewTimesheet() {
                 </div>
               )}
             </div>
-
-            {/* Manager: Min Hours Override */}
-            {isManager() && (
-              <div className="mt-3 print:hidden">
-                {timesheet.minimum_hours_override != null && (
-                  <p className="text-xs text-amber-600 mb-2">
-                    Min hours override: {parseFloat(timesheet.minimum_hours_override)}h
-                    <button
-                      onClick={handleClearOverride}
-                      disabled={overrideMutation.isPending}
-                      className="ml-2 text-red-500 hover:underline"
-                    >
-                      Reset to default (4h)
-                    </button>
-                  </p>
-                )}
-                {!showOverride ? (
-                  <button
-                    onClick={() => {
-                      setOverrideValue(timesheet.minimum_hours_override != null ? timesheet.minimum_hours_override : '');
-                      setShowOverride(true);
-                    }}
-                    className="text-xs text-obatek hover:underline"
-                  >
-                    Override min hours
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
-                      max="24"
-                      value={overrideValue}
-                      onChange={(e) => setOverrideValue(e.target.value)}
-                      placeholder="e.g. 0 or 2"
-                      className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-obatek outline-none"
-                    />
-                    <button
-                      onClick={handleSetOverride}
-                      disabled={overrideMutation.isPending}
-                      className="text-xs bg-obatek text-white px-3 py-1 rounded hover:bg-obatek-dark disabled:opacity-50"
-                    >
-                      {overrideMutation.isPending ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                      onClick={() => setShowOverride(false)}
-                      className="text-xs text-gray-500 hover:text-gray-700"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Flags */}

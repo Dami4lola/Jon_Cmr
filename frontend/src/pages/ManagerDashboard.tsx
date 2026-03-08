@@ -1191,9 +1191,6 @@ export function ManagerDashboard() {
                             <td className="px-3 py-2 text-gray-900">{entry.customer_name}</td>
                             <td className="px-3 py-2 text-right text-gray-600">
                               {parseFloat(entry.billable_hours).toFixed(2)}
-                              {parseFloat(entry.billable_hours) > parseFloat(entry.hours_worked) && (
-                                <span className="text-amber-500 ml-1" title="Minimum hours applied">*</span>
-                              )}
                             </td>
                             <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(entry.labour_cost)}</td>
                             <td className="px-3 py-2 text-right text-gray-600">{parseFloat(entry.km_distance).toFixed(1)}</td>
