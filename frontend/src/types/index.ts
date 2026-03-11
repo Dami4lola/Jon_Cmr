@@ -161,6 +161,7 @@ export interface Timesheet {
   personal_materials: string;
   calculated_pay?: string;
   minimum_hours_override?: string | null;
+  notes?: string | null;
   is_paid: boolean;
   receipt_count: number;
   created_at: string;
@@ -177,6 +178,7 @@ export interface TimesheetCreate {
   worked_at_hq?: boolean;
   company_materials?: number;
   personal_materials?: number;
+  notes?: string;
 }
 
 // Invoice Types

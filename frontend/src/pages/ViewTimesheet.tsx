@@ -152,6 +152,16 @@ export function ViewTimesheet() {
             </div>
           </div>
 
+          {/* Notes */}
+          {timesheet.notes && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{timesheet.notes}</p>
+              </div>
+            </div>
+          )}
+
           {/* Divider */}
           <hr className="border-gray-200" />
 

@@ -34,13 +34,14 @@ export function Dashboard() {
   // Timesheet form state
   const [formData, setFormData] = useState<TimesheetCreate>({
     job_id: 0,
-    date: new Date().toISOString().split('T')[0],
+    date: new Date().toLocaleDateString('en-CA'),
     hours_worked: 0,
     break_duration: 0,
     used_company_truck: false,
     worked_at_hq: false,
     company_materials: 0,
     personal_materials: 0,
+    notes: '',
   });
 
   // Receipt file upload state
@@ -88,13 +89,14 @@ export function Dashboard() {
   const resetForm = () => {
     setFormData({
       job_id: 0,
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toLocaleDateString('en-CA'),
       hours_worked: 0,
       break_duration: 0,
       used_company_truck: false,
       worked_at_hq: false,
       company_materials: 0,
       personal_materials: 0,
+      notes: '',
     });
     setReceiptFiles([]);
     receiptFilesRef.current = [];
@@ -460,6 +462,21 @@ export function Dashboard() {
               )}
             </div>
 
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes
+              </label>
+              <textarea
+                name="notes"
+                value={formData.notes || ''}
+                onChange={handleChange}
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-vertical"
+                placeholder="Describe what you did during this time period..."
+              />
+            </div>
+
             {/* Payout Preview */}
             <div className="border-t pt-4">
               <button
@@ -526,6 +543,11 @@ export function Dashboard() {
                       {formatDate(ts.date)} | {ts.hours_worked} hours{parseFloat(ts.break_duration) > 0 ? ` | ${ts.break_duration}h break` : ''}
                       {ts.receipt_count > 0 && ` | ${ts.receipt_count} receipt${ts.receipt_count > 1 ? 's' : ''}`}
                     </p>
+                    {ts.notes && (
+                      <p className="text-sm text-gray-500 mt-1 truncate max-w-md">
+                        {ts.notes}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <p className="font-semibold text-obatek">

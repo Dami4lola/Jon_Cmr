@@ -29,6 +29,9 @@ class Timesheet(SQLModel, table=True):
     used_company_truck: bool = Field(default=False)
     worked_at_hq: bool = Field(default=False)
 
+    # Notes
+    notes: str | None = Field(default=None)
+
     # Expenses
     company_materials: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
     personal_materials: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)

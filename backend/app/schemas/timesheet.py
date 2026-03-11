@@ -19,6 +19,7 @@ class TimesheetCreate(BaseModel):
     worked_at_hq: bool = False
     company_materials: Decimal = Field(default=Decimal("0"), ge=0, le=99999.99)
     personal_materials: Decimal = Field(default=Decimal("0"), ge=0, le=99999.99)
+    notes: str | None = None
 
 
 class TimesheetUpdate(BaseModel):
@@ -32,6 +33,7 @@ class TimesheetUpdate(BaseModel):
     company_materials: Decimal | None = Field(default=None, ge=0, le=99999.99)
     personal_materials: Decimal | None = Field(default=None, ge=0, le=99999.99)
     minimum_hours_override: Decimal | None = Field(default=None, ge=0, le=24)
+    notes: str | None = None
 
 
 class TimesheetResponse(BaseModel):
@@ -46,6 +48,7 @@ class TimesheetResponse(BaseModel):
     personal_materials: Decimal
     calculated_pay: Decimal | None
     minimum_hours_override: Decimal | None = None
+    notes: str | None = None
     is_paid: bool
     receipt_count: int = 0
     created_at: dt.datetime
