@@ -14,7 +14,15 @@ export function formatCurrency(amount: number | string): string {
 }
 
 export function formatDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  let d: Date;
+  if (typeof date === 'string') {
+    // Date-only strings (YYYY-MM-DD) are parsed as UTC midnight by JS,
+    // which shifts to the previous day in negative UTC offsets (e.g. EST).
+    // Append T12:00:00 so it's treated as local noon instead.
+    d = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(date + 'T12:00:00') : new Date(date);
+  } else {
+    d = date;
+  }
   return new Intl.DateTimeFormat('en-CA', {
     year: 'numeric',
     month: 'short',
