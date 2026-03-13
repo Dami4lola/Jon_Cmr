@@ -1,0 +1,119 @@
+"""
+Payout calculation service - ported from Django
+"""
+from decimal import Decimal, ROUND_HALF_UP
+
+from ..models import Timesheet, Worker
+
+
+# HST rate (Ontario)
+HST_RATE = Decimal("1.13")
+
+
+def validate_timesheet_values(timesheet: Timesheet) -> None:
+    """
+    Validate timesheet values before calculation.
+    Raises ValueError for invalid data.
+    """
+    if timesheet.hours_worked <= 0:
+        raise ValueError("Hours worked must be greater than 0")
+
+    if timesheet.personal_materials < 0:
+        raise ValueError("Personal materials cannot be negative")
+
+    if timesheet.company_materials < 0:
+        raise ValueError("Company materials cannot be negative")
+
+
+def calculate_payout(timesheet: Timesheet, worker: Worker) -> Decimal:
+    """
+    Calculate the payout for a timesheet.
+
+    Logic:
+    1. Validate input values
+    2. Round hours to nearest 0.25
+    3. Apply minimum 4-hour threshold
+    4. Add hourly rate x hours (with HST if applicable)
+    5. Add personal materials reimbursement
+    Note: company_materials is NOT added to worker pay (company already paid)
+    Note: break_duration is tracked for records only, does not affect pay
+    """
+    # Validate inputs
+    validate_timesheet_values(timesheet)
+
+    total = Decimal("0")
+
+    # 1. Round hours to nearest 0.25 and subtract breaks
+    hours_float = float(timesheet.hours_worked)
+    break_float = float(timesheet.break_duration)
+    rounded_hours = (round(hours_float * 4) / 4) - break_float
+    payable_hours = Decimal(str(max(rounded_hours, 0)))
+
+    # 2. Labor cost
+    labor = payable_hours * worker.hourly_rate
+    if worker.charges_hst:
+        labor *= HST_RATE
+    total += labor
+
+    # 3. Personal materials (worker paid, gets reimbursed)
+    total += timesheet.personal_materials
+
+    # Note: company_materials is NOT added to worker pay (company already paid)
+
+    # Round to 2 decimal places
+    return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def calculate_payout_breakdown(timesheet: Timesheet, worker: Worker) -> dict:
+    """
+    Calculate payout with detailed breakdown for preview.
+    Returns dict with all components of the calculation.
+    """
+    # Validate inputs
+    validate_timesheet_values(timesheet)
+
+    # 1. Hours calculation
+    hours_float = float(timesheet.hours_worked)
+    break_float = float(timesheet.break_duration)
+    rounded_hours = (round(hours_float * 4) / 4) - break_float
+    billable_hours = Decimal(str(max(rounded_hours, 0)))
+
+    # 2. Labor cost
+    labor_cost = billable_hours * worker.hourly_rate
+    if worker.charges_hst:
+        labor_cost *= HST_RATE
+    labor_cost = labor_cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    # 3. Total
+    total = labor_cost + timesheet.personal_materials
+    total = total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    return {
+        "hours_worked": timesheet.hours_worked,
+        "rounded_hours": rounded_hours,
+        "billable_hours": billable_hours,
+        "minimum_applied": False,
+        "labor_cost": labor_cost,
+        "hst_applied": worker.charges_hst,
+        "break_duration": timesheet.break_duration,
+        "personal_materials": timesheet.personal_materials,
+        "calculated_pay": total,
+    }
+
+
+def calculate_hours_display(hours_worked: Decimal, break_duration: Decimal = Decimal("0")) -> dict:
+    """
+    Calculate display values for hours.
+    Returns both actual and billable hours (no minimum applied for payroll).
+    """
+    hours_float = float(hours_worked)
+    break_float = float(break_duration)
+    rounded_hours = (round(hours_float * 4) / 4) - break_float
+    billable_hours = max(rounded_hours, 0)
+
+    return {
+        "actual_hours": hours_worked,
+        "rounded_hours": Decimal(str(rounded_hours)),
+        "billable_hours": Decimal(str(billable_hours)),
+        "minimum_applied": False,
+    }
