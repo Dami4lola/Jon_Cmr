@@ -27,6 +27,7 @@ export function Invoices() {
   const [inventoryMaterials, setInventoryMaterials] = useState(0);
   const [dumpFee, setDumpFee] = useState(0);
   const [adminFee, setAdminFee] = useState(0);
+  const [rate, setRate] = useState(80);
   const [includeHst, setIncludeHst] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [invoiceStartNumber, setInvoiceStartNumber] = useState(1);
@@ -142,6 +143,7 @@ export function Invoices() {
     setSelectedJobId(null);
     setLabourAmount(0);
     setLabourHours(0);
+    setRate(80);
     setTravelAmount(0);
     setTravelKm(0);
     setMaterialsAmount(0);
@@ -161,6 +163,9 @@ export function Invoices() {
       setTravelKm(parseFloat(preview.travel_km));
       setMaterialsAmount(parseFloat(preview.materials_amount));
       setInventoryMaterials(parseFloat(preview.inventory_materials));
+      const hours = parseFloat(preview.labour_hours);
+      const amount = parseFloat(preview.labour_amount);
+      setRate(hours > 0 ? Math.round((amount / hours) * 100) / 100 : 80);
       setStep('details');
     }
   };
@@ -377,14 +382,32 @@ export function Invoices() {
                 <div>
                   <h4 className="text-sm font-semibold text-gray-900 mb-3">Charges</h4>
                   <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Labour Hours</label>
                         <input
                           type="number"
                           step="0.25"
                           value={labourHours}
-                          onChange={(e) => setLabourHours(parseFloat(e.target.value) || 0)}
+                          onChange={(e) => {
+                            const h = parseFloat(e.target.value) || 0;
+                            setLabourHours(h);
+                            setLabourAmount(Math.round(h * rate * 100) / 100);
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Rate ($/hr)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={rate}
+                          onChange={(e) => {
+                            const r = parseFloat(e.target.value) || 0;
+                            setRate(r);
+                            setLabourAmount(Math.round(labourHours * r * 100) / 100);
+                          }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                         />
                       </div>
@@ -394,7 +417,11 @@ export function Invoices() {
                           type="number"
                           step="0.01"
                           value={labourAmount}
-                          onChange={(e) => setLabourAmount(parseFloat(e.target.value) || 0)}
+                          onChange={(e) => {
+                            const a = parseFloat(e.target.value) || 0;
+                            setLabourAmount(a);
+                            setRate(labourHours > 0 ? Math.round((a / labourHours) * 100) / 100 : 0);
+                          }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                         />
                       </div>
