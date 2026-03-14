@@ -70,24 +70,40 @@ export function getCoworkersForDate(
   return coworkers.filter((w) => w.id !== currentWorkerId);
 }
 
+function getDateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const current = new Date(start + 'T12:00:00');
+  const last = new Date(end + 'T12:00:00');
+  while (current <= last) {
+    dates.push(current.toLocaleDateString('en-CA'));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
 export function getCoworkerSchedule(
   job: Job,
   currentWorkerId: number
-): { date: string | null; coworkers: WorkerBrief[] }[] {
+): { date: string; coworkers: WorkerBrief[] }[] {
   const myDates = job.my_scheduled_dates ?? [];
   const today = new Date().toLocaleDateString('en-CA');
 
-  const upcomingDates = myDates.filter((d) => d >= today);
+  let datesToCheck: string[];
 
-  if (upcomingDates.length > 0) {
-    return upcomingDates
-      .map((d) => ({ date: d, coworkers: getCoworkersForDate(job, currentWorkerId, d) }))
-      .filter((entry) => entry.coworkers.length > 0);
+  if (myDates.length > 0) {
+    datesToCheck = myDates;
+  } else if (job.start_date && job.end_date) {
+    datesToCheck = getDateRange(job.start_date, job.end_date);
+  } else {
+    datesToCheck = [];
   }
 
-  const allCoworkers = (job.assigned_workers ?? []).filter((w) => w.id !== currentWorkerId);
-  if (allCoworkers.length > 0) {
-    return [{ date: null, coworkers: allCoworkers }];
+  const upcoming = datesToCheck.filter((d) => d >= today);
+
+  if (upcoming.length > 0) {
+    return upcoming
+      .map((d) => ({ date: d, coworkers: getCoworkersForDate(job, currentWorkerId, d) }))
+      .filter((entry) => entry.coworkers.length > 0);
   }
 
   return [];
