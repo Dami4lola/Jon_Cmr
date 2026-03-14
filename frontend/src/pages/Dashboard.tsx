@@ -631,7 +631,7 @@ export function Dashboard() {
                     {(coworkerScheduleByJobId.get(job.id)?.length ?? 0) > 0 && (
                       <div className="mt-2 space-y-1">
                         <span className="text-xs text-gray-500">Working with:</span>
-                        {coworkerScheduleByJobId.get(job.id)!.slice(0, 3).map((entry, idx) => (
+                        {coworkerScheduleByJobId.get(job.id)!.slice(0, 3).map((entry) => (
                           <div key={entry.date} className="flex flex-wrap items-center gap-1">
                             <span className="text-xs text-gray-400 w-24 shrink-0">{formatShortDate(entry.date)}</span>
                             {entry.coworkers.map((w) => (
