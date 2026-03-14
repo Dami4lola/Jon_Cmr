@@ -36,7 +36,7 @@ def calculate_payout(timesheet: Timesheet, worker: Worker) -> Decimal:
     4. Add hourly rate x hours (with HST if applicable)
     5. Add personal materials reimbursement
     Note: company_materials is NOT added to worker pay (company already paid)
-    Note: break_duration is tracked for records only, does not affect pay
+    Note: break_duration is subtracted from billable hours
     """
     # Validate inputs
     validate_timesheet_values(timesheet)

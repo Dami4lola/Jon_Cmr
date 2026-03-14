@@ -332,6 +332,7 @@ export interface PayrollEntryDetail {
   customer_name: string;
   job_description: string;
   hours_worked: string;
+  break_duration: string;
   billable_hours: string;
   labour_rate: string;
   labour_cost: string;

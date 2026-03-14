@@ -1179,6 +1179,8 @@ export function ManagerDashboard() {
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                           <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Hours</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Break</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Billable</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Labour</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">KM</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Materials</th>
@@ -1190,10 +1192,16 @@ export function ManagerDashboard() {
                             <td className="px-3 py-2 text-gray-600">{entry.date}</td>
                             <td className="px-3 py-2 text-gray-900">{entry.customer_name}</td>
                             <td className="px-3 py-2 text-right text-gray-600">
+                              {parseFloat(entry.hours_worked).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {parseFloat(entry.break_duration) > 0 ? parseFloat(entry.break_duration).toFixed(2) : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">
                               {parseFloat(entry.billable_hours).toFixed(2)}
                             </td>
                             <td className="px-3 py-2 text-right text-gray-600">{formatCurrency(entry.labour_cost)}</td>
-                            <td className="px-3 py-2 text-right text-gray-600">{parseFloat(entry.km_distance).toFixed(1)}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">{parseFloat(entry.km_distance).toFixed(0)}</td>
                             <td className="px-3 py-2 text-right text-gray-600">
                               {parseFloat(entry.personal_materials) > 0 ? formatCurrency(entry.personal_materials) : '-'}
                             </td>

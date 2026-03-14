@@ -203,7 +203,7 @@ def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client) -> bytes:
     hours_display = f"{invoice.total_labour_hours:,.2f} hrs"
     charges_data.append(["Labour", hours_display, f"${invoice.labour_amount:,.2f}"])
 
-    km_display = f"{invoice.total_distance_km:,.1f} km @ $1.00/km"
+    km_display = f"{invoice.total_distance_km:,.0f} km @ $1.00/km"
     charges_data.append(["Travel", km_display, f"${invoice.travel_amount:,.2f}"])
 
     charges_data.append(["Materials (before tax)", "", f"${invoice.materials_amount:,.2f}"])

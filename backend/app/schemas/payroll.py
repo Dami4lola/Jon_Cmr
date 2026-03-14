@@ -16,6 +16,7 @@ class PayrollEntryDetail(BaseModel):
     customer_name: str
     job_description: str
     hours_worked: Decimal
+    break_duration: Decimal
     billable_hours: Decimal
     labour_rate: Decimal
     labour_cost: Decimal

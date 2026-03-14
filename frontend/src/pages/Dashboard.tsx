@@ -5,7 +5,7 @@ import { jobsApi } from '../api/jobs';
 import { timesheetsApi } from '../api/timesheets';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
-import { formatCurrency, formatDate, getCoworkersForDate } from '../lib/utils';
+import { formatCurrency, formatDate, getCoworkerSchedule, formatShortDate } from '../lib/utils';
 import type { TimesheetCreate, Timesheet } from '../types';
 
 export function Dashboard() {
@@ -25,14 +25,13 @@ export function Dashboard() {
     queryFn: () => jobsApi.list({ is_completed: false }),
   });
 
-  const today = new Date().toLocaleDateString('en-CA');
-  const coworkersByJobId = useMemo(() => {
-    const map = new Map<number, { id: number; name: string }[]>();
+  const coworkerScheduleByJobId = useMemo(() => {
+    const map = new Map<number, { date: string; coworkers: { id: number; name: string }[] }[]>();
     jobs.forEach((job) => {
-      map.set(job.id, getCoworkersForDate(job, user?.worker_id ?? 0, today));
+      map.set(job.id, getCoworkerSchedule(job, user?.worker_id ?? 0));
     });
     return map;
-  }, [jobs, user?.worker_id, today]);
+  }, [jobs, user?.worker_id]);
 
   // Fetch recent timesheets
   const { data: timesheets = [], isLoading: loadingTimesheets } = useQuery({
@@ -367,7 +366,7 @@ export function Dashboard() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="0"
                 />
-                <p className="text-xs text-gray-400 mt-1">Tracked for records only.</p>
+                <p className="text-xs text-gray-400 mt-1">Subtracted from billable hours in payroll.</p>
               </div>
             </div>
 
@@ -629,17 +628,25 @@ export function Dashboard() {
                         </a>
                       </p>
                     )}
-                    {(coworkersByJobId.get(job.id)?.length ?? 0) > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 mt-2">
-                        <span className="text-xs text-gray-500 mr-1">Working with:</span>
-                        {coworkersByJobId.get(job.id)!.map((w) => (
-                          <span
-                            key={w.id}
-                            className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full"
-                          >
-                            {w.name}
-                          </span>
+                    {(coworkerScheduleByJobId.get(job.id)?.length ?? 0) > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <span className="text-xs text-gray-500">Working with:</span>
+                        {coworkerScheduleByJobId.get(job.id)!.slice(0, 3).map((entry) => (
+                          <div key={entry.date} className="flex flex-wrap items-center gap-1">
+                            <span className="text-xs text-gray-400 w-24 shrink-0">{formatShortDate(entry.date)}</span>
+                            {entry.coworkers.map((w) => (
+                              <span
+                                key={w.id}
+                                className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full"
+                              >
+                                {w.name}
+                              </span>
+                            ))}
+                          </div>
                         ))}
+                        {(coworkerScheduleByJobId.get(job.id)!.length > 3) && (
+                          <span className="text-xs text-gray-400">+{coworkerScheduleByJobId.get(job.id)!.length - 3} more days</span>
+                        )}
                       </div>
                     )}
                   </div>

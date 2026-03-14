@@ -177,7 +177,7 @@ def generate_payroll_pdf(
             cell_label,
             hours_str,
             _fmt(entry.labour_cost),
-            f"{entry.km_distance:,.1f}",
+            f"{entry.km_distance:,.0f}",
             _fmt(entry.km_cost),
             _fmt(entry.personal_materials) if entry.personal_materials > 0 else "—",
         ])
@@ -187,7 +187,7 @@ def generate_payroll_pdf(
         "TOTALS",
         f"{summary.total_hours:,.2f}",
         _fmt(summary.total_labour),
-        f"{summary.total_km:,.1f}",
+        f"{summary.total_km:,.0f}",
         _fmt(summary.total_km_cost),
         _fmt(summary.total_personal_materials) if summary.total_personal_materials > 0 else "—",
     ])

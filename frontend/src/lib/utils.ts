@@ -69,3 +69,21 @@ export function getCoworkersForDate(
 
   return coworkers.filter((w) => w.id !== currentWorkerId);
 }
+
+export function getCoworkerSchedule(
+  job: Job,
+  currentWorkerId: number
+): { date: string; coworkers: WorkerBrief[] }[] {
+  const myDates = job.my_scheduled_dates ?? [];
+  const today = new Date().toLocaleDateString('en-CA');
+
+  return myDates
+    .filter((d) => d >= today)
+    .map((d) => ({ date: d, coworkers: getCoworkersForDate(job, currentWorkerId, d) }))
+    .filter((entry) => entry.coworkers.length > 0);
+}
+
+export function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}

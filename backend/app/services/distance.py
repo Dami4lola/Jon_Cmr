@@ -2,6 +2,7 @@
 Distance calculation service using Google Maps API
 """
 import logging
+import math
 import requests
 from decimal import Decimal
 
@@ -45,7 +46,7 @@ def calculate_distance(destination: str) -> Decimal | None:
             if element.get("status") == "OK":
                 distance_m = element["distance"]["value"]
                 round_trip_km = (distance_m / 1000) * 2
-                return Decimal(str(round(round_trip_km, 2)))
+                return Decimal(str(math.ceil(round_trip_km)))
             else:
                 logger.warning(f"Distance API element error for '{destination}': {element.get('status')}")
         else:
@@ -91,8 +92,8 @@ def get_distance_info(destination: str) -> dict:
                 one_way_km = distance_m / 1000
 
                 return {
-                    "one_way_km": round(one_way_km, 2),
-                    "round_trip_km": round(one_way_km * 2, 2),
+                    "one_way_km": math.ceil(one_way_km),
+                    "round_trip_km": math.ceil(one_way_km * 2),
                     "duration_one_way": duration_text,
                     "origin": settings.OFFICE_ADDRESS,
                     "destination": destination,

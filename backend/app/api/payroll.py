@@ -93,10 +93,14 @@ def _build_payroll_summaries(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
 
-            km_distance = ts.job.calculated_distance_km or Decimal("0")
-            km_cost = (km_distance * KM_RATE).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
+            if ts.used_company_truck:
+                km_distance = Decimal("0")
+                km_cost = Decimal("0")
+            else:
+                km_distance = ts.job.calculated_distance_km or Decimal("0")
+                km_cost = (km_distance * KM_RATE).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
 
             client_name = ts.job.client.name if ts.job and ts.job.client else "Unknown"
 
@@ -105,6 +109,7 @@ def _build_payroll_summaries(
                 customer_name=client_name,
                 job_description=ts.job.title if ts.job else "",
                 hours_worked=ts.hours_worked,
+                break_duration=ts.break_duration,
                 billable_hours=billable_hours,
                 labour_rate=worker.hourly_rate,
                 labour_cost=labour_cost,
