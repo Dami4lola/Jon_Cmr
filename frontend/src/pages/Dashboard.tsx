@@ -26,7 +26,7 @@ export function Dashboard() {
   });
 
   const coworkerScheduleByJobId = useMemo(() => {
-    const map = new Map<number, { date: string; coworkers: { id: number; name: string }[] }[]>();
+    const map = new Map<number, { date: string | null; coworkers: { id: number; name: string }[] }[]>();
     jobs.forEach((job) => {
       map.set(job.id, getCoworkerSchedule(job, user?.worker_id ?? 0));
     });
@@ -631,9 +631,11 @@ export function Dashboard() {
                     {(coworkerScheduleByJobId.get(job.id)?.length ?? 0) > 0 && (
                       <div className="mt-2 space-y-1">
                         <span className="text-xs text-gray-500">Working with:</span>
-                        {coworkerScheduleByJobId.get(job.id)!.slice(0, 3).map((entry) => (
-                          <div key={entry.date} className="flex flex-wrap items-center gap-1">
-                            <span className="text-xs text-gray-400 w-24 shrink-0">{formatShortDate(entry.date)}</span>
+                        {coworkerScheduleByJobId.get(job.id)!.slice(0, 3).map((entry, idx) => (
+                          <div key={entry.date ?? idx} className="flex flex-wrap items-center gap-1">
+                            {entry.date && (
+                              <span className="text-xs text-gray-400 w-24 shrink-0">{formatShortDate(entry.date)}</span>
+                            )}
                             {entry.coworkers.map((w) => (
                               <span
                                 key={w.id}

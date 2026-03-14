@@ -73,14 +73,24 @@ export function getCoworkersForDate(
 export function getCoworkerSchedule(
   job: Job,
   currentWorkerId: number
-): { date: string; coworkers: WorkerBrief[] }[] {
+): { date: string | null; coworkers: WorkerBrief[] }[] {
   const myDates = job.my_scheduled_dates ?? [];
   const today = new Date().toLocaleDateString('en-CA');
 
-  return myDates
-    .filter((d) => d >= today)
-    .map((d) => ({ date: d, coworkers: getCoworkersForDate(job, currentWorkerId, d) }))
-    .filter((entry) => entry.coworkers.length > 0);
+  const upcomingDates = myDates.filter((d) => d >= today);
+
+  if (upcomingDates.length > 0) {
+    return upcomingDates
+      .map((d) => ({ date: d, coworkers: getCoworkersForDate(job, currentWorkerId, d) }))
+      .filter((entry) => entry.coworkers.length > 0);
+  }
+
+  const allCoworkers = (job.assigned_workers ?? []).filter((w) => w.id !== currentWorkerId);
+  if (allCoworkers.length > 0) {
+    return [{ date: null, coworkers: allCoworkers }];
+  }
+
+  return [];
 }
 
 export function formatShortDate(dateStr: string): string {
