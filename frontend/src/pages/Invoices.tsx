@@ -293,8 +293,8 @@ export function Invoices() {
 
       {/* Create Invoice Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-8">
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 {step === 'select' ? 'Create Invoice — Select Job' : 'Create Invoice — Review & Edit'}
