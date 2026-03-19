@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from .user import User
     from .job import Job
     from .timesheet import Timesheet
+    from .time_off_request import TimeOffRequest
 
 
 class Worker(SQLModel, table=True):
@@ -25,3 +26,4 @@ class Worker(SQLModel, table=True):
     # Relationships
     user: Optional["User"] = Relationship(back_populates="worker")
     timesheets: List["Timesheet"] = Relationship(back_populates="worker")
+    time_off_requests: List["TimeOffRequest"] = Relationship(back_populates="worker")

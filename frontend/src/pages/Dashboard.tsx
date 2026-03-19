@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { timesheetsApi } from '../api/timesheets';
+import { timeOffApi } from '../api/timeOff';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 import { formatCurrency, formatDate, getCoworkerSchedule, formatShortDate } from '../lib/utils';
-import type { TimesheetCreate, Timesheet } from '../types';
+import type { TimesheetCreate, Timesheet, TimeOffRequest, TimeOffRequestCreate } from '../types';
 
 export function Dashboard() {
   const { user } = useAuthStore();
@@ -18,6 +19,12 @@ export function Dashboard() {
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState('');
   const [pwSubmitting, setPwSubmitting] = useState(false);
+  const [showTimeOffForm, setShowTimeOffForm] = useState(false);
+  const [timeOffData, setTimeOffData] = useState<TimeOffRequestCreate>({
+    start_date: '',
+    end_date: '',
+    reason: '',
+  });
 
   // Fetch assigned jobs
   const { data: jobs = [], isLoading: loadingJobs } = useQuery({
@@ -93,6 +100,33 @@ export function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
     },
   });
+
+  const { data: timeOffRequests = [], isLoading: loadingTimeOff } = useQuery({
+    queryKey: ['time-off'],
+    queryFn: () => timeOffApi.list(),
+  });
+
+  const createTimeOffMutation = useMutation({
+    mutationFn: timeOffApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['time-off'] });
+      setShowTimeOffForm(false);
+      setTimeOffData({ start_date: '', end_date: '', reason: '' });
+    },
+  });
+
+  const cancelTimeOffMutation = useMutation({
+    mutationFn: timeOffApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['time-off'] });
+    },
+  });
+
+  const handleTimeOffSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!timeOffData.start_date || !timeOffData.end_date || !timeOffData.reason) return;
+    createTimeOffMutation.mutate(timeOffData);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -576,6 +610,125 @@ export function Dashboard() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Time Off Requests */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Time Off</h2>
+          <button
+            onClick={() => setShowTimeOffForm(!showTimeOffForm)}
+            className="text-sm bg-obatek text-white px-3 py-1.5 rounded-lg hover:bg-obatek-dark transition-colors"
+          >
+            {showTimeOffForm ? 'Cancel' : 'Request Time Off'}
+          </button>
+        </div>
+
+        {showTimeOffForm && (
+          <div className="p-4 border-b bg-gray-50">
+            <form onSubmit={handleTimeOffSubmit} className="space-y-3">
+              {createTimeOffMutation.isError && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+                  Failed to submit request. Please try again.
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    value={timeOffData.start_date}
+                    onChange={(e) => setTimeOffData((prev) => ({ ...prev, start_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    value={timeOffData.end_date}
+                    onChange={(e) => setTimeOffData((prev) => ({ ...prev, end_date: e.target.value }))}
+                    min={timeOffData.start_date || undefined}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Reason</label>
+                <textarea
+                  value={timeOffData.reason}
+                  onChange={(e) => setTimeOffData((prev) => ({ ...prev, reason: e.target.value }))}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-y"
+                  placeholder="Reason for time off..."
+                  required
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={createTimeOffMutation.isPending}
+                  className="bg-obatek text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+                >
+                  {createTimeOffMutation.isPending ? 'Submitting...' : 'Submit Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {loadingTimeOff ? (
+          <div className="p-8 text-center text-gray-500">Loading...</div>
+        ) : timeOffRequests.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            No time-off requests.
+          </div>
+        ) : (
+          <div className="divide-y">
+            {timeOffRequests.map((req: TimeOffRequest) => (
+              <div key={req.id} className="p-4 hover:bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {formatDate(req.start_date)}
+                      {req.end_date !== req.start_date && ` – ${formatDate(req.end_date)}`}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-0.5">{req.reason}</p>
+                    {req.manager_note && (
+                      <p className="text-sm text-gray-500 mt-1 italic">Manager: {req.manager_note}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      req.status === 'approved' ? 'bg-green-100 text-green-700' :
+                      req.status === 'denied' ? 'bg-red-100 text-red-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                    </span>
+                    {req.status === 'pending' && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Cancel this time-off request?')) {
+                            cancelTimeOffMutation.mutate(req.id);
+                          }
+                        }}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                        title="Cancel request"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

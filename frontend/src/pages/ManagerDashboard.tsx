@@ -6,8 +6,9 @@ import { jobsApi } from '../api/jobs';
 import { clientsApi, ClientCreate } from '../api/clients';
 import { workersApi } from '../api/workers';
 import { payrollApi } from '../api/payroll';
+import { timeOffApi } from '../api/timeOff';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary } from '../types';
+import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, TimeOffRequest } from '../types';
 
 function getDateRange(start: string, end: string): string[] {
   const dates: string[] = [];
@@ -102,6 +103,33 @@ export function ManagerDashboard() {
   const { data: workers = [] } = useQuery({
     queryKey: ['workers'],
     queryFn: () => workersApi.list(),
+  });
+
+  // Fetch time-off requests
+  const { data: timeOffRequests = [] } = useQuery({
+    queryKey: ['time-off', 'all'],
+    queryFn: () => timeOffApi.list(),
+  });
+
+  const pendingTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'pending');
+  const approvedTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'approved');
+
+  const isWorkerOffOnDate = (workerId: number, date: string): boolean => {
+    return approvedTimeOff.some(
+      (r: TimeOffRequest) => r.worker_id === workerId && date >= r.start_date && date <= r.end_date
+    );
+  };
+
+  const isWorkerOffAllDates = (workerId: number, dates: string[]): boolean => {
+    return dates.length > 0 && dates.every((d) => isWorkerOffOnDate(workerId, d));
+  };
+
+  const reviewTimeOffMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { status: 'approved' | 'denied'; manager_note?: string } }) =>
+      timeOffApi.review(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['time-off'] });
+    },
   });
 
   // Create job mutation
@@ -556,35 +584,42 @@ export function ManagerDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {workers.map((worker: Worker) => (
+                        {workers
+                          .filter((worker: Worker) => !isWorkerOffAllDates(worker.id, getDateRange(formData.start_date!, formData.end_date!)))
+                          .map((worker: Worker) => (
                           <tr key={worker.id} className="hover:bg-gray-50">
                             <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
                             {getDateRange(formData.start_date!, formData.end_date!).map((d) => {
+                              const offOnDate = isWorkerOffOnDate(worker.id, d);
                               const isChecked = (formData.worker_schedule || []).some(
                                 (ws) => ws.worker_id === worker.id && ws.date === d
                               );
                               return (
-                                <td key={d} className="px-2 py-2 text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      setFormData((prev) => {
-                                        const schedule = [...(prev.worker_schedule || [])];
-                                        const idx = schedule.findIndex(
-                                          (ws) => ws.worker_id === worker.id && ws.date === d
-                                        );
-                                        if (idx >= 0) {
-                                          schedule.splice(idx, 1);
-                                        } else {
-                                          schedule.push({ worker_id: worker.id, date: d });
-                                        }
-                                        const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
-                                        return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
-                                      });
-                                    }}
-                                    className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
-                                  />
+                                <td key={d} className={`px-2 py-2 text-center ${offOnDate ? 'bg-red-50' : ''}`}>
+                                  {offOnDate ? (
+                                    <span className="text-xs text-red-400" title="On approved time off">OFF</span>
+                                  ) : (
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        setFormData((prev) => {
+                                          const schedule = [...(prev.worker_schedule || [])];
+                                          const idx = schedule.findIndex(
+                                            (ws) => ws.worker_id === worker.id && ws.date === d
+                                          );
+                                          if (idx >= 0) {
+                                            schedule.splice(idx, 1);
+                                          } else {
+                                            schedule.push({ worker_id: worker.id, date: d });
+                                          }
+                                          const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
+                                          return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
+                                        });
+                                      }}
+                                      className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                                    />
+                                  )}
                                 </td>
                               );
                             })}
@@ -902,35 +937,42 @@ export function ManagerDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y">
-                          {workers.map((worker: Worker) => (
+                          {workers
+                            .filter((worker: Worker) => !isWorkerOffAllDates(worker.id, getDateRange(editFormData.start_date!, editFormData.end_date!)))
+                            .map((worker: Worker) => (
                             <tr key={worker.id} className="hover:bg-gray-50">
                               <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
                               {getDateRange(editFormData.start_date!, editFormData.end_date!).map((d) => {
+                                const offOnDate = isWorkerOffOnDate(worker.id, d);
                                 const isChecked = (editFormData.worker_schedule || []).some(
                                   (ws) => ws.worker_id === worker.id && ws.date === d
                                 );
                                 return (
-                                  <td key={d} className="px-2 py-2 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => {
-                                        setEditFormData((prev) => {
-                                          const schedule = [...(prev.worker_schedule || [])];
-                                          const idx = schedule.findIndex(
-                                            (ws) => ws.worker_id === worker.id && ws.date === d
-                                          );
-                                          if (idx >= 0) {
-                                            schedule.splice(idx, 1);
-                                          } else {
-                                            schedule.push({ worker_id: worker.id, date: d });
-                                          }
-                                          const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
-                                          return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
-                                        });
-                                      }}
-                                      className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
-                                    />
+                                  <td key={d} className={`px-2 py-2 text-center ${offOnDate ? 'bg-red-50' : ''}`}>
+                                    {offOnDate ? (
+                                      <span className="text-xs text-red-400" title="On approved time off">OFF</span>
+                                    ) : (
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {
+                                          setEditFormData((prev) => {
+                                            const schedule = [...(prev.worker_schedule || [])];
+                                            const idx = schedule.findIndex(
+                                              (ws) => ws.worker_id === worker.id && ws.date === d
+                                            );
+                                            if (idx >= 0) {
+                                              schedule.splice(idx, 1);
+                                            } else {
+                                              schedule.push({ worker_id: worker.id, date: d });
+                                            }
+                                            const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
+                                            return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
+                                          });
+                                        }}
+                                        className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                                      />
+                                    )}
                                   </td>
                                 );
                               })}
@@ -1355,6 +1397,56 @@ export function ManagerDashboard() {
           <p className="text-xs text-gray-400 mt-1">Click to view &rarr;</p>
         </div>
       </div>
+
+      {/* Time-Off Requests */}
+      {pendingTimeOff.length > 0 && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Time-Off Requests</h2>
+            <span className="bg-yellow-100 text-yellow-700 text-xs font-medium px-2 py-0.5 rounded-full">
+              {pendingTimeOff.length} pending
+            </span>
+          </div>
+          <div className="divide-y">
+            {pendingTimeOff.map((req: TimeOffRequest) => (
+              <div key={req.id} className="p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{req.worker?.name}</p>
+                    <p className="text-sm text-gray-600 mt-0.5">
+                      {formatDate(req.start_date)}
+                      {req.end_date !== req.start_date && ` – ${formatDate(req.end_date)}`}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">{req.reason}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => reviewTimeOffMutation.mutate({ id: req.id, data: { status: 'approved' } })}
+                      disabled={reviewTimeOffMutation.isPending}
+                      className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => {
+                        const note = window.prompt('Reason for denial (optional):');
+                        reviewTimeOffMutation.mutate({
+                          id: req.id,
+                          data: { status: 'denied', manager_note: note || undefined },
+                        });
+                      }}
+                      disabled={reviewTimeOffMutation.isPending}
+                      className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Timesheets */}
       <div className="bg-white rounded-lg shadow">
