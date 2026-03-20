@@ -80,6 +80,7 @@ export function ManagerDashboard() {
   const [payrollPreview, setPayrollPreview] = useState<PayrollWorkerSummary[]>([]);
   const [payrollPreviewLoading, setPayrollPreviewLoading] = useState(false);
   const [currentWorkerIndex, setCurrentWorkerIndex] = useState(0);
+  const [selectedPayrollWorkerIds, setSelectedPayrollWorkerIds] = useState<number[]>([]);
 
   // Fetch all recent timesheets
   const { data: timesheets = [], isLoading: loadingTimesheets } = useQuery({
@@ -280,7 +281,8 @@ export function ManagerDashboard() {
     setPayrollPreviewLoading(true);
     setPayrollError(null);
     try {
-      const summaries = await payrollApi.previewPayroll(payrollStartDate, payrollEndDate);
+      const workerIds = selectedPayrollWorkerIds.length > 0 ? selectedPayrollWorkerIds : undefined;
+      const summaries = await payrollApi.previewPayroll(payrollStartDate, payrollEndDate, workerIds);
       setPayrollPreview(summaries);
       setCurrentWorkerIndex(0);
       setPayrollStep('review');
@@ -298,7 +300,8 @@ export function ManagerDashboard() {
     setPayrollError(null);
     setPayrollSuccess(null);
     try {
-      const blob = await payrollApi.processPayroll(payrollStartDate, payrollEndDate);
+      const workerIds = selectedPayrollWorkerIds.length > 0 ? selectedPayrollWorkerIds : undefined;
+      const blob = await payrollApi.processPayroll(payrollStartDate, payrollEndDate, workerIds);
       // Trigger browser download
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -395,6 +398,7 @@ export function ManagerDashboard() {
               setShowPayrollModal(true);
               setPayrollError(null);
               setPayrollSuccess(null);
+              setSelectedPayrollWorkerIds(workers.map((w: Worker) => w.id));
             }}
             className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
           >
@@ -1102,7 +1106,7 @@ export function ManagerDashboard() {
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 my-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">
-                {payrollStep === 'dates' && 'Process Payroll — Select Dates'}
+                {payrollStep === 'dates' && 'Process Payroll'}
                 {payrollStep === 'review' && `Process Payroll — Review Worker ${currentWorkerIndex + 1} of ${payrollPreview.length}`}
                 {payrollStep === 'done' && 'Process Payroll — Complete'}
               </h2>
@@ -1116,6 +1120,7 @@ export function ManagerDashboard() {
                   setPayrollStep('dates');
                   setPayrollPreview([]);
                   setCurrentWorkerIndex(0);
+                  setSelectedPayrollWorkerIds([]);
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -1125,7 +1130,7 @@ export function ManagerDashboard() {
               </button>
             </div>
 
-            {/* Step 1: Date Selection */}
+            {/* Step 1: Date & Worker Selection */}
             {payrollStep === 'dates' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -1149,6 +1154,45 @@ export function ManagerDashboard() {
                   </div>
                 </div>
 
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Select Workers</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedPayrollWorkerIds.length === workers.length) {
+                          setSelectedPayrollWorkerIds([]);
+                        } else {
+                          setSelectedPayrollWorkerIds(workers.map((w: Worker) => w.id));
+                        }
+                      }}
+                      className="text-xs text-obatek hover:text-obatek-dark transition-colors"
+                    >
+                      {selectedPayrollWorkerIds.length === workers.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y">
+                    {workers.map((w: Worker) => (
+                      <label key={w.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedPayrollWorkerIds.includes(w.id)}
+                          onChange={() => {
+                            setSelectedPayrollWorkerIds((prev) =>
+                              prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id]
+                            );
+                          }}
+                          className="rounded border-gray-300 text-obatek focus:ring-obatek"
+                        />
+                        <span className="text-sm text-gray-700">{w.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {selectedPayrollWorkerIds.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">{selectedPayrollWorkerIds.length} of {workers.length} workers selected</p>
+                  )}
+                </div>
+
                 {payrollError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                     <p className="text-red-800 text-sm">{payrollError}</p>
@@ -1163,6 +1207,7 @@ export function ManagerDashboard() {
                       setPayrollStartDate('');
                       setPayrollEndDate('');
                       setPayrollError(null);
+                      setSelectedPayrollWorkerIds([]);
                     }}
                     className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                   >
@@ -1170,7 +1215,7 @@ export function ManagerDashboard() {
                   </button>
                   <button
                     onClick={handlePreviewPayroll}
-                    disabled={payrollPreviewLoading || !payrollStartDate || !payrollEndDate}
+                    disabled={payrollPreviewLoading || !payrollStartDate || !payrollEndDate || selectedPayrollWorkerIds.length === 0}
                     className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
                     {payrollPreviewLoading ? (
@@ -1354,6 +1399,7 @@ export function ManagerDashboard() {
                       setPayrollStep('dates');
                       setPayrollPreview([]);
                       setCurrentWorkerIndex(0);
+                      setSelectedPayrollWorkerIds([]);
                     }}
                     className="px-4 py-2 bg-obatek text-white rounded-lg font-medium hover:bg-obatek-dark transition-colors"
                   >
