@@ -28,6 +28,8 @@ class TimeOffRequestReview(BaseModel):
 class TimeOffRequestResponse(BaseModel):
     id: int
     worker_id: int
+    start_date: dt.date
+    end_date: dt.date
     dates: list[str]
     reason: str
     status: str

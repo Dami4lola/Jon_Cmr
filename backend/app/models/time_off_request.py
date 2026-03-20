@@ -16,6 +16,8 @@ class TimeOffRequest(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     worker_id: int = Field(foreign_key="worker.id", index=True)
+    start_date: dt.date
+    end_date: dt.date
     dates: list[str] = Field(sa_column=Column(JSON, nullable=False))
     reason: str = Field(max_length=500)
     status: str = Field(default="pending", index=True)

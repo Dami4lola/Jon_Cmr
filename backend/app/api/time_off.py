@@ -22,6 +22,8 @@ def request_to_response(req: TimeOffRequest) -> TimeOffRequestResponse:
     return TimeOffRequestResponse(
         id=req.id,
         worker_id=req.worker_id,
+        start_date=req.start_date,
+        end_date=req.end_date,
         dates=req.dates,
         reason=req.reason,
         status=req.status,
@@ -78,9 +80,12 @@ def create_time_off_request(
     if not worker:
         raise HTTPException(status_code=404, detail="Worker profile not found")
 
+    sorted_dates = sorted(data.dates)
     req = TimeOffRequest(
         worker_id=worker.id,
-        dates=[d.isoformat() for d in data.dates],
+        start_date=sorted_dates[0],
+        end_date=sorted_dates[-1],
+        dates=[d.isoformat() for d in sorted_dates],
         reason=data.reason,
     )
     session.add(req)
