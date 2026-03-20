@@ -384,8 +384,7 @@ export interface SmsLog {
 export interface TimeOffRequest {
   id: number;
   worker_id: number;
-  start_date: string;
-  end_date: string;
+  dates: string[];
   reason: string;
   status: 'pending' | 'approved' | 'denied';
   manager_note?: string | null;
@@ -397,8 +396,7 @@ export interface TimeOffRequest {
 }
 
 export interface TimeOffRequestCreate {
-  start_date: string;
-  end_date: string;
+  dates: string[];
   reason: string;
 }
 

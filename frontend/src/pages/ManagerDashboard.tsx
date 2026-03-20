@@ -116,7 +116,7 @@ export function ManagerDashboard() {
 
   const isWorkerOffOnDate = (workerId: number, date: string): boolean => {
     return approvedTimeOff.some(
-      (r: TimeOffRequest) => r.worker_id === workerId && date >= r.start_date && date <= r.end_date
+      (r: TimeOffRequest) => r.worker_id === workerId && r.dates.includes(date)
     );
   };
 
@@ -1414,8 +1414,7 @@ export function ManagerDashboard() {
                   <div>
                     <p className="font-medium text-gray-900">{req.worker?.name}</p>
                     <p className="text-sm text-gray-600 mt-0.5">
-                      {formatDate(req.start_date)}
-                      {req.end_date !== req.start_date && ` – ${formatDate(req.end_date)}`}
+                      {req.dates.map((d: string) => formatDate(d)).join(', ')}
                     </p>
                     <p className="text-sm text-gray-500 mt-1">{req.reason}</p>
                   </div>

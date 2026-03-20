@@ -22,8 +22,7 @@ def request_to_response(req: TimeOffRequest) -> TimeOffRequestResponse:
     return TimeOffRequestResponse(
         id=req.id,
         worker_id=req.worker_id,
-        start_date=req.start_date,
-        end_date=req.end_date,
+        dates=req.dates,
         reason=req.reason,
         status=req.status,
         manager_note=req.manager_note,
@@ -81,8 +80,7 @@ def create_time_off_request(
 
     req = TimeOffRequest(
         worker_id=worker.id,
-        start_date=data.start_date,
-        end_date=data.end_date,
+        dates=[d.isoformat() for d in data.dates],
         reason=data.reason,
     )
     session.add(req)

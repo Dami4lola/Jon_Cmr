@@ -1,13 +1,17 @@
 import { useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek,
+  eachDayOfInterval, format, addMonths, subMonths, isSameMonth,
+} from 'date-fns';
 import { jobsApi } from '../api/jobs';
 import { timesheetsApi } from '../api/timesheets';
 import { timeOffApi } from '../api/timeOff';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 import { formatCurrency, formatDate, getCoworkerSchedule, formatShortDate } from '../lib/utils';
-import type { TimesheetCreate, Timesheet, TimeOffRequest, TimeOffRequestCreate } from '../types';
+import type { TimesheetCreate, Timesheet, TimeOffRequest } from '../types';
 
 export function Dashboard() {
   const { user } = useAuthStore();
@@ -20,11 +24,9 @@ export function Dashboard() {
   const [pwSuccess, setPwSuccess] = useState('');
   const [pwSubmitting, setPwSubmitting] = useState(false);
   const [showTimeOffForm, setShowTimeOffForm] = useState(false);
-  const [timeOffData, setTimeOffData] = useState<TimeOffRequestCreate>({
-    start_date: '',
-    end_date: '',
-    reason: '',
-  });
+  const [timeOffDates, setTimeOffDates] = useState<string[]>([]);
+  const [timeOffReason, setTimeOffReason] = useState('');
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   // Fetch assigned jobs
   const { data: jobs = [], isLoading: loadingJobs } = useQuery({
@@ -111,7 +113,8 @@ export function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['time-off'] });
       setShowTimeOffForm(false);
-      setTimeOffData({ start_date: '', end_date: '', reason: '' });
+      setTimeOffDates([]);
+      setTimeOffReason('');
     },
   });
 
@@ -122,11 +125,25 @@ export function Dashboard() {
     },
   });
 
+  const toggleTimeOffDate = (dateStr: string) => {
+    setTimeOffDates((prev) =>
+      prev.includes(dateStr) ? prev.filter((d) => d !== dateStr) : [...prev, dateStr].sort()
+    );
+  };
+
   const handleTimeOffSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!timeOffData.start_date || !timeOffData.end_date || !timeOffData.reason) return;
-    createTimeOffMutation.mutate(timeOffData);
+    if (timeOffDates.length === 0 || !timeOffReason.trim()) return;
+    createTimeOffMutation.mutate({ dates: timeOffDates, reason: timeOffReason });
   };
+
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(calendarMonth);
+    const monthEnd = endOfMonth(calendarMonth);
+    const start = startOfWeek(monthStart);
+    const end = endOfWeek(monthEnd);
+    return eachDayOfInterval({ start, end });
+  }, [calendarMonth]);
 
   const resetForm = () => {
     setFormData({
@@ -638,34 +655,68 @@ export function Dashboard() {
                   Failed to submit request. Please try again.
                 </div>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={timeOffData.start_date}
-                    onChange={(e) => setTimeOffData((prev) => ({ ...prev, start_date: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                    required
-                  />
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">Select Dates</label>
+                <div className="bg-white border border-gray-200 rounded-lg p-3 max-w-xs">
+                  <div className="flex items-center justify-between mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth((m) => subMonths(m, 1))}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-sm font-medium">{format(calendarMonth, 'MMMM yyyy')}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCalendarMonth((m) => addMonths(m, 1))}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-0.5 text-center">
+                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                      <div key={d} className="text-[10px] font-medium text-gray-400 py-1">{d}</div>
+                    ))}
+                    {calendarDays.map((day) => {
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const isCurrentMonth = isSameMonth(day, calendarMonth);
+                      const isSelected = timeOffDates.includes(dateStr);
+                      return (
+                        <button
+                          key={dateStr}
+                          type="button"
+                          onClick={() => toggleTimeOffDate(dateStr)}
+                          className={`text-xs py-1.5 rounded transition-colors ${
+                            !isCurrentMonth
+                              ? 'text-gray-300'
+                              : isSelected
+                                ? 'bg-obatek text-white font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {format(day, 'd')}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={timeOffData.end_date}
-                    onChange={(e) => setTimeOffData((prev) => ({ ...prev, end_date: e.target.value }))}
-                    min={timeOffData.start_date || undefined}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-                    required
-                  />
-                </div>
+                {timeOffDates.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {timeOffDates.length} date{timeOffDates.length > 1 ? 's' : ''} selected: {timeOffDates.map((d) => formatDate(d)).join(', ')}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Reason</label>
                 <textarea
-                  value={timeOffData.reason}
-                  onChange={(e) => setTimeOffData((prev) => ({ ...prev, reason: e.target.value }))}
+                  value={timeOffReason}
+                  onChange={(e) => setTimeOffReason(e.target.value)}
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-y"
                   placeholder="Reason for time off..."
@@ -675,7 +726,7 @@ export function Dashboard() {
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  disabled={createTimeOffMutation.isPending}
+                  disabled={createTimeOffMutation.isPending || timeOffDates.length === 0}
                   className="bg-obatek text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
                 >
                   {createTimeOffMutation.isPending ? 'Submitting...' : 'Submit Request'}
@@ -698,8 +749,7 @@ export function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium text-gray-900">
-                      {formatDate(req.start_date)}
-                      {req.end_date !== req.start_date && ` – ${formatDate(req.end_date)}`}
+                      {req.dates.map((d: string) => formatDate(d)).join(', ')}
                     </p>
                     <p className="text-sm text-gray-600 mt-0.5">{req.reason}</p>
                     {req.manager_note && (

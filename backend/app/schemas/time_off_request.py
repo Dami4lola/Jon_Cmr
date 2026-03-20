@@ -1,22 +1,23 @@
 """
 Time-off request schemas
 """
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator
 import datetime as dt
 
 from .worker import WorkerBrief
 
 
 class TimeOffRequestCreate(BaseModel):
-    start_date: dt.date
-    end_date: dt.date
+    dates: list[dt.date] = Field(..., min_length=1)
     reason: str = Field(..., min_length=1, max_length=500)
 
-    @model_validator(mode="after")
-    def validate_dates(self):
-        if self.end_date < self.start_date:
-            raise ValueError("end_date must be on or after start_date")
-        return self
+    @field_validator("dates")
+    @classmethod
+    def validate_dates(cls, v: list[dt.date]) -> list[dt.date]:
+        unique = sorted(set(v))
+        if len(unique) != len(v):
+            v = unique
+        return sorted(v)
 
 
 class TimeOffRequestReview(BaseModel):
@@ -27,8 +28,7 @@ class TimeOffRequestReview(BaseModel):
 class TimeOffRequestResponse(BaseModel):
     id: int
     worker_id: int
-    start_date: dt.date
-    end_date: dt.date
+    dates: list[str]
     reason: str
     status: str
     manager_note: str | None
