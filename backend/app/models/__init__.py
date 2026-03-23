@@ -14,6 +14,7 @@ from .inspection import JobInspection, InspectionPhoto
 from .job_photo import JobPhoto
 from .settings import AppSettings
 from .sms_log import SmsLog
+from .time_off_request import TimeOffRequest
 
 __all__ = [
     "Role",
@@ -33,4 +34,5 @@ __all__ = [
     "JobInspection",
     "InspectionPhoto",
     "SmsLog",
+    "TimeOffRequest",
 ]

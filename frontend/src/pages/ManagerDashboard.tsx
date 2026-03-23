@@ -6,8 +6,9 @@ import { jobsApi } from '../api/jobs';
 import { clientsApi, ClientCreate } from '../api/clients';
 import { workersApi } from '../api/workers';
 import { payrollApi } from '../api/payroll';
+import { timeOffApi } from '../api/timeOff';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary } from '../types';
+import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, TimeOffRequest } from '../types';
 
 function getDateRange(start: string, end: string): string[] {
   const dates: string[] = [];
@@ -79,6 +80,7 @@ export function ManagerDashboard() {
   const [payrollPreview, setPayrollPreview] = useState<PayrollWorkerSummary[]>([]);
   const [payrollPreviewLoading, setPayrollPreviewLoading] = useState(false);
   const [currentWorkerIndex, setCurrentWorkerIndex] = useState(0);
+  const [selectedPayrollWorkerIds, setSelectedPayrollWorkerIds] = useState<number[]>([]);
 
   // Fetch all recent timesheets
   const { data: timesheets = [], isLoading: loadingTimesheets } = useQuery({
@@ -102,6 +104,33 @@ export function ManagerDashboard() {
   const { data: workers = [] } = useQuery({
     queryKey: ['workers'],
     queryFn: () => workersApi.list(),
+  });
+
+  // Fetch time-off requests
+  const { data: timeOffRequests = [] } = useQuery({
+    queryKey: ['time-off', 'all'],
+    queryFn: () => timeOffApi.list(),
+  });
+
+  const pendingTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'pending');
+  const approvedTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'approved');
+
+  const isWorkerOffOnDate = (workerId: number, date: string): boolean => {
+    return approvedTimeOff.some(
+      (r: TimeOffRequest) => r.worker_id === workerId && r.dates.includes(date)
+    );
+  };
+
+  const isWorkerOffAllDates = (workerId: number, dates: string[]): boolean => {
+    return dates.length > 0 && dates.every((d) => isWorkerOffOnDate(workerId, d));
+  };
+
+  const reviewTimeOffMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { status: 'approved' | 'denied'; manager_note?: string } }) =>
+      timeOffApi.review(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['time-off'] });
+    },
   });
 
   // Create job mutation
@@ -252,7 +281,8 @@ export function ManagerDashboard() {
     setPayrollPreviewLoading(true);
     setPayrollError(null);
     try {
-      const summaries = await payrollApi.previewPayroll(payrollStartDate, payrollEndDate);
+      const workerIds = selectedPayrollWorkerIds.length > 0 ? selectedPayrollWorkerIds : undefined;
+      const summaries = await payrollApi.previewPayroll(payrollStartDate, payrollEndDate, workerIds);
       setPayrollPreview(summaries);
       setCurrentWorkerIndex(0);
       setPayrollStep('review');
@@ -270,7 +300,8 @@ export function ManagerDashboard() {
     setPayrollError(null);
     setPayrollSuccess(null);
     try {
-      const blob = await payrollApi.processPayroll(payrollStartDate, payrollEndDate);
+      const workerIds = selectedPayrollWorkerIds.length > 0 ? selectedPayrollWorkerIds : undefined;
+      const blob = await payrollApi.processPayroll(payrollStartDate, payrollEndDate, workerIds);
       // Trigger browser download
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -367,6 +398,7 @@ export function ManagerDashboard() {
               setShowPayrollModal(true);
               setPayrollError(null);
               setPayrollSuccess(null);
+              setSelectedPayrollWorkerIds(workers.map((w: Worker) => w.id));
             }}
             className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
           >
@@ -556,35 +588,42 @@ export function ManagerDashboard() {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {workers.map((worker: Worker) => (
+                        {workers
+                          .filter((worker: Worker) => !isWorkerOffAllDates(worker.id, getDateRange(formData.start_date!, formData.end_date!)))
+                          .map((worker: Worker) => (
                           <tr key={worker.id} className="hover:bg-gray-50">
                             <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
                             {getDateRange(formData.start_date!, formData.end_date!).map((d) => {
+                              const offOnDate = isWorkerOffOnDate(worker.id, d);
                               const isChecked = (formData.worker_schedule || []).some(
                                 (ws) => ws.worker_id === worker.id && ws.date === d
                               );
                               return (
-                                <td key={d} className="px-2 py-2 text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      setFormData((prev) => {
-                                        const schedule = [...(prev.worker_schedule || [])];
-                                        const idx = schedule.findIndex(
-                                          (ws) => ws.worker_id === worker.id && ws.date === d
-                                        );
-                                        if (idx >= 0) {
-                                          schedule.splice(idx, 1);
-                                        } else {
-                                          schedule.push({ worker_id: worker.id, date: d });
-                                        }
-                                        const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
-                                        return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
-                                      });
-                                    }}
-                                    className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
-                                  />
+                                <td key={d} className={`px-2 py-2 text-center ${offOnDate ? 'bg-red-50' : ''}`}>
+                                  {offOnDate ? (
+                                    <span className="text-xs text-red-400" title="On approved time off">OFF</span>
+                                  ) : (
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {
+                                        setFormData((prev) => {
+                                          const schedule = [...(prev.worker_schedule || [])];
+                                          const idx = schedule.findIndex(
+                                            (ws) => ws.worker_id === worker.id && ws.date === d
+                                          );
+                                          if (idx >= 0) {
+                                            schedule.splice(idx, 1);
+                                          } else {
+                                            schedule.push({ worker_id: worker.id, date: d });
+                                          }
+                                          const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
+                                          return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
+                                        });
+                                      }}
+                                      className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                                    />
+                                  )}
                                 </td>
                               );
                             })}
@@ -902,35 +941,42 @@ export function ManagerDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y">
-                          {workers.map((worker: Worker) => (
+                          {workers
+                            .filter((worker: Worker) => !isWorkerOffAllDates(worker.id, getDateRange(editFormData.start_date!, editFormData.end_date!)))
+                            .map((worker: Worker) => (
                             <tr key={worker.id} className="hover:bg-gray-50">
                               <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
                               {getDateRange(editFormData.start_date!, editFormData.end_date!).map((d) => {
+                                const offOnDate = isWorkerOffOnDate(worker.id, d);
                                 const isChecked = (editFormData.worker_schedule || []).some(
                                   (ws) => ws.worker_id === worker.id && ws.date === d
                                 );
                                 return (
-                                  <td key={d} className="px-2 py-2 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => {
-                                        setEditFormData((prev) => {
-                                          const schedule = [...(prev.worker_schedule || [])];
-                                          const idx = schedule.findIndex(
-                                            (ws) => ws.worker_id === worker.id && ws.date === d
-                                          );
-                                          if (idx >= 0) {
-                                            schedule.splice(idx, 1);
-                                          } else {
-                                            schedule.push({ worker_id: worker.id, date: d });
-                                          }
-                                          const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
-                                          return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
-                                        });
-                                      }}
-                                      className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
-                                    />
+                                  <td key={d} className={`px-2 py-2 text-center ${offOnDate ? 'bg-red-50' : ''}`}>
+                                    {offOnDate ? (
+                                      <span className="text-xs text-red-400" title="On approved time off">OFF</span>
+                                    ) : (
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {
+                                          setEditFormData((prev) => {
+                                            const schedule = [...(prev.worker_schedule || [])];
+                                            const idx = schedule.findIndex(
+                                              (ws) => ws.worker_id === worker.id && ws.date === d
+                                            );
+                                            if (idx >= 0) {
+                                              schedule.splice(idx, 1);
+                                            } else {
+                                              schedule.push({ worker_id: worker.id, date: d });
+                                            }
+                                            const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
+                                            return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
+                                          });
+                                        }}
+                                        className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                                      />
+                                    )}
                                   </td>
                                 );
                               })}
@@ -1060,7 +1106,7 @@ export function ManagerDashboard() {
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 my-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">
-                {payrollStep === 'dates' && 'Process Payroll — Select Dates'}
+                {payrollStep === 'dates' && 'Process Payroll'}
                 {payrollStep === 'review' && `Process Payroll — Review Worker ${currentWorkerIndex + 1} of ${payrollPreview.length}`}
                 {payrollStep === 'done' && 'Process Payroll — Complete'}
               </h2>
@@ -1074,6 +1120,7 @@ export function ManagerDashboard() {
                   setPayrollStep('dates');
                   setPayrollPreview([]);
                   setCurrentWorkerIndex(0);
+                  setSelectedPayrollWorkerIds([]);
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -1083,7 +1130,7 @@ export function ManagerDashboard() {
               </button>
             </div>
 
-            {/* Step 1: Date Selection */}
+            {/* Step 1: Date & Worker Selection */}
             {payrollStep === 'dates' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -1107,6 +1154,45 @@ export function ManagerDashboard() {
                   </div>
                 </div>
 
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Select Workers</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedPayrollWorkerIds.length === workers.length) {
+                          setSelectedPayrollWorkerIds([]);
+                        } else {
+                          setSelectedPayrollWorkerIds(workers.map((w: Worker) => w.id));
+                        }
+                      }}
+                      className="text-xs text-obatek hover:text-obatek-dark transition-colors"
+                    >
+                      {selectedPayrollWorkerIds.length === workers.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y">
+                    {workers.map((w: Worker) => (
+                      <label key={w.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedPayrollWorkerIds.includes(w.id)}
+                          onChange={() => {
+                            setSelectedPayrollWorkerIds((prev) =>
+                              prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id]
+                            );
+                          }}
+                          className="rounded border-gray-300 text-obatek focus:ring-obatek"
+                        />
+                        <span className="text-sm text-gray-700">{w.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {selectedPayrollWorkerIds.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">{selectedPayrollWorkerIds.length} of {workers.length} workers selected</p>
+                  )}
+                </div>
+
                 {payrollError && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                     <p className="text-red-800 text-sm">{payrollError}</p>
@@ -1121,6 +1207,7 @@ export function ManagerDashboard() {
                       setPayrollStartDate('');
                       setPayrollEndDate('');
                       setPayrollError(null);
+                      setSelectedPayrollWorkerIds([]);
                     }}
                     className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                   >
@@ -1128,7 +1215,7 @@ export function ManagerDashboard() {
                   </button>
                   <button
                     onClick={handlePreviewPayroll}
-                    disabled={payrollPreviewLoading || !payrollStartDate || !payrollEndDate}
+                    disabled={payrollPreviewLoading || !payrollStartDate || !payrollEndDate || selectedPayrollWorkerIds.length === 0}
                     className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
                     {payrollPreviewLoading ? (
@@ -1312,6 +1399,7 @@ export function ManagerDashboard() {
                       setPayrollStep('dates');
                       setPayrollPreview([]);
                       setCurrentWorkerIndex(0);
+                      setSelectedPayrollWorkerIds([]);
                     }}
                     className="px-4 py-2 bg-obatek text-white rounded-lg font-medium hover:bg-obatek-dark transition-colors"
                   >
@@ -1355,6 +1443,55 @@ export function ManagerDashboard() {
           <p className="text-xs text-gray-400 mt-1">Click to view &rarr;</p>
         </div>
       </div>
+
+      {/* Time-Off Requests */}
+      {pendingTimeOff.length > 0 && (
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4 border-b flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Time-Off Requests</h2>
+            <span className="bg-yellow-100 text-yellow-700 text-xs font-medium px-2 py-0.5 rounded-full">
+              {pendingTimeOff.length} pending
+            </span>
+          </div>
+          <div className="divide-y">
+            {pendingTimeOff.map((req: TimeOffRequest) => (
+              <div key={req.id} className="p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{req.worker?.name}</p>
+                    <p className="text-sm text-gray-600 mt-0.5">
+                      {req.dates.map((d: string) => formatDate(d)).join(', ')}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">{req.reason}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => reviewTimeOffMutation.mutate({ id: req.id, data: { status: 'approved' } })}
+                      disabled={reviewTimeOffMutation.isPending}
+                      className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => {
+                        const note = window.prompt('Reason for denial (optional):');
+                        reviewTimeOffMutation.mutate({
+                          id: req.id,
+                          data: { status: 'denied', manager_note: note || undefined },
+                        });
+                      }}
+                      disabled={reviewTimeOffMutation.isPending}
+                      className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Timesheets */}
       <div className="bg-white rounded-lg shadow">

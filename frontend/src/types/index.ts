@@ -380,6 +380,31 @@ export interface SmsLog {
   created_at: string;
 }
 
+// Time-Off Request Types
+export interface TimeOffRequest {
+  id: number;
+  worker_id: number;
+  dates: string[];
+  reason: string;
+  status: 'pending' | 'approved' | 'denied';
+  manager_note?: string | null;
+  reviewed_by_id?: number | null;
+  reviewed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  worker?: WorkerBrief;
+}
+
+export interface TimeOffRequestCreate {
+  dates: string[];
+  reason: string;
+}
+
+export interface TimeOffRequestReview {
+  status: 'approved' | 'denied';
+  manager_note?: string;
+}
+
 export interface ApiError {
   detail: string;
 }

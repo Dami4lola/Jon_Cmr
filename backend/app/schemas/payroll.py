@@ -9,6 +9,7 @@ from datetime import date
 class PayrollProcessRequest(BaseModel):
     start_date: date
     end_date: date
+    worker_ids: list[int] | None = None
 
 
 class PayrollEntryDetail(BaseModel):

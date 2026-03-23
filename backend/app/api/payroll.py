@@ -44,9 +44,11 @@ def _build_payroll_summaries(
     session: object,
     start_date: date,
     end_date: date,
+    worker_ids: list[int] | None = None,
 ) -> tuple[list[PayrollWorkerSummary], list[Timesheet]]:
     """
-    Build payroll summaries for all workers with unpaid timesheets in date range.
+    Build payroll summaries for workers with unpaid timesheets in date range.
+    If worker_ids is provided, only include those workers.
     Returns (worker_summaries, timesheets).
     """
     statement = (
@@ -62,6 +64,8 @@ def _build_payroll_summaries(
         )
         .order_by(Timesheet.date)
     )
+    if worker_ids:
+        statement = statement.where(Timesheet.worker_id.in_(worker_ids))
     timesheets = session.exec(statement).all()
 
     if not timesheets:
@@ -183,7 +187,7 @@ def preview_payroll_period(
             detail="End date must be after start date",
         )
 
-    summaries, _ = _build_payroll_summaries(session, data.start_date, data.end_date)
+    summaries, _ = _build_payroll_summaries(session, data.start_date, data.end_date, data.worker_ids)
     return summaries
 
 
@@ -203,7 +207,7 @@ def process_payroll_period(
             detail="End date must be after start date",
         )
 
-    summaries, timesheets = _build_payroll_summaries(session, data.start_date, data.end_date)
+    summaries, timesheets = _build_payroll_summaries(session, data.start_date, data.end_date, data.worker_ids)
 
     # Generate PDFs
     worker_pdfs: list[tuple[str, bytes]] = []
