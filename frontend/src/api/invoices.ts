@@ -42,13 +42,29 @@ export const invoicesApi = {
     return response.data;
   },
 
-  // Helper to trigger PDF download in browser
   downloadPdfToFile: async (id: number, invoiceNumber: string): Promise<void> => {
     const blob = await invoicesApi.downloadPdf(id);
+    const filename = `Invoice-${invoiceNumber}.pdf`;
+
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
+      }
+    }
+
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Invoice-${invoiceNumber}.pdf`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
