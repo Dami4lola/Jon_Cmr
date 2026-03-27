@@ -34,6 +34,7 @@ export function Invoices() {
   const [invoiceStartNumberInput, setInvoiceStartNumberInput] = useState('');
   const [scopeOfWork, setScopeOfWork] = useState('');
   const [notes, setNotes] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
   const [showTimesheets, setShowTimesheets] = useState(false);
   const [expandedReceipts, setExpandedReceipts] = useState<Record<number, Receipt[]>>({});
 
@@ -88,6 +89,7 @@ export function Invoices() {
   const createMutation = useMutation({
     mutationFn: () =>
       invoicesApi.createForJob(selectedJobId!, {
+        invoice_number: invoiceNumber || undefined,
         scope_of_work: scopeOfWork || undefined,
         labour_amount: labourAmount,
         travel_amount: travelAmount,
@@ -162,6 +164,7 @@ export function Invoices() {
     setIncludeHst(true);
     setScopeOfWork('');
     setNotes('');
+    setInvoiceNumber('');
     setShowTimesheets(false);
     setExpandedReceipts({});
   };
@@ -177,6 +180,7 @@ export function Invoices() {
       const hours = parseFloat(preview.labour_hours);
       const amount = parseFloat(preview.labour_amount);
       setRate(hours > 0 ? Math.round((amount / hours) * 100) / 100 : 80);
+      setInvoiceNumber(preview.invoice_number);
       setStep('details');
     }
   };
@@ -389,6 +393,17 @@ export function Invoices() {
             {/* Step 2: Editable Details */}
             {step === 'details' && (
               <div className="space-y-5">
+                {/* Invoice Number */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number</label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  />
+                </div>
+
                 {/* Charges */}
                 <div>
                   <h4 className="text-sm font-semibold text-gray-900 mb-3">Charges</h4>

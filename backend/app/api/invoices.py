@@ -252,9 +252,17 @@ def create_invoice(
             amounts["hst_amount"] = Decimal("0")
         amounts["total"] = amounts["subtotal"] + amounts["hst_amount"]
 
+    inv_number = (data.invoice_number.strip() if data and data.invoice_number else "") or generate_invoice_number(session)
+    existing = session.exec(select(Invoice).where(Invoice.invoice_number == inv_number)).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invoice number {inv_number} is already in use",
+        )
+
     invoice = Invoice(
         job_id=job_id,
-        invoice_number=generate_invoice_number(session),
+        invoice_number=inv_number,
         scope_of_work=data.scope_of_work if data else None,
         due_date=date.today() + timedelta(days=30),
         notes=data.notes if data else "Payment due within 30 days.",
@@ -290,6 +298,7 @@ def preview_invoice(
     amounts = _calculate_invoice_amounts(session, job, None)
 
     return InvoicePreview(
+        invoice_number=generate_invoice_number(session),
         labour_hours=amounts["total_labour_hours"],
         labour_amount=amounts["labour_amount"],
         travel_km=amounts["total_distance_km"],

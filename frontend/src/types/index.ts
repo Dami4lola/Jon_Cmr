@@ -207,6 +207,7 @@ export interface Invoice {
 }
 
 export interface InvoiceCreate {
+  invoice_number?: string;
   scope_of_work?: string;
   labour_amount?: number;
   travel_amount?: number;
@@ -221,6 +222,7 @@ export interface InvoiceCreate {
 }
 
 export interface InvoicePreview {
+  invoice_number: string;
   labour_hours: string;
   labour_amount: string;
   travel_km: string;
