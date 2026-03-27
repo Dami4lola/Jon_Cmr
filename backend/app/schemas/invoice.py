@@ -11,6 +11,7 @@ from .client import ClientBrief
 
 class InvoiceCreate(BaseModel):
     """Create invoice - auto-calculates from job data, manager can override any field"""
+    invoice_number: str | None = None
     scope_of_work: str | None = None
     labour_amount: Decimal | None = None
     travel_amount: Decimal | None = None
@@ -26,6 +27,7 @@ class InvoiceCreate(BaseModel):
 
 class InvoicePreview(BaseModel):
     """Preview of auto-calculated invoice amounts before creation"""
+    invoice_number: str
     labour_hours: Decimal
     labour_amount: Decimal
     travel_km: Decimal

@@ -32,11 +32,12 @@ REDSEAL_RATE = Decimal("100.00")  # $100/hr for Red Seal trades (plumbing, etc.)
 HST_RATE = Decimal("0.13")
 
 
-def _round_hours(hours_worked: Decimal, minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
-    """Round hours to nearest 0.25 and apply minimum."""
+def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
     hours_float = float(hours_worked)
-    rounded = Decimal(str(round(hours_float * 4) / 4))
-    return max(rounded, minimum_hours)
+    break_float = float(break_duration)
+    rounded = (round(hours_float * 4) / 4) - break_float
+    billable = Decimal(str(max(rounded, 0)))
+    return max(billable, minimum_hours)
 
 
 def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
@@ -67,7 +68,7 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     inventory_materials = Decimal("0")
     for ts in timesheets:
         effective_min = ts.minimum_hours_override if ts.minimum_hours_override is not None else MINIMUM_HOURS
-        billable = _round_hours(ts.hours_worked, effective_min)
+        billable = _round_hours(ts.hours_worked, ts.break_duration, effective_min)
         total_labour_hours += billable
         rate = REDSEAL_RATE if job.is_redseal_trade else LABOUR_RATE
         labour_amount += billable * rate
@@ -251,9 +252,17 @@ def create_invoice(
             amounts["hst_amount"] = Decimal("0")
         amounts["total"] = amounts["subtotal"] + amounts["hst_amount"]
 
+    inv_number = (data.invoice_number.strip() if data and data.invoice_number else "") or generate_invoice_number(session)
+    existing = session.exec(select(Invoice).where(Invoice.invoice_number == inv_number)).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invoice number {inv_number} is already in use",
+        )
+
     invoice = Invoice(
         job_id=job_id,
-        invoice_number=generate_invoice_number(session),
+        invoice_number=inv_number,
         scope_of_work=data.scope_of_work if data else None,
         due_date=date.today() + timedelta(days=30),
         notes=data.notes if data else "Payment due within 30 days.",
@@ -289,6 +298,7 @@ def preview_invoice(
     amounts = _calculate_invoice_amounts(session, job, None)
 
     return InvoicePreview(
+        invoice_number=generate_invoice_number(session),
         labour_hours=amounts["total_labour_hours"],
         labour_amount=amounts["labour_amount"],
         travel_km=amounts["total_distance_km"],
