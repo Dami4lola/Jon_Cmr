@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, settingsApi } from '../api/invoices';
+import { timesheetsApi } from '../api/timesheets';
 import { jobsApi } from '../api/jobs';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Invoice, InvoicePreview, Job } from '../types';
+import type { Invoice, InvoicePreview, Job, Timesheet, Receipt } from '../types';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -31,8 +32,11 @@ export function Invoices() {
   const [includeHst, setIncludeHst] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [invoiceStartNumber, setInvoiceStartNumber] = useState(1);
+  const [invoiceStartNumberInput, setInvoiceStartNumberInput] = useState('');
   const [scopeOfWork, setScopeOfWork] = useState('');
   const [notes, setNotes] = useState('');
+  const [showTimesheets, setShowTimesheets] = useState(false);
+  const [expandedReceipts, setExpandedReceipts] = useState<Record<number, Receipt[]>>({});
 
   // Fetch invoices
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
@@ -51,6 +55,12 @@ export function Invoices() {
     queryKey: ['invoice-preview', selectedJobId],
     queryFn: () => invoicesApi.previewForJob(selectedJobId!),
     enabled: !!selectedJobId && step === 'select',
+  });
+
+  const { data: jobTimesheets = [] } = useQuery<Timesheet[]>({
+    queryKey: ['timesheets-by-job', selectedJobId],
+    queryFn: () => timesheetsApi.listByJob(selectedJobId!),
+    enabled: !!selectedJobId && step === 'details',
   });
 
   // Note: Form values are populated in handleNext() to avoid overwriting user edits
@@ -123,8 +133,10 @@ export function Invoices() {
     try {
       const data = await settingsApi.getInvoiceStartNumber();
       setInvoiceStartNumber(data.value);
+      setInvoiceStartNumberInput(String(data.value));
     } catch {
       setInvoiceStartNumber(1);
+      setInvoiceStartNumberInput('1');
     }
     setShowSettingsModal(true);
   };
@@ -153,6 +165,8 @@ export function Invoices() {
     setIncludeHst(true);
     setScopeOfWork('');
     setNotes('');
+    setShowTimesheets(false);
+    setExpandedReceipts({});
   };
 
   const handleNext = () => {
@@ -493,6 +507,85 @@ export function Invoices() {
                   </div>
                 </div>
 
+                {/* Timesheets & Receipts */}
+                {jobTimesheets.length > 0 && (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setShowTimesheets(!showTimesheets)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+                    >
+                      <span>Timesheets &amp; Receipts ({jobTimesheets.length})</span>
+                      <svg className={`w-4 h-4 transition-transform ${showTimesheets ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {showTimesheets && (
+                      <div className="divide-y divide-gray-100">
+                        {jobTimesheets.map((ts: Timesheet) => {
+                          const hours = parseFloat(ts.hours_worked);
+                          const breakHrs = parseFloat(ts.break_duration);
+                          const netHours = Math.max(hours - breakHrs, 0);
+                          return (
+                            <div key={ts.id} className="px-4 py-3">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium text-gray-900">{ts.worker?.name || 'Unknown'}</span>
+                                <span className="text-gray-500">{formatDate(ts.date)}</span>
+                              </div>
+                              <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-gray-600">
+                                <span>Hours: {hours}h</span>
+                                <span>Break: {breakHrs}h</span>
+                                <span>Net: {netHours.toFixed(2)}h</span>
+                              </div>
+                              {(parseFloat(ts.personal_materials) > 0 || parseFloat(ts.company_materials) > 0) && (
+                                <div className="mt-1 text-xs text-gray-600">
+                                  {parseFloat(ts.personal_materials) > 0 && <span className="mr-3">Materials: ${ts.personal_materials}</span>}
+                                  {parseFloat(ts.company_materials) > 0 && <span>Inventory: ${ts.company_materials}</span>}
+                                </div>
+                              )}
+                              {ts.notes && <p className="mt-1 text-xs text-gray-500 italic">{ts.notes}</p>}
+                              {ts.receipt_count > 0 && (
+                                <div className="mt-2">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (expandedReceipts[ts.id]) {
+                                        setExpandedReceipts((prev) => {
+                                          const next = { ...prev };
+                                          delete next[ts.id];
+                                          return next;
+                                        });
+                                      } else {
+                                        const receipts = await timesheetsApi.getReceipts(ts.id);
+                                        setExpandedReceipts((prev) => ({ ...prev, [ts.id]: receipts }));
+                                      }
+                                    }}
+                                    className="text-xs text-obatek hover:underline"
+                                  >
+                                    {expandedReceipts[ts.id] ? 'Hide' : 'View'} Receipts ({ts.receipt_count})
+                                  </button>
+                                  {expandedReceipts[ts.id] && (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {expandedReceipts[ts.id].map((r: Receipt) => (
+                                        <a key={r.id} href={r.image_url} target="_blank" rel="noopener noreferrer" className="block">
+                                          <div className="w-20 h-20 rounded border border-gray-200 overflow-hidden bg-gray-100">
+                                            <img src={r.image_url} alt={r.description || 'Receipt'} className="w-full h-full object-cover" />
+                                          </div>
+                                          {r.amount && <p className="text-xs text-center text-gray-600 mt-1">${r.amount}</p>}
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Live Totals */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="grid grid-cols-2 gap-1 text-sm">
@@ -580,9 +673,9 @@ export function Invoices() {
               </label>
               <input
                 type="number"
-                min={1}
-                value={invoiceStartNumber}
-                onChange={(e) => setInvoiceStartNumber(parseInt(e.target.value) || 1)}
+                min={0}
+                value={invoiceStartNumberInput}
+                onChange={(e) => setInvoiceStartNumberInput(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
               />
               <p className="text-xs text-gray-500 mt-1">
@@ -597,7 +690,7 @@ export function Invoices() {
                 Cancel
               </button>
               <button
-                onClick={() => saveStartNumberMutation.mutate(invoiceStartNumber)}
+                onClick={() => saveStartNumberMutation.mutate(parseInt(invoiceStartNumberInput) || 0)}
                 disabled={saveStartNumberMutation.isPending}
                 className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
               >

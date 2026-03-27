@@ -32,11 +32,12 @@ REDSEAL_RATE = Decimal("100.00")  # $100/hr for Red Seal trades (plumbing, etc.)
 HST_RATE = Decimal("0.13")
 
 
-def _round_hours(hours_worked: Decimal, minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
-    """Round hours to nearest 0.25 and apply minimum."""
+def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
     hours_float = float(hours_worked)
-    rounded = Decimal(str(round(hours_float * 4) / 4))
-    return max(rounded, minimum_hours)
+    break_float = float(break_duration)
+    rounded = (round(hours_float * 4) / 4) - break_float
+    billable = Decimal(str(max(rounded, 0)))
+    return max(billable, minimum_hours)
 
 
 def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
@@ -67,7 +68,7 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     inventory_materials = Decimal("0")
     for ts in timesheets:
         effective_min = ts.minimum_hours_override if ts.minimum_hours_override is not None else MINIMUM_HOURS
-        billable = _round_hours(ts.hours_worked, effective_min)
+        billable = _round_hours(ts.hours_worked, ts.break_duration, effective_min)
         total_labour_hours += billable
         rate = REDSEAL_RATE if job.is_redseal_trade else LABOUR_RATE
         labour_amount += billable * rate
