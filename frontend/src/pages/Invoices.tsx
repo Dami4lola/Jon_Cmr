@@ -31,7 +31,6 @@ export function Invoices() {
   const [rate, setRate] = useState(80);
   const [includeHst, setIncludeHst] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [invoiceStartNumber, setInvoiceStartNumber] = useState(1);
   const [invoiceStartNumberInput, setInvoiceStartNumberInput] = useState('');
   const [scopeOfWork, setScopeOfWork] = useState('');
   const [notes, setNotes] = useState('');
@@ -132,10 +131,8 @@ export function Invoices() {
   const handleOpenSettings = async () => {
     try {
       const data = await settingsApi.getInvoiceStartNumber();
-      setInvoiceStartNumber(data.value);
       setInvoiceStartNumberInput(String(data.value));
     } catch {
-      setInvoiceStartNumber(1);
       setInvoiceStartNumberInput('1');
     }
     setShowSettingsModal(true);
