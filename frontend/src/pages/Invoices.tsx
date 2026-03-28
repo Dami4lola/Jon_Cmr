@@ -549,7 +549,8 @@ export function Invoices() {
                           const hours = parseFloat(ts.hours_worked);
                           const breakHrs = parseFloat(ts.break_duration);
                           const netHours = Math.max(hours - breakHrs, 0);
-                          const hasMinimum = ts.minimum_hours_override === null || (ts.minimum_hours_override !== null && parseFloat(ts.minimum_hours_override) > 0);
+                          const override = ts.minimum_hours_override;
+                          const hasMinimum = override == null || parseFloat(override) > 0;
                           return (
                             <div key={ts.id} className="px-4 py-3">
                               <div className="flex items-center justify-between text-sm">
