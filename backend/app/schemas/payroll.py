@@ -13,6 +13,7 @@ class PayrollProcessRequest(BaseModel):
 
 
 class PayrollEntryDetail(BaseModel):
+    timesheet_id: int
     date: date
     customer_name: str
     job_description: str
@@ -25,6 +26,7 @@ class PayrollEntryDetail(BaseModel):
     km_rate: Decimal
     km_cost: Decimal
     personal_materials: Decimal
+    minimum_hours_override: Decimal | None
 
 
 class PayrollWorkerSummary(BaseModel):

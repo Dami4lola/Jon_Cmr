@@ -294,6 +294,12 @@ export function ManagerDashboard() {
     }
   };
 
+  const handleToggleMinHours = async (timesheetId: number, currentOverride: string | null) => {
+    const newValue = currentOverride === null || (currentOverride !== null && parseFloat(currentOverride) > 0) ? 0 : null;
+    await timesheetsApi.update(timesheetId, { minimum_hours_override: newValue });
+    await handlePreviewPayroll();
+  };
+
   const handleProcessPayroll = async () => {
     if (!payrollStartDate || !payrollEndDate) return;
     setPayrollProcessing(true);
@@ -1271,6 +1277,7 @@ export function ManagerDashboard() {
                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Labour</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">KM</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Materials</th>
+                          <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">4hr Min</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -1291,6 +1298,19 @@ export function ManagerDashboard() {
                             <td className="px-3 py-2 text-right text-gray-600">{parseFloat(entry.km_distance).toFixed(0)}</td>
                             <td className="px-3 py-2 text-right text-gray-600">
                               {parseFloat(entry.personal_materials) > 0 ? formatCurrency(entry.personal_materials) : '-'}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMinHours(entry.timesheet_id, entry.minimum_hours_override)}
+                                className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                  entry.minimum_hours_override === null || (entry.minimum_hours_override !== null && parseFloat(entry.minimum_hours_override) > 0)
+                                    ? 'bg-obatek/10 text-obatek hover:bg-obatek/20'
+                                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                }`}
+                              >
+                                {entry.minimum_hours_override === null || (entry.minimum_hours_override !== null && parseFloat(entry.minimum_hours_override) > 0) ? 'ON' : 'OFF'}
+                              </button>
                             </td>
                           </tr>
                         ))}

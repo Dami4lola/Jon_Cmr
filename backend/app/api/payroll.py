@@ -29,15 +29,15 @@ router = APIRouter()
 # Constants
 KM_RATE = Decimal("0.50")
 HST_RATE = Decimal("0.13")
+MINIMUM_HOURS = Decimal("4")
 
 
-def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0")) -> Decimal:
-    """Round hours to nearest 0.25 and subtract breaks."""
+def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
     hours_float = float(hours_worked)
     break_float = float(break_duration)
-    rounded = round(hours_float * 4) / 4
-    net_hours = rounded - break_float
-    return Decimal(str(max(net_hours, 0)))
+    rounded = (round(hours_float * 4) / 4) - break_float
+    billable = Decimal(str(max(rounded, 0)))
+    return max(billable, minimum_hours)
 
 
 def _build_payroll_summaries(
@@ -92,7 +92,8 @@ def _build_payroll_summaries(
         total_personal_materials = Decimal("0")
 
         for ts in worker_timesheets:
-            billable_hours = _round_hours(ts.hours_worked, ts.break_duration)
+            effective_min = ts.minimum_hours_override if ts.minimum_hours_override is not None else MINIMUM_HOURS
+            billable_hours = _round_hours(ts.hours_worked, ts.break_duration, effective_min)
             labour_cost = (billable_hours * worker.hourly_rate).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
@@ -109,6 +110,7 @@ def _build_payroll_summaries(
             client_name = ts.job.client.name if ts.job and ts.job.client else "Unknown"
 
             entry = PayrollEntryDetail(
+                timesheet_id=ts.id,
                 date=ts.date,
                 customer_name=client_name,
                 job_description=ts.job.title if ts.job else "",
@@ -121,6 +123,7 @@ def _build_payroll_summaries(
                 km_rate=KM_RATE,
                 km_cost=km_cost,
                 personal_materials=ts.personal_materials,
+                minimum_hours_override=ts.minimum_hours_override,
             )
             entries.append(entry)
 
