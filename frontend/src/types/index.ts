@@ -330,6 +330,7 @@ export interface PayrollProcessRequest {
 }
 
 export interface PayrollEntryDetail {
+  timesheet_id: number;
   date: string;
   customer_name: string;
   job_description: string;
@@ -342,6 +343,7 @@ export interface PayrollEntryDetail {
   km_rate: string;
   km_cost: string;
   personal_materials: string;
+  minimum_hours_override: string | null;
 }
 
 export interface PayrollWorkerSummary {

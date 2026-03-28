@@ -108,6 +108,17 @@ export function Invoices() {
     },
   });
 
+  const toggleMinHoursMutation = useMutation({
+    mutationFn: ({ id, currentOverride }: { id: number; currentOverride: string | null }) =>
+      timesheetsApi.update(id, {
+        minimum_hours_override: currentOverride === null || parseFloat(currentOverride) > 0 ? 0 : null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['timesheets-by-job', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-preview', selectedJobId] });
+    },
+  });
+
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: Invoice['status'] }) =>
       invoicesApi.updateStatus(id, status),
@@ -538,10 +549,24 @@ export function Invoices() {
                           const hours = parseFloat(ts.hours_worked);
                           const breakHrs = parseFloat(ts.break_duration);
                           const netHours = Math.max(hours - breakHrs, 0);
+                          const hasMinimum = ts.minimum_hours_override === null || (ts.minimum_hours_override !== null && parseFloat(ts.minimum_hours_override) > 0);
                           return (
                             <div key={ts.id} className="px-4 py-3">
                               <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium text-gray-900">{ts.worker?.name || 'Unknown'}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-900">{ts.worker?.name || 'Unknown'}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleMinHoursMutation.mutate({ id: ts.id, currentOverride: ts.minimum_hours_override ?? null })}
+                                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                      hasMinimum
+                                        ? 'bg-obatek/10 text-obatek hover:bg-obatek/20'
+                                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                    }`}
+                                  >
+                                    4hr Min {hasMinimum ? 'ON' : 'OFF'}
+                                  </button>
+                                </div>
                                 <span className="text-gray-500">{formatDate(ts.date)}</span>
                               </div>
                               <div className="mt-1 grid grid-cols-3 gap-2 text-xs text-gray-600">
