@@ -227,6 +227,22 @@ export function Calendar() {
                   {selectedEvent.address}
                 </p>
               )}
+              {selectedEvent.phone_number && (
+                <p>
+                  <span className="font-medium">Phone:</span>{' '}
+                  <a href={`tel:${selectedEvent.phone_number}`} className="text-obatek hover:underline">
+                    {selectedEvent.phone_number}
+                  </a>
+                </p>
+              )}
+              {selectedEvent.email && (
+                <p>
+                  <span className="font-medium">Email:</span>{' '}
+                  <a href={`mailto:${selectedEvent.email}`} className="text-obatek hover:underline">
+                    {selectedEvent.email}
+                  </a>
+                </p>
+              )}
               {selectedEvent.description && (
                 <p>
                   <span className="font-medium">Description:</span>{' '}

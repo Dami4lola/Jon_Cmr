@@ -111,3 +111,5 @@ class CalendarEvent(BaseModel):
     client: str
     address: str
     description: str
+    phone_number: str | None = None
+    email: str | None = None

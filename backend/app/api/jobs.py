@@ -225,6 +225,8 @@ def get_calendar_events(
                         client=job.client.name,
                         address=job.get_job_address(),
                         description=job.details or job.title,
+                        phone_number=job.client.phone_number,
+                        email=job.client.email,
                     ))
             else:
                 events.append(CalendarEvent(
@@ -237,6 +239,8 @@ def get_calendar_events(
                     client=job.client.name,
                     address=job.get_job_address(),
                     description=job.details or job.title,
+                    phone_number=job.client.phone_number,
+                    email=job.client.email,
                 ))
         else:
             events.append(CalendarEvent(
@@ -249,6 +253,8 @@ def get_calendar_events(
                 client=job.client.name,
                 address=job.get_job_address(),
                 description=job.details or job.title,
+                phone_number=job.client.phone_number,
+                email=job.client.email,
             ))
 
     return events
