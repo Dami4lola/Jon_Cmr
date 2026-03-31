@@ -131,6 +131,8 @@ export interface CalendarEvent {
   client: string;
   address: string;
   description: string;
+  phone_number?: string;
+  email?: string;
 }
 
 // Brief types for nested responses
