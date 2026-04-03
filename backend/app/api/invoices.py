@@ -1,7 +1,10 @@
 """
 Invoice API endpoints
 """
+import io
 import logging
+import zipfile
+import requests as http_requests
 from fastapi import APIRouter, HTTPException, status
 
 logger = logging.getLogger(__name__)
@@ -21,7 +24,7 @@ from ..schemas.invoice import (
 from ..schemas.job import JobBrief
 from ..schemas.client import ClientBrief
 from ..services.invoice_pdf import generate_invoice_pdf
-from .deps import DBSession, ManagerUser
+from .deps import DBSession, ManagerUser, AdminUser
 
 router = APIRouter()
 
@@ -33,6 +36,21 @@ HST_RATE = Decimal("0.13")
 
 
 def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
+    """
+    Round raw hours worked to the nearest quarter-hour, subtract break time,
+    and enforce a minimum billable floor.
+
+    Rounding uses float round() at 0.25-hour granularity (scale × 4, round, ÷ 4).
+    Break is subtracted after rounding. Result is floored at minimum_hours.
+
+    Args:
+        hours_worked: Raw hours from the timesheet entry.
+        break_duration: Unpaid break time in hours to subtract after rounding.
+        minimum_hours: Minimum billable floor (default 4.0 hours).
+
+    Returns:
+        Billable hours as a Decimal, >= 0 and >= minimum_hours.
+    """
     hours_float = float(hours_worked)
     break_float = float(break_duration)
     rounded = (round(hours_float * 4) / 4) - break_float
@@ -423,3 +441,73 @@ def delete_invoice(
 
     session.delete(invoice)
     session.commit()
+
+
+@router.get("/{invoice_id}/receipts/download")
+def download_invoice_receipts(
+    invoice_id: int,
+    session: DBSession,
+    current_user: AdminUser,
+):
+    """Download all receipts for an invoice's job timesheets as a ZIP file (admin only)"""
+    invoice = session.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invoice not found",
+        )
+
+    timesheets = session.exec(
+        select(Timesheet)
+        .where(Timesheet.job_id == invoice.job_id)
+        .options(
+            selectinload(Timesheet.receipts),
+            selectinload(Timesheet.worker),
+        )
+    ).all()
+
+    all_receipts = [
+        (receipt, ts.worker)
+        for ts in timesheets
+        for receipt in ts.receipts
+    ]
+    if not all_receipts:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No receipts found for this invoice",
+        )
+
+    zip_buffer = io.BytesIO()
+    downloaded_count = 0
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for receipt, worker in all_receipts:
+            try:
+                resp = http_requests.get(receipt.public_url, timeout=10)
+                resp.raise_for_status()
+            except Exception as e:
+                logger.warning(f"Failed to download receipt {receipt.id}: {e}")
+                continue
+
+            # Strip the UUID prefix added during S3 upload ("uuid_originalname.jpg" → "originalname.jpg")
+            raw_filename = receipt.public_url.split("/")[-1]
+            original_name = raw_filename.split("_", 1)[-1] if "_" in raw_filename else raw_filename
+            worker_slug = (worker.name if worker else "unknown").replace(" ", "_")
+            zip_filename = f"{receipt.id}_{worker_slug}_{original_name}"
+
+            zf.writestr(zip_filename, resp.content)
+            downloaded_count += 1
+
+    if downloaded_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download any receipts",
+        )
+
+    zip_buffer.seek(0)
+    filename = f"invoice_{invoice.invoice_number}_receipts.zip"
+    return Response(
+        content=zip_buffer.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

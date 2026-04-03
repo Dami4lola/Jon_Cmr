@@ -82,7 +82,9 @@ async function processMutation(mutation: QueuedMutation): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    console.error(`Failed to process mutation ${mutation.id}:`, error);
+    if (import.meta.env.DEV) {
+      console.error(`Failed to process mutation ${mutation.id}:`, error);
+    }
     return false;
   }
 }
@@ -114,7 +116,9 @@ export async function processMutationQueue(): Promise<{
         // Remove after max retries
         removeFromMutationQueue(mutation.id);
         failed++;
-        console.warn(`Mutation ${mutation.id} failed after ${MAX_RETRIES} retries, removing from queue`);
+        if (import.meta.env.DEV) {
+          console.warn(`Mutation ${mutation.id} failed after ${MAX_RETRIES} retries, removing from queue`);
+        }
       } else {
         // Update retry count in queue
         const updatedQueue = getMutationQueue().map((m) =>
@@ -142,15 +146,21 @@ export function setupOfflineSync() {
     if (syncInProgress) return;
 
     syncInProgress = true;
-    console.log('Back online, processing mutation queue...');
+    if (import.meta.env.DEV) {
+      console.log('Back online, processing mutation queue...');
+    }
 
     try {
       const result = await processMutationQueue();
       if (result.processed > 0 || result.failed > 0) {
-        console.log(`Sync complete: ${result.processed} processed, ${result.failed} failed`);
+        if (import.meta.env.DEV) {
+          console.log(`Sync complete: ${result.processed} processed, ${result.failed} failed`);
+        }
       }
     } catch (error) {
-      console.error('Error processing mutation queue:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error processing mutation queue:', error);
+      }
     } finally {
       syncInProgress = false;
     }

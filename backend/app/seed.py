@@ -1,9 +1,12 @@
 """
 Database seeding for initial data
 """
+import logging
 from sqlmodel import Session, select
 from .database import engine
 from .models import Role
+
+logger = logging.getLogger(__name__)
 
 # Initial roles to seed
 ROLES = [
@@ -24,7 +27,7 @@ def seed_roles():
             if not existing:
                 role = Role(**role_data)
                 session.add(role)
-                print(f"Created role: {role_data['name']}")
+                logger.info(f"Created role: {role_data['name']}")
 
         session.commit()
 

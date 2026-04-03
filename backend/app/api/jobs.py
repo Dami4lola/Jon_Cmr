@@ -74,6 +74,8 @@ def list_jobs(
     session: DBSession,
     current_user: CurrentUser,
     completed: bool | None = None,
+    skip: int = 0,
+    limit: int = 50,
 ):
     """
     List jobs.
@@ -102,7 +104,7 @@ def list_jobs(
             JobWorkerLink.worker_id == worker.id
         )
 
-    statement = statement.order_by(Job.start_date.desc())
+    statement = statement.order_by(Job.start_date.desc()).offset(skip).limit(limit)
     jobs = session.exec(statement).all()
 
     return [job_to_response(job, current_worker_id=worker_id) for job in jobs]

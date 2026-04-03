@@ -15,9 +15,11 @@ router = APIRouter()
 def list_workers(
     session: DBSession,
     current_user: ManagerUser,  # Only managers can list all workers
+    skip: int = 0,
+    limit: int = 50,
 ):
     """List all workers (manager only)"""
-    statement = select(Worker)
+    statement = select(Worker).offset(skip).limit(limit)
     workers = session.exec(statement).all()
     return workers
 

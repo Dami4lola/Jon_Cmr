@@ -4,9 +4,10 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 export function displayApiError(error: any) {
   const message = error.userMessage || getUserFriendlyMessage(error);
 
-  // For now, just log to console
-  // You can integrate with your toast notification system here
-  console.error('API Error:', message);
+  // For now, just log to console in dev (TODO: integrate with toast notification system)
+  if (import.meta.env.DEV) {
+    console.error('API Error:', message);
+  }
 
   // Example with toast:
   // toast.error(message);

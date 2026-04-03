@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, settingsApi } from '../api/invoices';
+import { useAuthStore } from '../store/authStore';
 import { timesheetsApi } from '../api/timesheets';
 import { jobsApi } from '../api/jobs';
 import { formatCurrency, formatDate } from '../lib/utils';
@@ -15,6 +16,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function Invoices() {
   const queryClient = useQueryClient();
+  const { isAdmin } = useAuthStore();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [step, setStep] = useState<'select' | 'details'>('select');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
@@ -159,6 +161,14 @@ export function Invoices() {
     }
   };
 
+  const handleDownloadReceipts = async (invoice: Invoice) => {
+    try {
+      await invoicesApi.downloadReceiptsToFile(invoice.id, invoice.invoice_number);
+    } catch {
+      alert('Failed to download receipts');
+    }
+  };
+
   const handleCloseModal = () => {
     setShowCreateModal(false);
     setStep('select');
@@ -294,6 +304,17 @@ export function Invoices() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </button>
+                        {isAdmin() && (
+                          <button
+                            onClick={() => handleDownloadReceipts(invoice)}
+                            className="text-gray-500 hover:text-gray-700 transition-colors"
+                            title="Download Receipts ZIP"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8M10 12v4m4-4v4" />
+                            </svg>
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             if (window.confirm('Are you sure you want to delete this invoice?')) {
