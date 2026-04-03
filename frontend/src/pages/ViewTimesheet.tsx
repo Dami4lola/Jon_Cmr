@@ -42,7 +42,7 @@ export function ViewTimesheet() {
         worked_at_hq: data.worked_at_hq,
         company_materials: data.company_materials ? Number(data.company_materials) : undefined,
         personal_materials: data.personal_materials ? Number(data.personal_materials) : undefined,
-        notes: data.notes || null,
+        notes: data.notes || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
