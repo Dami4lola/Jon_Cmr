@@ -62,9 +62,23 @@ def calculate_distance(destination: str) -> Decimal | None:
 
 def get_distance_info(destination: str) -> dict:
     """
-    Get detailed distance information including duration.
+    Get detailed distance information from office to destination via Google Maps
+    Distance Matrix API.
 
-    Returns dict with distance_km, duration_text, or error info.
+    Args:
+        destination: The destination address string.
+
+    Returns:
+        On success, a dict with keys:
+            - one_way_km (int): One-way distance in km (ceiling-rounded).
+            - round_trip_km (int): Round-trip distance in km (one_way_km * 2, ceiling-rounded).
+            - duration_one_way (str): Human-readable drive time, e.g. "1 hour 23 mins".
+            - origin (str): The office address used as the origin.
+            - destination (str): The destination address as passed in.
+
+        On failure, a dict with a single key:
+            - error (str): Description of what went wrong (missing API key,
+              address not found, network failure, etc.).
     """
     if not settings.GOOGLE_MAPS_API_KEY:
         return {"error": "Google Maps API key not configured"}

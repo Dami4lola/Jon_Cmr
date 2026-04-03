@@ -33,6 +33,21 @@ MINIMUM_HOURS = Decimal("4")
 
 
 def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
+    """
+    Round raw hours worked to the nearest quarter-hour, subtract break time,
+    and enforce a minimum billable floor.
+
+    Rounding uses float round() at 0.25-hour granularity (scale × 4, round, ÷ 4).
+    Break is subtracted after rounding. Result is floored at minimum_hours.
+
+    Args:
+        hours_worked: Raw hours from the timesheet entry.
+        break_duration: Unpaid break time in hours to subtract after rounding.
+        minimum_hours: Minimum billable floor (default 4.0 hours).
+
+    Returns:
+        Billable hours as a Decimal, >= 0 and >= minimum_hours.
+    """
     hours_float = float(hours_worked)
     break_float = float(break_duration)
     rounded = (round(hours_float * 4) / 4) - break_float

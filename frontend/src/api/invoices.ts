@@ -70,6 +70,42 @@ export const invoicesApi = {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   },
+
+  downloadReceipts: async (id: number): Promise<Blob> => {
+    const response = await api.get(`/invoices/${id}/receipts/download`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  downloadReceiptsToFile: async (id: number, invoiceNumber: string): Promise<void> => {
+    const blob = await invoicesApi.downloadReceipts(id);
+    const filename = `Invoice-${invoiceNumber}-receipts.zip`;
+
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'ZIP archive', accept: { 'application/zip': ['.zip'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
+      }
+    }
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 export const settingsApi = {

@@ -80,7 +80,9 @@ export function Dashboard() {
         try {
           await timesheetsApi.uploadReceipts(newTimesheet.id, filesToUpload);
         } catch (err) {
-          console.error('Receipt upload failed', err);
+          if (import.meta.env.DEV) {
+            console.error('Receipt upload failed', err);
+          }
           alert('Timesheet saved but receipt upload failed. Please try uploading receipts again.');
         } finally {
           setUploadingReceipts(false);

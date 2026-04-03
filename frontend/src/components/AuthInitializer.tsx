@@ -21,7 +21,9 @@ export function AuthInitializer({ children }: AuthInitializerProps) {
           login(token, user);
         } catch (error) {
           // Token is invalid or expired, clear auth state
-          console.log('Token validation failed, logging out');
+          if (import.meta.env.DEV) {
+            console.log('Token validation failed, logging out');
+          }
           logout();
         }
       }

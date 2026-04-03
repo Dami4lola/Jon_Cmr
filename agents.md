@@ -46,6 +46,7 @@ The OBATEK Worker Portal is a fullstack workforce management web application. It
 * Hallucination Prevention: Never provide information, package names, or code solutions you are not completely sure about. Instead, explicitly state "I don't know" or ask for clarification.
 * Adaptive Learning: Continuously analyze error fixes and manual style corrections made during the project. Update your internal approach to avoid repeating the same architectural, logic, or stylistic mistakes.
 * Clean Code: No comments explaining what the code does; only why if it's a complex distance calculation or specific PDF rendering workaround.
+remove variables that get replaced to prevent clutter
 * Strict Formatting: Never put emojis in code blocks under any circumstances.
 * Naming: Use precise domain terminology (`timesheet` instead of `log`, `worker` instead of `employee`, `inspection` instead of `check`). Keep variable names highly descriptive.
 * function Structure: A function should only ever need to do one thing and work on one level of abstraction unless absolutely needed.  

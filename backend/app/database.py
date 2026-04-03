@@ -1,9 +1,12 @@
 """
 Database configuration with SQLModel
 """
+import logging
 from sqlmodel import SQLModel, Session, create_engine
 from sqlalchemy import text, inspect
 from typing import Generator
+
+logger = logging.getLogger(__name__)
 
 from .config import settings
 
@@ -33,11 +36,11 @@ def _fix_inspection_tables():
     if "type" in columns:
         return  # Schema is correct
 
-    print("Fixing job_inspection table schema (missing 'type' column)...")
+    logger.info("Fixing job_inspection table schema (missing 'type' column)")
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS inspection_photo CASCADE"))
         conn.execute(text("DROP TABLE IF EXISTS job_inspection CASCADE"))
-    print("Dropped old inspection tables. create_all() will recreate them.")
+    logger.info("Dropped old inspection tables. create_all() will recreate them.")
 
 
 def create_db_and_tables():

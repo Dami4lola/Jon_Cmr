@@ -329,6 +329,12 @@ def update_timesheet(
             detail="Timesheet not found",
         )
 
+    if timesheet.is_paid:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot edit a paid timesheet",
+        )
+
     # Authorization: own timesheet or manager
     if not current_user.is_manager:
         worker = session.exec(
@@ -411,6 +417,12 @@ def upload_receipts(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Timesheet not found",
+        )
+
+    if timesheet.is_paid:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot add receipts to a paid timesheet",
         )
 
     # Authorization
