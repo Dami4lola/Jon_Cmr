@@ -113,7 +113,7 @@ def _build_payroll_summaries(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
 
-            if ts.used_company_truck:
+            if ts.used_company_truck or ts.worked_at_hq:
                 km_distance = Decimal("0")
                 km_cost = Decimal("0")
             else:
