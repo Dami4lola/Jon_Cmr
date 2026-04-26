@@ -1,4 +1,4 @@
-import api, { uploadFiles } from './client';
+import api from './client';
 import type { Timesheet, TimesheetCreate, Receipt } from '../types';
 
 export const timesheetsApi = {
