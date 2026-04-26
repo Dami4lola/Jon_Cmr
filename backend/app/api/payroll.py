@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Constants
-KM_RATE = Decimal("0.50")
+KM_RATE_OWN_VEHICLE = Decimal("0.85")
+KM_RATE_COMPANY_TRUCK = Decimal("0.50")
 HST_RATE = Decimal("0.13")
 MINIMUM_HOURS = Decimal("4")
 
@@ -113,12 +114,20 @@ def _build_payroll_summaries(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
 
-            if ts.used_company_truck or ts.worked_at_hq:
+            if ts.worked_at_hq:
                 km_distance = Decimal("0")
                 km_cost = Decimal("0")
+                km_rate_used = Decimal("0")
+            elif ts.used_company_truck:
+                km_distance = ts.job.calculated_distance_km or Decimal("0")
+                km_rate_used = KM_RATE_COMPANY_TRUCK
+                km_cost = (km_distance * km_rate_used).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
             else:
                 km_distance = ts.job.calculated_distance_km or Decimal("0")
-                km_cost = (km_distance * KM_RATE).quantize(
+                km_rate_used = KM_RATE_OWN_VEHICLE
+                km_cost = (km_distance * km_rate_used).quantize(
                     Decimal("0.01"), rounding=ROUND_HALF_UP
                 )
 
@@ -135,7 +144,7 @@ def _build_payroll_summaries(
                 labour_rate=worker.hourly_rate,
                 labour_cost=labour_cost,
                 km_distance=km_distance,
-                km_rate=KM_RATE,
+                km_rate=km_rate_used,
                 km_cost=km_cost,
                 personal_materials=ts.personal_materials,
                 minimum_hours_override=ts.minimum_hours_override,

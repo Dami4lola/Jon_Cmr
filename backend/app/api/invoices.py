@@ -30,7 +30,7 @@ from .deps import DBSession, ManagerUser, AdminUser
 
 router = APIRouter()
 
-MILEAGE_RATE = Decimal("1.00")
+MILEAGE_RATE = Decimal("2.00")
 MINIMUM_HOURS = Decimal("4.0")
 LABOUR_RATE = Decimal("80.00")  # $80/hr per tech for invoicing
 REDSEAL_RATE = Decimal("100.00")  # $100/hr for Red Seal trades (plumbing, etc.)
