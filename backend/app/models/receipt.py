@@ -15,11 +15,7 @@ class Receipt(SQLModel, table=True):
     __tablename__ = "receipt"
 
     id: int | None = Field(default=None, primary_key=True)
-    timesheet_id: int = Field(
-        foreign_key="timesheet.id",
-        index=True,
-        sa_column_kwargs={"ondelete": "CASCADE"},
-    )
+    timesheet_id: int = Field(foreign_key="timesheet.id", index=True)
 
     # S3 storage
     public_url: str = Field(default="")  # Public S3 URL
