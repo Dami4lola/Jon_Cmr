@@ -21,6 +21,7 @@ class InvoiceCreate(BaseModel):
     admin_fee: Decimal = Decimal("0")
     total_labour_hours: Decimal | None = None
     total_distance_km: Decimal | None = None
+    km_rate: Decimal = Decimal("1.50")
     include_hst: bool = True
     notes: str | None = None
 
@@ -62,6 +63,7 @@ class InvoiceResponse(BaseModel):
     admin_fee: Decimal
     total_labour_hours: Decimal
     total_distance_km: Decimal
+    km_rate: Decimal
 
     # Nested objects
     job: JobBrief
@@ -86,6 +88,7 @@ class InvoiceUpdate(BaseModel):
     admin_fee: Decimal | None = None
     total_labour_hours: Decimal | None = None
     total_distance_km: Decimal | None = None
+    km_rate: Decimal | None = None
     scope_of_work: str | None = None
     notes: str | None = None
     include_hst: bool | None = None

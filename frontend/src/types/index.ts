@@ -204,6 +204,7 @@ export interface Invoice {
   admin_fee: string;
   total_labour_hours: string;
   total_distance_km: string;
+  km_rate: string;
   job?: Job;
   client?: ClientBrief;
 }
@@ -219,6 +220,7 @@ export interface InvoiceCreate {
   admin_fee?: number;
   total_labour_hours?: number;
   total_distance_km?: number;
+  km_rate?: number;
   include_hst?: boolean;
   notes?: string;
 }
@@ -232,6 +234,7 @@ export interface InvoiceUpdate {
   admin_fee?: number;
   total_labour_hours?: number;
   total_distance_km?: number;
+  km_rate?: number;
   scope_of_work?: string;
   notes?: string;
   include_hst?: boolean;

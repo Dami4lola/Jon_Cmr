@@ -425,11 +425,11 @@ export function ViewTimesheet() {
               {anyReceiptAmounts && (
                 <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>Receipt Subtotal</span>
+                    <span>Receipt Subtotal (before tax)</span>
                     <span className="font-medium text-gray-900">{formatCurrency(receiptSubtotal.toFixed(2))}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>Receipt Total (incl. HST 13%)</span>
+                    <span>Receipt Total (after HST 13%)</span>
                     <span className="font-medium text-gray-900">{formatCurrency(receiptHstTotal.toFixed(2))}</span>
                   </div>
                 </div>

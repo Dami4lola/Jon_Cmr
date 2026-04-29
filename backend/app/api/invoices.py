@@ -30,7 +30,7 @@ from .deps import DBSession, ManagerUser, AdminUser
 
 router = APIRouter()
 
-MILEAGE_RATE = Decimal("2.00")
+DEFAULT_KM_RATE = Decimal("1.50")
 MINIMUM_HOURS = Decimal("4.0")
 LABOUR_RATE = Decimal("80.00")  # $80/hr per tech for invoicing
 REDSEAL_RATE = Decimal("100.00")  # $100/hr for Red Seal trades (plumbing, etc.)
@@ -107,7 +107,8 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
         daily_workers[ts.date].add(ts.worker_id)
     total_tech_trips = sum(len(w) for w in daily_workers.values())
     distance_km = per_tech_km * total_tech_trips
-    travel_amount = (distance_km * MILEAGE_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    km_rate = data.km_rate if data else DEFAULT_KM_RATE
+    travel_amount = (distance_km * km_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     dump_fee = data.dump_fee if data else Decimal("0")
     admin_fee = data.admin_fee if data else Decimal("0")
@@ -121,6 +122,7 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
         "total_labour_hours": total_labour_hours,
         "labour_amount": labour_amount,
         "total_distance_km": distance_km,
+        "km_rate": km_rate,
         "travel_amount": travel_amount,
         "materials_amount": materials_amount,
         "inventory_materials": inventory_materials,
@@ -153,6 +155,7 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
         admin_fee=invoice.admin_fee,
         total_labour_hours=invoice.total_labour_hours,
         total_distance_km=invoice.total_distance_km,
+        km_rate=invoice.km_rate,
         job=JobBrief(
             id=job.id,
             title=job.title,

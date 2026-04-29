@@ -30,6 +30,7 @@ export function Invoices() {
   const [inventoryMaterials, setInventoryMaterials] = useState(0);
   const [dumpFee, setDumpFee] = useState(0);
   const [adminFee, setAdminFee] = useState(0);
+  const [kmRate, setKmRate] = useState('1.50');
   const [rate, setRate] = useState(80);
   const [includeHst, setIncludeHst] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -123,6 +124,7 @@ export function Invoices() {
         admin_fee: adminFee,
         total_labour_hours: labourHours,
         total_distance_km: travelKm,
+        km_rate: parseFloat(kmRate) || 1.50,
         include_hst: includeHst,
         notes: notes || undefined,
       }),
@@ -213,6 +215,7 @@ export function Invoices() {
     setInventoryMaterials(0);
     setDumpFee(0);
     setAdminFee(0);
+    setKmRate('1.50');
     setIncludeHst(true);
     setScopeOfWork('');
     setNotes('');
@@ -230,6 +233,7 @@ export function Invoices() {
     setRate(hours > 0 ? Math.round((amount / hours) * 100) / 100 : 80);
     setTravelAmount(parseFloat(invoice.travel_amount));
     setTravelKm(parseFloat(invoice.total_distance_km));
+    setKmRate(parseFloat(invoice.km_rate).toFixed(2));
     setMaterialsAmount(parseFloat(invoice.materials_amount));
     setInventoryMaterials(parseFloat(invoice.inventory_materials));
     setDumpFee(parseFloat(invoice.dump_fee));
@@ -252,6 +256,7 @@ export function Invoices() {
     setInventoryMaterials(0);
     setDumpFee(0);
     setAdminFee(0);
+    setKmRate('1.50');
     setIncludeHst(true);
     setScopeOfWork('');
     setNotes('');
@@ -560,7 +565,7 @@ export function Invoices() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Travel (km)</label>
                         <input
@@ -568,6 +573,17 @@ export function Invoices() {
                           step="0.1"
                           value={travelKm}
                           onChange={(e) => setTravelKm(parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">KM Rate ($/km)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={kmRate}
+                          onChange={(e) => setKmRate(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                         />
                       </div>
@@ -851,7 +867,7 @@ export function Invoices() {
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Travel (km)</label>
                       <input
@@ -859,6 +875,17 @@ export function Invoices() {
                         step="0.1"
                         value={travelKm}
                         onChange={(e) => setTravelKm(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">KM Rate ($/km)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={kmRate}
+                        onChange={(e) => setKmRate(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                       />
                     </div>
@@ -986,6 +1013,7 @@ export function Invoices() {
                         admin_fee: adminFee,
                         total_labour_hours: labourHours,
                         total_distance_km: travelKm,
+                        km_rate: parseFloat(kmRate) || 1.50,
                         scope_of_work: scopeOfWork || undefined,
                         notes: notes || undefined,
                         include_hst: includeHst,
