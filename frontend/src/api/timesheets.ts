@@ -1,4 +1,4 @@
-import api, { uploadFiles } from './client';
+import api from './client';
 import type { Timesheet, TimesheetCreate, Receipt } from '../types';
 
 export const timesheetsApi = {
@@ -48,9 +48,12 @@ export const timesheetsApi = {
     return response.data;
   },
 
-  uploadReceipts: async (timesheetId: number, files: File[]): Promise<Receipt[]> => {
-    const result = await uploadFiles(`/timesheets/${timesheetId}/receipts`, files, 'files');
-    return result as Receipt[];
+  uploadReceipts: async (timesheetId: number, files: File[]): Promise<void> => {
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('files', file);
+      await api.post(`/timesheets/${timesheetId}/receipts`, formData);
+    }
   },
 
   getReceipts: async (timesheetId: number): Promise<Receipt[]> => {

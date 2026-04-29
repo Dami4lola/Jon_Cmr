@@ -5,6 +5,7 @@ import io
 import logging
 import zipfile
 import requests as http_requests
+from collections import defaultdict
 from fastapi import APIRouter, HTTPException, status
 
 logger = logging.getLogger(__name__)
@@ -14,12 +15,13 @@ from sqlalchemy.orm import selectinload
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from ..models import Invoice, Job, Client, Timesheet
+from ..models import Invoice, Job, Client, Timesheet, Receipt, Worker
 from ..schemas.invoice import (
     InvoiceCreate,
     InvoiceResponse,
     InvoicePreview,
     InvoiceStatusUpdate,
+    InvoiceUpdate,
 )
 from ..schemas.job import JobBrief
 from ..schemas.client import ClientBrief
@@ -28,7 +30,7 @@ from .deps import DBSession, ManagerUser, AdminUser
 
 router = APIRouter()
 
-MILEAGE_RATE = Decimal("1.00")
+DEFAULT_KM_RATE = Decimal("1.50")
 MINIMUM_HOURS = Decimal("4.0")
 LABOUR_RATE = Decimal("80.00")  # $80/hr per tech for invoicing
 REDSEAL_RATE = Decimal("100.00")  # $100/hr for Red Seal trades (plumbing, etc.)
@@ -97,8 +99,16 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     materials_amount = materials_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     inventory_materials = inventory_materials.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-    distance_km = job.calculated_distance_km or Decimal("0")
-    travel_amount = (distance_km * MILEAGE_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # Calculate km billed per tech per day:
+    # each unique worker on a given date counts as one trip (round-trip to the job site)
+    per_tech_km = job.calculated_distance_km or Decimal("0")
+    daily_workers: dict = defaultdict(set)
+    for ts in timesheets:
+        daily_workers[ts.date].add(ts.worker_id)
+    total_tech_trips = sum(len(w) for w in daily_workers.values())
+    distance_km = per_tech_km * total_tech_trips
+    km_rate = data.km_rate if data else DEFAULT_KM_RATE
+    travel_amount = (distance_km * km_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     dump_fee = data.dump_fee if data else Decimal("0")
     admin_fee = data.admin_fee if data else Decimal("0")
@@ -112,6 +122,7 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
         "total_labour_hours": total_labour_hours,
         "labour_amount": labour_amount,
         "total_distance_km": distance_km,
+        "km_rate": km_rate,
         "travel_amount": travel_amount,
         "materials_amount": materials_amount,
         "inventory_materials": inventory_materials,
@@ -144,6 +155,7 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
         admin_fee=invoice.admin_fee,
         total_labour_hours=invoice.total_labour_hours,
         total_distance_km=invoice.total_distance_km,
+        km_rate=invoice.km_rate,
         job=JobBrief(
             id=job.id,
             title=job.title,
@@ -250,6 +262,8 @@ def create_invoice(
             amounts["travel_amount"] = data.travel_amount
         if data.materials_amount is not None:
             amounts["materials_amount"] = data.materials_amount
+        if data.inventory_materials is not None:
+            amounts["inventory_materials"] = data.inventory_materials
         if data.total_labour_hours is not None:
             amounts["total_labour_hours"] = data.total_labour_hours
         if data.total_distance_km is not None:
@@ -374,7 +388,17 @@ def download_invoice_pdf(
             detail="Invoice not found",
         )
 
-    pdf_content = generate_invoice_pdf(invoice, invoice.job, invoice.job.client)
+    pdf_timesheets = session.exec(
+        select(Timesheet)
+        .where(Timesheet.job_id == invoice.job_id)
+        .options(
+            selectinload(Timesheet.worker),
+            selectinload(Timesheet.receipts),
+        )
+        .order_by(Timesheet.date.asc())
+    ).all()
+
+    pdf_content = generate_invoice_pdf(invoice, invoice.job, invoice.job.client, pdf_timesheets)
 
     disposition = "inline" if inline else "attachment"
     filename = f"Invoice_{invoice.invoice_number}.pdf"
@@ -417,6 +441,54 @@ def update_invoice_status(
         )
 
     invoice.status = data.status
+    session.add(invoice)
+    session.commit()
+    session.refresh(invoice)
+
+    return invoice_to_response(invoice, invoice.job, invoice.job.client)
+
+
+@router.patch("/{invoice_id}", response_model=InvoiceResponse)
+def update_invoice(
+    invoice_id: int,
+    data: InvoiceUpdate,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """Update invoice financial fields and recalculate totals (manager only)"""
+    statement = (
+        select(Invoice)
+        .where(Invoice.id == invoice_id)
+        .options(selectinload(Invoice.job).selectinload(Job.client))
+    )
+    invoice = session.exec(statement).first()
+
+    if not invoice:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invoice not found",
+        )
+
+    update_fields = data.model_dump(exclude_none=True, exclude={"include_hst"})
+    for field, value in update_fields.items():
+        setattr(invoice, field, value)
+
+    invoice.subtotal = (
+        invoice.labour_amount
+        + invoice.travel_amount
+        + invoice.materials_amount
+        + invoice.inventory_materials
+        + invoice.dump_fee
+        + invoice.admin_fee
+    )
+
+    apply_hst = data.include_hst if data.include_hst is not None else (invoice.hst_amount > 0)
+    invoice.hst_amount = (
+        (invoice.subtotal * HST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if apply_hst else Decimal("0")
+    )
+    invoice.total = invoice.subtotal + invoice.hst_amount
+
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
