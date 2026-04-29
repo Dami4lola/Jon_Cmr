@@ -52,4 +52,7 @@ class Timesheet(SQLModel, table=True):
     # Relationships
     worker: Optional["Worker"] = Relationship(back_populates="timesheets")
     job: Optional["Job"] = Relationship(back_populates="timesheets")
-    receipts: List["Receipt"] = Relationship(back_populates="timesheet")
+    receipts: List["Receipt"] = Relationship(
+        back_populates="timesheet",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )

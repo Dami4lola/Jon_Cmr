@@ -404,7 +404,7 @@ export function ManagerDashboard() {
               setShowPayrollModal(true);
               setPayrollError(null);
               setPayrollSuccess(null);
-              setSelectedPayrollWorkerIds(workers.map((w: Worker) => w.id));
+              setSelectedPayrollWorkerIds([]);
             }}
             className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
           >

@@ -16,11 +16,12 @@ class InvoiceCreate(BaseModel):
     labour_amount: Decimal | None = None
     travel_amount: Decimal | None = None
     materials_amount: Decimal | None = None
-    inventory_materials: Decimal = Decimal("0")
+    inventory_materials: Decimal | None = None
     dump_fee: Decimal = Decimal("0")
     admin_fee: Decimal = Decimal("0")
     total_labour_hours: Decimal | None = None
     total_distance_km: Decimal | None = None
+    km_rate: Decimal = Decimal("1.50")
     include_hst: bool = True
     notes: str | None = None
 
@@ -62,6 +63,7 @@ class InvoiceResponse(BaseModel):
     admin_fee: Decimal
     total_labour_hours: Decimal
     total_distance_km: Decimal
+    km_rate: Decimal
 
     # Nested objects
     job: JobBrief
@@ -74,3 +76,19 @@ class InvoiceResponse(BaseModel):
 class InvoiceStatusUpdate(BaseModel):
     """Update invoice status"""
     status: str  # draft, sent, paid, overdue
+
+
+class InvoiceUpdate(BaseModel):
+    """Partial update for an existing invoice"""
+    labour_amount: Decimal | None = None
+    travel_amount: Decimal | None = None
+    materials_amount: Decimal | None = None
+    inventory_materials: Decimal | None = None
+    dump_fee: Decimal | None = None
+    admin_fee: Decimal | None = None
+    total_labour_hours: Decimal | None = None
+    total_distance_km: Decimal | None = None
+    km_rate: Decimal | None = None
+    scope_of_work: str | None = None
+    notes: str | None = None
+    include_hst: bool | None = None

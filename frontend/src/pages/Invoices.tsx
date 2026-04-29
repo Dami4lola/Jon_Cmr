@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { timesheetsApi } from '../api/timesheets';
 import { jobsApi } from '../api/jobs';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Invoice, InvoicePreview, Job, Timesheet, Receipt } from '../types';
+import type { Invoice, InvoicePreview, InvoiceUpdate, Job, Timesheet, Receipt } from '../types';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -30,6 +30,7 @@ export function Invoices() {
   const [inventoryMaterials, setInventoryMaterials] = useState(0);
   const [dumpFee, setDumpFee] = useState(0);
   const [adminFee, setAdminFee] = useState(0);
+  const [kmRate, setKmRate] = useState('1.50');
   const [rate, setRate] = useState(80);
   const [includeHst, setIncludeHst] = useState(true);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -39,6 +40,10 @@ export function Invoices() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [showTimesheets, setShowTimesheets] = useState(false);
   const [expandedReceipts, setExpandedReceipts] = useState<Record<number, Receipt[]>>({});
+
+  // Edit invoice state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
   // Fetch invoices
   const { data: invoices = [], isLoading: loadingInvoices } = useQuery({
@@ -66,6 +71,24 @@ export function Invoices() {
   });
 
   // Note: Form values are populated in handleNext() to avoid overwriting user edits
+
+  // Auto-fetch receipts when the timesheets panel is opened in invoice creation
+  useEffect(() => {
+    if (!showTimesheets) return;
+    const withReceipts = jobTimesheets.filter((ts: Timesheet) => ts.receipt_count > 0);
+    if (withReceipts.length === 0) return;
+    Promise.all(
+      withReceipts.map((ts: Timesheet) =>
+        timesheetsApi.getReceipts(ts.id).then((receipts) => ({ id: ts.id, receipts }))
+      )
+    ).then((results) => {
+      setExpandedReceipts((prev) => {
+        const next = { ...prev };
+        results.forEach(({ id, receipts }) => { next[id] = receipts; });
+        return next;
+      });
+    });
+  }, [showTimesheets, jobTimesheets]);
 
   // Pre-populate scope of work from job description when job is selected
   useEffect(() => {
@@ -101,6 +124,7 @@ export function Invoices() {
         admin_fee: adminFee,
         total_labour_hours: labourHours,
         total_distance_km: travelKm,
+        km_rate: parseFloat(kmRate) || 1.50,
         include_hst: includeHst,
         notes: notes || undefined,
       }),
@@ -133,6 +157,15 @@ export function Invoices() {
     mutationFn: invoicesApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: InvoiceUpdate }) =>
+      invoicesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      handleCloseEditModal();
     },
   });
 
@@ -182,12 +215,51 @@ export function Invoices() {
     setInventoryMaterials(0);
     setDumpFee(0);
     setAdminFee(0);
+    setKmRate('1.50');
     setIncludeHst(true);
     setScopeOfWork('');
     setNotes('');
     setInvoiceNumber('');
     setShowTimesheets(false);
     setExpandedReceipts({});
+  };
+
+  const handleOpenEdit = (invoice: Invoice) => {
+    setEditingInvoice(invoice);
+    const hours = parseFloat(invoice.total_labour_hours);
+    const amount = parseFloat(invoice.labour_amount);
+    setLabourHours(hours);
+    setLabourAmount(amount);
+    setRate(hours > 0 ? Math.round((amount / hours) * 100) / 100 : 80);
+    setTravelAmount(parseFloat(invoice.travel_amount));
+    setTravelKm(parseFloat(invoice.total_distance_km));
+    setKmRate(parseFloat(invoice.km_rate).toFixed(2));
+    setMaterialsAmount(parseFloat(invoice.materials_amount));
+    setInventoryMaterials(parseFloat(invoice.inventory_materials));
+    setDumpFee(parseFloat(invoice.dump_fee));
+    setAdminFee(parseFloat(invoice.admin_fee));
+    setIncludeHst(parseFloat(invoice.hst_amount) > 0);
+    setScopeOfWork(invoice.scope_of_work || '');
+    setNotes(invoice.notes || '');
+    setShowEditModal(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setEditingInvoice(null);
+    setLabourAmount(0);
+    setLabourHours(0);
+    setRate(80);
+    setTravelAmount(0);
+    setTravelKm(0);
+    setMaterialsAmount(0);
+    setInventoryMaterials(0);
+    setDumpFee(0);
+    setAdminFee(0);
+    setKmRate('1.50');
+    setIncludeHst(true);
+    setScopeOfWork('');
+    setNotes('');
   };
 
   const handleNext = () => {
@@ -315,6 +387,15 @@ export function Invoices() {
                             </svg>
                           </button>
                         )}
+                        <button
+                          onClick={() => handleOpenEdit(invoice)}
+                          className="text-gray-500 hover:text-gray-700 transition-colors"
+                          title="Edit invoice"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
                         <button
                           onClick={() => {
                             if (window.confirm('Are you sure you want to delete this invoice?')) {
@@ -484,7 +565,7 @@ export function Invoices() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Travel (km)</label>
                         <input
@@ -492,6 +573,17 @@ export function Invoices() {
                           step="0.1"
                           value={travelKm}
                           onChange={(e) => setTravelKm(parseFloat(e.target.value) || 0)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">KM Rate ($/km)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={kmRate}
+                          onChange={(e) => setKmRate(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                         />
                       </div>
@@ -605,26 +697,8 @@ export function Invoices() {
                               {ts.notes && <p className="mt-1 text-xs text-gray-500 italic">{ts.notes}</p>}
                               {ts.receipt_count > 0 && (
                                 <div className="mt-2">
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      if (expandedReceipts[ts.id]) {
-                                        setExpandedReceipts((prev) => {
-                                          const next = { ...prev };
-                                          delete next[ts.id];
-                                          return next;
-                                        });
-                                      } else {
-                                        const receipts = await timesheetsApi.getReceipts(ts.id);
-                                        setExpandedReceipts((prev) => ({ ...prev, [ts.id]: receipts }));
-                                      }
-                                    }}
-                                    className="text-xs text-obatek hover:underline"
-                                  >
-                                    {expandedReceipts[ts.id] ? 'Hide' : 'View'} Receipts ({ts.receipt_count})
-                                  </button>
-                                  {expandedReceipts[ts.id] && (
-                                    <div className="mt-2 flex flex-wrap gap-2">
+                                  {expandedReceipts[ts.id] ? (
+                                    <div className="flex flex-wrap gap-2">
                                       {expandedReceipts[ts.id].map((r: Receipt) => (
                                         <a key={r.id} href={r.image_url} target="_blank" rel="noopener noreferrer" className="block">
                                           <div className="w-20 h-20 rounded border border-gray-200 overflow-hidden bg-gray-100">
@@ -634,6 +708,8 @@ export function Invoices() {
                                         </a>
                                       ))}
                                     </div>
+                                  ) : (
+                                    <p className="text-xs text-gray-400">Loading {ts.receipt_count} receipt(s)...</p>
                                   )}
                                 </div>
                               )}
@@ -721,6 +797,240 @@ export function Invoices() {
           </div>
         </div>
       )}
+      {/* Edit Invoice Modal */}
+      {showEditModal && editingInvoice && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 my-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Edit Invoice — {editingInvoice.invoice_number}
+              </h3>
+              <button onClick={handleCloseEditModal} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {updateMutation.isError && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">
+                Failed to update invoice. Please try again.
+              </div>
+            )}
+
+            <div className="space-y-5">
+              {/* Charges */}
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Charges</h4>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Labour Hours</label>
+                      <input
+                        type="number"
+                        step="0.25"
+                        value={labourHours}
+                        onChange={(e) => {
+                          const h = parseFloat(e.target.value) || 0;
+                          setLabourHours(h);
+                          setLabourAmount(Math.round(h * rate * 100) / 100);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Rate ($/hr)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={rate}
+                        onChange={(e) => {
+                          const r = parseFloat(e.target.value) || 0;
+                          setRate(r);
+                          setLabourAmount(Math.round(labourHours * r * 100) / 100);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Labour Amount ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={labourAmount}
+                        onChange={(e) => {
+                          const a = parseFloat(e.target.value) || 0;
+                          setLabourAmount(a);
+                          setRate(labourHours > 0 ? Math.round((a / labourHours) * 100) / 100 : 0);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Travel (km)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={travelKm}
+                        onChange={(e) => setTravelKm(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">KM Rate ($/km)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={kmRate}
+                        onChange={(e) => setKmRate(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Travel Amount ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={travelAmount}
+                        onChange={(e) => setTravelAmount(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Materials — before tax ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={materialsAmount}
+                      onChange={(e) => setMaterialsAmount(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Inventory Materials ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={inventoryMaterials}
+                        onChange={(e) => setInventoryMaterials(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Dump Fee ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={dumpFee}
+                        onChange={(e) => setDumpFee(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Admin Fee ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={adminFee}
+                      onChange={(e) => setAdminFee(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Totals */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-1 text-sm">
+                  <span className="text-gray-600">Subtotal</span>
+                  <span className="text-right font-medium">${subtotal.toFixed(2)}</span>
+                  <span className="text-gray-600">HST (13%)</span>
+                  <span className="text-right font-medium">${hstAmount.toFixed(2)}</span>
+                  <span className="font-semibold text-gray-900 pt-1 border-t mt-1">Total Due</span>
+                  <span className="text-right font-bold text-gray-900 pt-1 border-t mt-1">${total.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* HST Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeHst}
+                  onChange={(e) => setIncludeHst(e.target.checked)}
+                  className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                />
+                <span className="text-sm text-gray-700">Include HST (13%)</span>
+              </label>
+
+              {/* Scope of Work */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Scope of Work</label>
+                <textarea
+                  rows={5}
+                  value={scopeOfWork}
+                  onChange={(e) => setScopeOfWork(e.target.value)}
+                  placeholder="Describe the work performed..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-y"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Additional notes for the invoice..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none resize-y"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={handleCloseEditModal}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() =>
+                    updateMutation.mutate({
+                      id: editingInvoice.id,
+                      data: {
+                        labour_amount: labourAmount,
+                        travel_amount: travelAmount,
+                        materials_amount: materialsAmount,
+                        inventory_materials: inventoryMaterials,
+                        dump_fee: dumpFee,
+                        admin_fee: adminFee,
+                        total_labour_hours: labourHours,
+                        total_distance_km: travelKm,
+                        km_rate: parseFloat(kmRate) || 1.50,
+                        scope_of_work: scopeOfWork || undefined,
+                        notes: notes || undefined,
+                        include_hst: includeHst,
+                      },
+                    })
+                  }
+                  disabled={updateMutation.isPending}
+                  className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+                >
+                  {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">

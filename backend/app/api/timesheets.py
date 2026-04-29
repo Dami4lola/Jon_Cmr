@@ -399,6 +399,23 @@ def delete_timesheet(
                 detail="Access denied",
             )
 
+    receipts = session.exec(
+        select(Receipt).where(Receipt.timesheet_id == timesheet_id)
+    ).all()
+
+    for receipt in receipts:
+        if receipt.public_url:
+            try:
+                delete_file_from_s3(receipt.public_url)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to delete S3 object for receipt %s: %s",
+                    receipt.id,
+                    exc,
+                )
+        session.delete(receipt)
+
+    session.flush()
     session.delete(timesheet)
     session.commit()
 

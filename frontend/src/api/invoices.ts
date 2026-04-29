@@ -1,5 +1,5 @@
 import api from './client';
-import type { Invoice, InvoiceCreate, InvoicePreview } from '../types';
+import type { Invoice, InvoiceCreate, InvoicePreview, InvoiceUpdate } from '../types';
 
 export const invoicesApi = {
   list: async (params?: {
@@ -28,6 +28,11 @@ export const invoicesApi = {
 
   updateStatus: async (id: number, status: Invoice['status']): Promise<Invoice> => {
     const response = await api.put(`/invoices/${id}/status`, { status });
+    return response.data;
+  },
+
+  update: async (id: number, data: InvoiceUpdate): Promise<Invoice> => {
+    const response = await api.patch(`/invoices/${id}`, data);
     return response.data;
   },
 

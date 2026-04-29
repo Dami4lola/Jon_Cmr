@@ -21,6 +21,11 @@ export function ViewTimesheet() {
     enabled: !!id,
   });
 
+  const receiptSubtotal = receipts.reduce((sum, r) =>
+    r.amount != null ? sum + parseFloat(String(r.amount)) : sum, 0);
+  const anyReceiptAmounts = receipts.some((r) => r.amount != null);
+  const receiptHstTotal = receiptSubtotal * 1.13;
+
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
@@ -410,8 +415,23 @@ export function ViewTimesheet() {
                       {receipt.description && (
                         <p className="text-xs text-gray-600 p-2 truncate">{receipt.description}</p>
                       )}
+                      {receipt.amount != null && (
+                        <p className="text-xs font-medium text-gray-700 px-2 pb-2">{formatCurrency(receipt.amount)}</p>
+                      )}
                     </a>
                   ))}
+                </div>
+              )}
+              {anyReceiptAmounts && (
+                <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Receipt Subtotal (before tax)</span>
+                    <span className="font-medium text-gray-900">{formatCurrency(receiptSubtotal.toFixed(2))}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Receipt Total (after HST 13%)</span>
+                    <span className="font-medium text-gray-900">{formatCurrency(receiptHstTotal.toFixed(2))}</span>
+                  </div>
                 </div>
               )}
             </div>
