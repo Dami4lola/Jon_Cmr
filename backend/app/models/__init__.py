@@ -9,6 +9,7 @@ from .job import Job, JobWorkerLink, JobWorkerSchedule
 from .timesheet import Timesheet
 from .invoice import Invoice
 from .receipt import Receipt
+from .timesheet_inventory_item import TimesheetInventoryItem
 from .purchase_item import PurchaseListItem
 from .inspection import JobInspection, InspectionPhoto
 from .job_photo import JobPhoto
@@ -30,6 +31,7 @@ __all__ = [
     "Timesheet",
     "Invoice",
     "Receipt",
+    "TimesheetInventoryItem",
     "PurchaseListItem",
     "JobInspection",
     "InspectionPhoto",

@@ -74,8 +74,27 @@ class ReceiptResponse(BaseModel):
     timesheet_id: int
     image_url: str  # Public S3 URL
     description: str | None
-    amount: Decimal | None
+    amount: Decimal | None           # before tax
+    amount_after_tax: Decimal | None
     uploaded_at: dt.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InventoryItemCreate(BaseModel):
+    """Create a timesheet inventory item"""
+    description: str
+    quantity: str = ""
+
+
+class InventoryItemResponse(BaseModel):
+    """Inventory item response"""
+    id: int
+    timesheet_id: int
+    description: str
+    quantity: str
+    created_at: dt.datetime
 
     class Config:
         from_attributes = True

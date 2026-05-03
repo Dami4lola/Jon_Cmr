@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .worker import Worker
     from .job import Job
     from .receipt import Receipt
+    from .timesheet_inventory_item import TimesheetInventoryItem
 
 
 class Timesheet(SQLModel, table=True):
@@ -53,6 +54,10 @@ class Timesheet(SQLModel, table=True):
     worker: Optional["Worker"] = Relationship(back_populates="timesheets")
     job: Optional["Job"] = Relationship(back_populates="timesheets")
     receipts: List["Receipt"] = Relationship(
+        back_populates="timesheet",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    inventory_items: List["TimesheetInventoryItem"] = Relationship(
         back_populates="timesheet",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )

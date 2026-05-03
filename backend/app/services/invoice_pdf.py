@@ -4,7 +4,6 @@ Uses ReportLab to generate professional invoices
 """
 import os
 from io import BytesIO
-from decimal import Decimal
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib import colors
@@ -242,58 +241,7 @@ def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client, timesheets:
     elements.append(Spacer(1, 0.2 * inch))
 
     # ==============================
-    # 4. RECEIPTS SECTION
-    # ==============================
-    if timesheets:
-        all_receipts = [
-            (receipt, ts)
-            for ts in timesheets
-            for receipt in (ts.receipts or [])
-        ]
-        if all_receipts:
-            elements.append(Paragraph("RECEIPTS", section_heading))
-
-            receipt_header = ["Worker", "Date", "Description", "Amount"]
-            receipt_data = [receipt_header]
-            receipt_subtotal = Decimal("0")
-
-            for receipt, ts in all_receipts:
-                worker_name = ts.worker.name if ts.worker else "Unknown"
-                date_str = ts.date.strftime("%b %d, %Y") if ts.date else ""
-                description = receipt.description or ""
-                amount_str = f"${receipt.amount:,.2f}" if receipt.amount is not None else "—"
-                if receipt.amount is not None:
-                    receipt_subtotal += receipt.amount
-                receipt_data.append([worker_name, date_str, description, amount_str])
-
-            receipt_data.append(["", "", "Receipt Subtotal", f"${receipt_subtotal:,.2f}"])
-
-            r_col_widths = [1.8 * inch, 1.2 * inch, 2.7 * inch, 1.8 * inch]
-            t_receipts = Table(receipt_data, colWidths=r_col_widths)
-
-            receipt_style = [
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_COLOR),
-                ("BACKGROUND", (0, 0), (-1, 0), LIGHT_BG),
-                ("LINEBELOW", (0, 0), (-1, 0), 1, BORDER_COLOR),
-                ("ALIGN", (3, 0), (3, -1), "RIGHT"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("LEFTPADDING", (0, 0), (0, -1), 6),
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                ("LINEABOVE", (0, -1), (-1, -1), 0.5, BORDER_COLOR),
-            ]
-            for i in range(1, len(receipt_data) - 1):
-                if i % 2 == 0:
-                    receipt_style.append(("BACKGROUND", (0, i), (-1, i), LIGHT_BG))
-
-            t_receipts.setStyle(TableStyle(receipt_style))
-            elements.append(t_receipts)
-            elements.append(Spacer(1, 0.2 * inch))
-
-    # ==============================
-    # 5. TOTALS
+    # 4. TOTALS
     # ==============================
     totals_data = [
         ["Subtotal", f"${invoice.subtotal:,.2f}"],

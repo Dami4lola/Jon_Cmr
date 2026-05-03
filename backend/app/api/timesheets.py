@@ -1,7 +1,7 @@
 """
 Timesheet API endpoints
 """
-from fastapi import APIRouter, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
 from datetime import datetime
@@ -12,13 +12,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 from ..config import settings
-from ..models import Timesheet, Worker, Job, Receipt
+from ..models import Timesheet, Worker, Job, Receipt, TimesheetInventoryItem
 from ..schemas.timesheet import (
     TimesheetCreate,
     TimesheetUpdate,
     TimesheetResponse,
     ReceiptResponse,
     PayoutPreview,
+    InventoryItemCreate,
+    InventoryItemResponse,
 )
 from ..schemas.worker import WorkerBrief
 from ..schemas.job import JobBrief
@@ -426,6 +428,9 @@ def upload_receipts(
     session: DBSession,
     current_user: CurrentUser,
     files: list[UploadFile] = File(...),
+    description: str | None = Form(default=None),
+    amount: str | None = Form(default=None),            # before tax
+    amount_after_tax: str | None = Form(default=None),
 ):
     """Upload receipt images for a timesheet — stores in AWS S3"""
     timesheet = session.get(Timesheet, timesheet_id)
@@ -453,6 +458,9 @@ def upload_receipts(
                 detail="Access denied",
             )
 
+    amount_decimal = Decimal(amount) if amount else None
+    amount_after_tax_decimal = Decimal(amount_after_tax) if amount_after_tax else None
+
     uploaded = []
     logger.info(f"Receipt upload: timesheet_id={timesheet_id}, file_count={len(files)}")
 
@@ -469,6 +477,9 @@ def upload_receipts(
             timesheet_id=timesheet_id,
             public_url=public_url,
             content_type=content_type,
+            description=description or None,
+            amount=amount_decimal,
+            amount_after_tax=amount_after_tax_decimal,
         )
         session.add(receipt)
         uploaded.append({"filename": filename, "url": public_url})
@@ -515,6 +526,7 @@ def get_timesheet_receipts(
             image_url=r.public_url,
             description=r.description,
             amount=r.amount,
+            amount_after_tax=r.amount_after_tax,
             uploaded_at=r.uploaded_at,
         )
         for r in receipts
@@ -557,6 +569,83 @@ def delete_receipt(
             pass  # Don't fail the delete if S3 cleanup fails
 
     session.delete(receipt)
+    session.commit()
+
+
+@router.get("/{timesheet_id}/inventory-items", response_model=list[InventoryItemResponse])
+def get_inventory_items(
+    timesheet_id: int,
+    session: DBSession,
+    current_user: CurrentUser,
+):
+    """List inventory items for a timesheet"""
+    timesheet = session.get(Timesheet, timesheet_id)
+    if not timesheet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
+
+    if not current_user.is_manager:
+        worker = session.exec(select(Worker).where(Worker.user_id == current_user.id)).first()
+        if not worker or timesheet.worker_id != worker.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    items = session.exec(
+        select(TimesheetInventoryItem).where(TimesheetInventoryItem.timesheet_id == timesheet_id)
+    ).all()
+    return items
+
+
+@router.post("/{timesheet_id}/inventory-items", response_model=InventoryItemResponse, status_code=status.HTTP_201_CREATED)
+def add_inventory_item(
+    timesheet_id: int,
+    data: InventoryItemCreate,
+    session: DBSession,
+    current_user: CurrentUser,
+):
+    """Add an inventory item to a timesheet"""
+    timesheet = session.get(Timesheet, timesheet_id)
+    if not timesheet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
+
+    if timesheet.is_paid:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot edit a paid timesheet")
+
+    if not current_user.is_manager:
+        worker = session.exec(select(Worker).where(Worker.user_id == current_user.id)).first()
+        if not worker or timesheet.worker_id != worker.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    item = TimesheetInventoryItem(
+        timesheet_id=timesheet_id,
+        description=data.description,
+        quantity=data.quantity,
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+
+@router.delete("/inventory-items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_inventory_item(
+    item_id: int,
+    session: DBSession,
+    current_user: CurrentUser,
+):
+    """Delete a timesheet inventory item"""
+    item = session.get(TimesheetInventoryItem, item_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+
+    timesheet = session.get(Timesheet, item.timesheet_id)
+    if timesheet and timesheet.is_paid:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot edit a paid timesheet")
+
+    if not current_user.is_manager:
+        worker = session.exec(select(Worker).where(Worker.user_id == current_user.id)).first()
+        if not worker or (timesheet and timesheet.worker_id != worker.id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    session.delete(item)
     session.commit()
 
 

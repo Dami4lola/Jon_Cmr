@@ -260,8 +260,23 @@ export interface Receipt {
   timesheet_id: number;
   image_url: string;  // Public S3 URL
   description?: string;
-  amount?: string;
+  amount?: string;            // before tax
+  amount_after_tax?: string;
   uploaded_at: string;
+}
+
+// Timesheet Inventory Item Types
+export interface InventoryItem {
+  id: number;
+  timesheet_id: number;
+  description: string;
+  quantity: string;
+  created_at: string;
+}
+
+export interface InventoryItemCreate {
+  description: string;
+  quantity: string;
 }
 
 // Purchase List Types
