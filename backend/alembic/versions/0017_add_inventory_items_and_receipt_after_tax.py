@@ -5,6 +5,7 @@ Revises: 0016
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect as sa_inspect
 
 revision = "0017"
 down_revision = "0016"
@@ -13,26 +14,32 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "receipt",
-        sa.Column("amount_after_tax", sa.Numeric(precision=8, scale=2), nullable=True),
-    )
+    conn = op.get_bind()
+    inspector = sa_inspect(conn)
 
-    op.create_table(
-        "timesheet_inventory_item",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("timesheet_id", sa.Integer(), nullable=False),
-        sa.Column("description", sa.String(500), nullable=False),
-        sa.Column("quantity", sa.String(100), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["timesheet_id"], ["timesheet.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(
-        "ix_timesheet_inventory_item_timesheet_id",
-        "timesheet_inventory_item",
-        ["timesheet_id"],
-    )
+    receipt_cols = [c["name"] for c in inspector.get_columns("receipt")]
+    if "amount_after_tax" not in receipt_cols:
+        op.add_column(
+            "receipt",
+            sa.Column("amount_after_tax", sa.Numeric(precision=8, scale=2), nullable=True),
+        )
+
+    if "timesheet_inventory_item" not in inspector.get_table_names():
+        op.create_table(
+            "timesheet_inventory_item",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("timesheet_id", sa.Integer(), nullable=False),
+            sa.Column("description", sa.String(500), nullable=False),
+            sa.Column("quantity", sa.String(100), nullable=False, server_default=""),
+            sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+            sa.ForeignKeyConstraint(["timesheet_id"], ["timesheet.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index(
+            "ix_timesheet_inventory_item_timesheet_id",
+            "timesheet_inventory_item",
+            ["timesheet_id"],
+        )
 
 
 def downgrade() -> None:

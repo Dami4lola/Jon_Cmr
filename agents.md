@@ -34,6 +34,7 @@ The OBATEK Worker Portal is a fullstack workforce management web application. It
 * Database State: Verify SQLModel schemas match Alembic migration files if column errors occur.
 * State Management: Use React Query Devtools to debug stale timesheet or job data.
 * Permissions: If image uploads fail, verify AWS S3 bucket CORS and IAM policies.
+* Alembic Migrations: `start.sh` runs `SQLModel.metadata.create_all()` BEFORE `alembic upgrade head`. This means new model tables/columns are already created by `create_all` when the migration runs. Every migration `upgrade()` MUST use `inspector.get_table_names()` / `inspector.get_columns()` existence checks before calling `op.create_table()` or `op.add_column()`, or it will fail with DuplicateTable/DuplicateColumn on deployment.
 
 ## Business Logic & Cornerstones
 * `backend/api/routes/payouts.py`: Payout calculations strictly enforce: Hourly rate × hours (4-hour minimum rule), plus distance allowances and material expenses.
