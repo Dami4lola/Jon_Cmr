@@ -113,3 +113,4 @@ class CalendarEvent(BaseModel):
     description: str
     phone_number: str | None = None
     email: str | None = None
+    coworkers: list[str] = []

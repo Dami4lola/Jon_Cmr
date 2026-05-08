@@ -133,6 +133,7 @@ export interface CalendarEvent {
   description: string;
   phone_number?: string;
   email?: string;
+  coworkers?: string[];
 }
 
 // Brief types for nested responses

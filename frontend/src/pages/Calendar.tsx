@@ -249,6 +249,12 @@ export function Calendar() {
                   {selectedEvent.description}
                 </p>
               )}
+              {selectedEvent.coworkers && selectedEvent.coworkers.length > 0 && (
+                <p>
+                  <span className="font-medium">Working with:</span>{' '}
+                  {selectedEvent.coworkers.join(', ')}
+                </p>
+              )}
             </div>
             <div className="mt-6 flex justify-end">
               <button
