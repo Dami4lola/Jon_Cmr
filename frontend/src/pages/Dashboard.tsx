@@ -78,7 +78,9 @@ export function Dashboard() {
       if (filesToUpload.length > 0) {
         setUploadingReceipts(true);
         try {
-          await timesheetsApi.uploadReceipts(newTimesheet.id, filesToUpload);
+          for (const file of filesToUpload) {
+            await timesheetsApi.uploadReceipt(newTimesheet.id, file, {});
+          }
         } catch (err) {
           if (import.meta.env.DEV) {
             console.error('Receipt upload failed', err);
