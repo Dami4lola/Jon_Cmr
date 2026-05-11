@@ -196,7 +196,11 @@ def get_calendar_events(
 
     statement = (
         select(Job)
-        .options(selectinload(Job.client), selectinload(Job.worker_schedule))
+        .options(
+            selectinload(Job.client),
+            selectinload(Job.worker_schedule),
+            selectinload(Job.assigned_workers),
+        )
         .where(Job.start_date.isnot(None))
         .where(Job.is_completed == False)
     )
@@ -211,12 +215,19 @@ def get_calendar_events(
 
     events = []
     for job in jobs:
+        worker_name_map = {w.id: w.name for w in (job.assigned_workers or [])}
+
         if not current_user.is_manager and worker:
             my_dates = sorted(
                 ws.date for ws in (job.worker_schedule or []) if ws.worker_id == worker.id
             )
             if my_dates:
                 for d in my_dates:
+                    coworkers = [
+                        worker_name_map[ws.worker_id]
+                        for ws in (job.worker_schedule or [])
+                        if ws.date == d and ws.worker_id != worker.id and ws.worker_id in worker_name_map
+                    ]
                     events.append(CalendarEvent(
                         id=job.id,
                         title=f"{job.client.name} - {job.title}",
@@ -229,8 +240,10 @@ def get_calendar_events(
                         description=job.details or job.title,
                         phone_number=job.client.phone_number,
                         email=job.client.email,
+                        coworkers=coworkers,
                     ))
             else:
+                coworkers = [w.name for w in (job.assigned_workers or []) if w.id != worker.id]
                 events.append(CalendarEvent(
                     id=job.id,
                     title=f"{job.client.name} - {job.title}",
@@ -243,8 +256,10 @@ def get_calendar_events(
                     description=job.details or job.title,
                     phone_number=job.client.phone_number,
                     email=job.client.email,
+                    coworkers=coworkers,
                 ))
         else:
+            coworkers = [w.name for w in (job.assigned_workers or [])]
             events.append(CalendarEvent(
                 id=job.id,
                 title=f"{job.client.name} - {job.title}",
@@ -257,6 +272,7 @@ def get_calendar_events(
                 description=job.details or job.title,
                 phone_number=job.client.phone_number,
                 email=job.client.email,
+                coworkers=coworkers,
             ))
 
     return events

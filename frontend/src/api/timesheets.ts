@@ -1,5 +1,5 @@
 import api from './client';
-import type { Timesheet, TimesheetCreate, Receipt } from '../types';
+import type { Timesheet, TimesheetCreate, Receipt, InventoryItem, InventoryItemCreate } from '../types';
 
 export const timesheetsApi = {
   list: async (params?: {
@@ -48,12 +48,17 @@ export const timesheetsApi = {
     return response.data;
   },
 
-  uploadReceipts: async (timesheetId: number, files: File[]): Promise<void> => {
-    for (const file of files) {
-      const formData = new FormData();
-      formData.append('files', file);
-      await api.post(`/timesheets/${timesheetId}/receipts`, formData);
-    }
+  uploadReceipt: async (
+    timesheetId: number,
+    file: File,
+    meta: { description?: string; amountBeforeTax?: string; amountAfterTax?: string },
+  ): Promise<void> => {
+    const formData = new FormData();
+    formData.append('files', file);
+    if (meta.description) formData.append('description', meta.description);
+    if (meta.amountBeforeTax) formData.append('amount', meta.amountBeforeTax);
+    if (meta.amountAfterTax) formData.append('amount_after_tax', meta.amountAfterTax);
+    await api.post(`/timesheets/${timesheetId}/receipts`, formData);
   },
 
   getReceipts: async (timesheetId: number): Promise<Receipt[]> => {
@@ -63,6 +68,20 @@ export const timesheetsApi = {
 
   deleteReceipt: async (receiptId: number): Promise<void> => {
     await api.delete(`/timesheets/receipts/${receiptId}`);
+  },
+
+  getInventoryItems: async (timesheetId: number): Promise<InventoryItem[]> => {
+    const response = await api.get(`/timesheets/${timesheetId}/inventory-items`);
+    return response.data;
+  },
+
+  addInventoryItem: async (timesheetId: number, data: InventoryItemCreate): Promise<InventoryItem> => {
+    const response = await api.post(`/timesheets/${timesheetId}/inventory-items`, data);
+    return response.data;
+  },
+
+  deleteInventoryItem: async (itemId: number): Promise<void> => {
+    await api.delete(`/timesheets/inventory-items/${itemId}`);
   },
 
   calculatePayout: async (data: TimesheetCreate): Promise<{ calculated_pay: number }> => {

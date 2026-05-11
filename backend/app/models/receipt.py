@@ -22,7 +22,8 @@ class Receipt(SQLModel, table=True):
     content_type: str = Field(default="image/jpeg")  # MIME type
 
     description: str | None = Field(default=None, max_length=200)
-    amount: Decimal | None = Field(default=None, max_digits=8, decimal_places=2)
+    amount: Decimal | None = Field(default=None, max_digits=8, decimal_places=2)           # before tax
+    amount_after_tax: Decimal | None = Field(default=None, max_digits=8, decimal_places=2)
 
     # Timestamps
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
