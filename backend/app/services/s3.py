@@ -6,6 +6,9 @@ import uuid
 import logging
 from urllib.parse import urlparse
 
+from botocore.exceptions import ClientError
+from fastapi import HTTPException
+
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -48,9 +51,12 @@ def upload_file_to_s3(
             Body=file_bytes,
             ContentType=content_type,
         )
-    except Exception as e:
+    except ClientError as e:
         logger.error(f"S3 upload failed: {e}")
-        raise
+        raise HTTPException(
+            status_code=503,
+            detail="File upload failed. Please try again later.",
+        )
 
     public_url = (
         f"https://{settings.AWS_S3_BUCKET_NAME}"
