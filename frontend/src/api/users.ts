@@ -59,4 +59,8 @@ export const usersApi = {
     const response = await api.put(`/users/${id}/reset-password`, { new_password: newPassword });
     return response.data;
   },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/users/${id}`);
+  },
 };

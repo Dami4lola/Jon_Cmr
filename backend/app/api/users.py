@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from typing import List
 
 from ..database import get_session
-from ..models import User, Worker, Role
+from ..models import User, Worker, Role, Timesheet
 from ..schemas.auth import UserResponse
 from ..services.auth import get_password_hash
 from ..seed import get_role_by_name
@@ -343,3 +343,33 @@ def admin_reset_password(
     session.commit()
 
     return {"message": f"Password for '{user.username}' has been reset successfully."}
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: int,
+    session: DBSession,
+    admin: AdminUser,
+):
+    """Delete a user (admin only). Blocked if the worker has existing timesheets."""
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    worker = session.exec(select(Worker).where(Worker.user_id == user_id)).first()
+    if worker:
+        has_timesheets = session.exec(
+            select(Timesheet).where(Timesheet.worker_id == worker.id)
+        ).first()
+        if has_timesheets:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot delete an employee with existing timesheets. Deactivate instead.",
+            )
+        session.delete(worker)
+
+    session.delete(user)
+    session.commit()

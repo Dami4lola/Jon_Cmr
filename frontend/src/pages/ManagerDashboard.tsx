@@ -31,6 +31,13 @@ export function ManagerDashboard() {
   const queryClient = useQueryClient();
   const [showCreateJob, setShowCreateJob] = useState(false);
   const [showCreateClient, setShowCreateClient] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editClientFormData, setEditClientFormData] = useState<ClientCreate>({
+    name: '',
+    phone_number: '',
+    email: '',
+    address: '',
+  });
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [formData, setFormData] = useState<JobCreate>({
     client_id: 0,
@@ -180,6 +187,16 @@ export function ManagerDashboard() {
     },
   });
 
+  // Update client mutation
+  const updateClientMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<ClientCreate> }) =>
+      clientsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setEditingClient(null);
+    },
+  });
+
   // Update job mutation
   const updateJobMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: Partial<JobCreate> }) => {
@@ -209,6 +226,9 @@ export function ManagerDashboard() {
     mutationFn: jobsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.detail || 'Failed to delete job. Please try again.');
     },
   });
 
@@ -274,6 +294,22 @@ export function ManagerDashboard() {
     e.preventDefault();
     if (!clientFormData.name.trim() || !clientFormData.address.trim()) return;
     createClientMutation.mutate(clientFormData);
+  };
+
+  const handleOpenEditClient = (client: Client) => {
+    setEditingClient(client);
+    setEditClientFormData({
+      name: client.name,
+      phone_number: client.phone_number || '',
+      email: client.email || '',
+      address: client.address,
+    });
+  };
+
+  const handleUpdateClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClient || !editClientFormData.name.trim() || !editClientFormData.address.trim()) return;
+    updateClientMutation.mutate({ id: editingClient.id, data: editClientFormData });
   };
 
   const handlePreviewPayroll = async () => {
@@ -777,6 +813,80 @@ export function ManagerDashboard() {
               {createClientMutation.isError && (
                 <p className="text-red-500 text-sm">
                   Error: {(createClientMutation.error as Error)?.message || 'Failed to create client'}
+                </p>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Client Modal */}
+      {editingClient && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-4">Edit Client</h2>
+            <form onSubmit={handleUpdateClient} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                <input
+                  type="text"
+                  value={editClientFormData.name}
+                  onChange={(e) => setEditClientFormData({ ...editClientFormData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="Client name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+                <input
+                  type="text"
+                  value={editClientFormData.address}
+                  onChange={(e) => setEditClientFormData({ ...editClientFormData, address: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="Full address"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <input
+                  type="tel"
+                  value={editClientFormData.phone_number}
+                  onChange={(e) => setEditClientFormData({ ...editClientFormData, phone_number: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="Phone number"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={editClientFormData.email}
+                  onChange={(e) => setEditClientFormData({ ...editClientFormData, email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingClient(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateClientMutation.isPending || !editClientFormData.name.trim() || !editClientFormData.address.trim()}
+                  className="bg-obatek text-white px-6 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors disabled:opacity-50"
+                >
+                  {updateClientMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+              {updateClientMutation.isError && (
+                <p className="text-red-500 text-sm">
+                  {(updateClientMutation.error as any)?.response?.data?.detail || 'Failed to update client'}
                 </p>
               )}
             </form>
@@ -1681,6 +1791,45 @@ export function ManagerDashboard() {
                     </div>
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Clients Section */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Clients ({clients.length})</h2>
+          <button
+            onClick={() => setShowCreateClient(true)}
+            className="text-sm text-obatek hover:underline"
+          >
+            + New Client
+          </button>
+        </div>
+        {clients.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">No clients yet.</div>
+        ) : (
+          <div className="divide-y">
+            {clients.map((client: Client) => (
+              <div key={client.id} className="p-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium text-gray-900">{client.name}</p>
+                  <p className="text-sm text-gray-500">{client.address}</p>
+                  {client.phone_number && (
+                    <p className="text-sm text-gray-500">{client.phone_number}</p>
+                  )}
+                  {client.email && (
+                    <p className="text-sm text-gray-500">{client.email}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleOpenEditClient(client)}
+                  className="text-sm text-obatek hover:underline shrink-0"
+                >
+                  Edit
+                </button>
               </div>
             ))}
           </div>

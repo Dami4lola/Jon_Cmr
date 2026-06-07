@@ -67,10 +67,22 @@ class Job(SQLModel, table=True):
     # Relationships
     client: Optional["Client"] = Relationship(back_populates="jobs")
     assigned_workers: List["Worker"] = Relationship(link_model=JobWorkerLink)
-    timesheets: List["Timesheet"] = Relationship(back_populates="job")
-    invoice: Optional["Invoice"] = Relationship(back_populates="job")
-    inspections: List["JobInspection"] = Relationship(back_populates="job")
-    photos: List["JobPhoto"] = Relationship(back_populates="job")
+    timesheets: List["Timesheet"] = Relationship(
+        back_populates="job",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    invoice: Optional["Invoice"] = Relationship(
+        back_populates="job",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    inspections: List["JobInspection"] = Relationship(
+        back_populates="job",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    photos: List["JobPhoto"] = Relationship(
+        back_populates="job",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
     worker_schedule: List["JobWorkerSchedule"] = Relationship(
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )

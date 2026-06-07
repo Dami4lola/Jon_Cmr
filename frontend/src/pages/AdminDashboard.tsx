@@ -68,6 +68,16 @@ export function AdminDashboard() {
     },
   });
 
+  const deleteUserMutation = useMutation({
+    mutationFn: usersApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.detail || 'Failed to delete user. Please try again.');
+    },
+  });
+
   // Reset password mutation
   const resetPasswordMutation = useMutation({
     mutationFn: ({ id, newPassword }: { id: number; newPassword: string }) =>
@@ -644,6 +654,17 @@ export function AdminDashboard() {
                           }`}
                         >
                           {user.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Permanently delete ${user.username}? This cannot be undone.`)) {
+                              deleteUserMutation.mutate(user.id);
+                            }
+                          }}
+                          disabled={deleteUserMutation.isPending}
+                          className="text-sm text-red-700 hover:underline"
+                        >
+                          Delete
                         </button>
                       </div>
                     </td>
