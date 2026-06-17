@@ -530,7 +530,16 @@ def delete_job(
     current_user: ManagerUser,
 ):
     """Delete a job (manager only)"""
-    job = session.get(Job, job_id)
+    job = session.exec(
+        select(Job)
+        .where(Job.id == job_id)
+        .options(
+            selectinload(Job.timesheets),
+            selectinload(Job.invoice),
+            selectinload(Job.inspections),
+            selectinload(Job.photos),
+        )
+    ).first()
 
     if not job:
         raise HTTPException(

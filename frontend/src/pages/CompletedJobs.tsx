@@ -29,6 +29,17 @@ export function CompletedJobs() {
     },
   });
 
+  const deleteJobMutation = useMutation({
+    mutationFn: jobsApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      if (expandedJobId) setExpandedJobId(null);
+    },
+    onError: (error: any) => {
+      alert(error?.response?.data?.detail || 'Failed to delete job. Please try again.');
+    },
+  });
+
   const markUnpaidMutation = useMutation({
     mutationFn: timesheetsApi.markUnpaid,
     onSuccess: () => {
@@ -109,18 +120,32 @@ export function CompletedJobs() {
                         Est: {formatCurrency(job.estimate_amount)}
                       </p>
                     )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm('Reactivate this job? It will appear in active jobs again.')) {
-                          reactivateMutation.mutate(job.id);
-                        }
-                      }}
-                      disabled={reactivateMutation.isPending}
-                      className="mt-2 text-sm text-obatek hover:underline"
-                    >
-                      Reactivate
-                    </button>
+                    <div className="flex gap-3 mt-2 justify-end">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('Reactivate this job? It will appear in active jobs again.')) {
+                            reactivateMutation.mutate(job.id);
+                          }
+                        }}
+                        disabled={reactivateMutation.isPending}
+                        className="text-sm text-obatek hover:underline"
+                      >
+                        Reactivate
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('Permanently delete this job and all its timesheets? This cannot be undone.')) {
+                            deleteJobMutation.mutate(job.id);
+                          }
+                        }}
+                        disabled={deleteJobMutation.isPending}
+                        className="text-sm text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
