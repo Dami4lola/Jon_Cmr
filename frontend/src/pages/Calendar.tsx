@@ -190,8 +190,8 @@ export function Calendar() {
       {/* Event detail modal */}
       {selectedEvent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <div className="flex items-start justify-between mb-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[85vh] flex flex-col">
+            <div className="flex items-start justify-between p-6 pb-4">
               <h3 className="text-lg font-semibold text-gray-900">
                 {selectedEvent.title}
               </h3>
@@ -204,7 +204,7 @@ export function Calendar() {
                 </svg>
               </button>
             </div>
-            <div className="space-y-2 text-sm text-gray-600">
+            <div className="space-y-2 text-sm text-gray-600 overflow-y-auto flex-1 min-h-0 px-6">
               <p>
                 <span className="font-medium">Date:</span>{' '}
                 {formatDate(selectedEvent.start)}
@@ -256,7 +256,7 @@ export function Calendar() {
                 </p>
               )}
             </div>
-            <div className="mt-6 flex justify-end">
+            <div className="flex justify-end p-6 pt-4">
               <button
                 onClick={() => setSelectedEvent(null)}
                 className="px-4 py-2 bg-obatek text-white rounded-lg hover:bg-obatek-dark transition-colors"
