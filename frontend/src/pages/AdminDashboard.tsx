@@ -657,7 +657,7 @@ export function AdminDashboard() {
                         </button>
                         <button
                           onClick={() => {
-                            if (window.confirm(`Permanently delete ${user.username}? This cannot be undone.`)) {
+                            if (window.confirm(`Permanently delete ${user.username}? Their paid timesheets will be kept on record. This cannot be undone.`)) {
                               deleteUserMutation.mutate(user.id);
                             }
                           }}

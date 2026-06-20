@@ -5,10 +5,11 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy import delete as sa_delete
 from typing import List
 
 from ..database import get_session
-from ..models import User, Worker, Role, Timesheet
+from ..models import User, Worker, Role, Timesheet, TimeOffRequest, JobWorkerLink, JobWorkerSchedule
 from ..schemas.auth import UserResponse
 from ..services.auth import get_password_hash
 from ..seed import get_role_by_name
@@ -351,7 +352,12 @@ def delete_user(
     session: DBSession,
     admin: AdminUser,
 ):
-    """Delete a user (admin only). Blocked if the worker has existing timesheets."""
+    """
+    Delete a user (admin only). Blocked if the worker has unpaid timesheets,
+    since payroll processing needs their hourly rate. Paid timesheets are
+    kept on record (orphaned, with the employee's name preserved) rather
+    than deleted or blocking deletion.
+    """
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(
@@ -361,14 +367,32 @@ def delete_user(
 
     worker = session.exec(select(Worker).where(Worker.user_id == user_id)).first()
     if worker:
-        has_timesheets = session.exec(
-            select(Timesheet).where(Timesheet.worker_id == worker.id)
+        has_unpaid_timesheets = session.exec(
+            select(Timesheet).where(
+                Timesheet.worker_id == worker.id,
+                Timesheet.is_paid == False,
+            )
         ).first()
-        if has_timesheets:
+        if has_unpaid_timesheets:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete an employee with existing timesheets. Deactivate instead.",
+                detail="Cannot delete an employee with unpaid timesheets. Process payroll for them first.",
             )
+
+        # Orphan paid timesheets, preserving the employee's name for historical records
+        paid_timesheets = session.exec(
+            select(Timesheet).where(Timesheet.worker_id == worker.id)
+        ).all()
+        for ts in paid_timesheets:
+            ts.worker_name_snapshot = worker.name
+            ts.worker_id = None
+            session.add(ts)
+
+        # Clean up operational records with no financial/historical value
+        session.exec(sa_delete(TimeOffRequest).where(TimeOffRequest.worker_id == worker.id))
+        session.exec(sa_delete(JobWorkerLink).where(JobWorkerLink.worker_id == worker.id))
+        session.exec(sa_delete(JobWorkerSchedule).where(JobWorkerSchedule.worker_id == worker.id))
+
         session.delete(worker)
 
     session.delete(user)
