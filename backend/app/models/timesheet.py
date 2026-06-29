@@ -18,7 +18,8 @@ class Timesheet(SQLModel, table=True):
     __tablename__ = "timesheet"
 
     id: int | None = Field(default=None, primary_key=True)
-    worker_id: int = Field(foreign_key="worker.id", index=True)
+    worker_id: int | None = Field(default=None, foreign_key="worker.id", index=True)
+    worker_name_snapshot: str | None = Field(default=None, max_length=100)
     job_id: int = Field(foreign_key="job.id", index=True)
     date: dt.date = Field(index=True)
 

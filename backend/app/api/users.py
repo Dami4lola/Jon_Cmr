@@ -5,10 +5,11 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy import delete as sa_delete
 from typing import List
 
 from ..database import get_session
-from ..models import User, Worker, Role, Timesheet
+from ..models import User, Worker, Role, Timesheet, TimeOffRequest, JobWorkerLink, JobWorkerSchedule
 from ..schemas.auth import UserResponse
 from ..services.auth import get_password_hash
 from ..seed import get_role_by_name
@@ -351,7 +352,10 @@ def delete_user(
     session: DBSession,
     admin: AdminUser,
 ):
-    """Delete a user (admin only). Blocked if the worker has existing timesheets."""
+    """
+    Delete a user (admin only). All timesheets are orphaned (worker_id set to NULL,
+    name preserved via worker_name_snapshot) so payroll history is retained.
+    """
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(
@@ -361,14 +365,24 @@ def delete_user(
 
     worker = session.exec(select(Worker).where(Worker.user_id == user_id)).first()
     if worker:
-        has_timesheets = session.exec(
+        # Orphan all timesheets (paid and unpaid), preserving the employee's name for historical records
+        timesheets = session.exec(
             select(Timesheet).where(Timesheet.worker_id == worker.id)
-        ).first()
-        if has_timesheets:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete an employee with existing timesheets. Deactivate instead.",
-            )
+        ).all()
+        for ts in timesheets:
+            ts.worker_name_snapshot = worker.name
+            ts.worker_id = None
+            session.add(ts)
+
+        session.flush()
+
+        # Clean up operational records with no financial/historical value
+        session.exec(sa_delete(TimeOffRequest).where(TimeOffRequest.worker_id == worker.id))
+        session.exec(sa_delete(JobWorkerLink).where(JobWorkerLink.worker_id == worker.id))
+        session.exec(sa_delete(JobWorkerSchedule).where(JobWorkerSchedule.worker_id == worker.id))
+
+        session.flush()
+
         session.delete(worker)
 
     session.delete(user)

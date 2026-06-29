@@ -14,7 +14,7 @@ from ..schemas.job import JobCreate, JobUpdate, JobResponse, JobPhotoResponse, C
 from ..schemas.client import ClientBrief
 from ..schemas.worker import WorkerBrief
 from ..services.distance import calculate_distance, get_distance_info
-from ..services.s3 import upload_file_to_s3, delete_file_from_s3
+from ..services.s3 import upload_file_to_s3, delete_file_from_s3, generate_presigned_url
 from .deps import DBSession, CurrentUser, CurrentWorker, ManagerUser
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def job_to_response(job: Job, current_worker_id: int | None = None) -> JobRespon
         photos=[
             JobPhotoResponse(
                 id=p.id,
-                public_url=p.public_url,
+                public_url=generate_presigned_url(p.public_url),
                 caption=p.caption,
                 uploaded_at=p.uploaded_at,
             )

@@ -48,7 +48,9 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
         is_paid=timesheet.is_paid,
         receipt_count=len(timesheet.receipts) if timesheet.receipts else 0,
         created_at=timesheet.created_at,
-        worker=WorkerBrief(id=timesheet.worker.id, name=timesheet.worker.name),
+        worker=WorkerBrief(id=timesheet.worker.id, name=timesheet.worker.name)
+        if timesheet.worker
+        else WorkerBrief(id=0, name=timesheet.worker_name_snapshot or "Former Employee"),
         job=JobBrief(
             id=timesheet.job.id,
             title=timesheet.job.title,
@@ -168,6 +170,12 @@ def mark_timesheet_unpaid(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Timesheet not found",
+        )
+
+    if timesheet.worker_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot reprocess a timesheet for a deleted employee.",
         )
 
     timesheet.is_paid = False

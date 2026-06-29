@@ -15,6 +15,7 @@ interface EditUserFormData {
 export function AdminDashboard() {
   const queryClient = useQueryClient();
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithWorker | null>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<UserWithWorker | null>(null);
   const [newPassword, setNewPassword] = useState('');
@@ -563,12 +564,18 @@ export function AdminDashboard() {
 
       {/* Users Table */}
       <div className="bg-white rounded-lg shadow">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center justify-between">
           <h2 className="text-lg font-semibold">All Users</h2>
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            {showInactive ? 'Hide inactive' : 'Show inactive'}
+          </button>
         </div>
         {isLoading ? (
           <div className="p-8 text-center text-gray-500">Loading...</div>
-        ) : users.length === 0 ? (
+        ) : users.filter((u) => showInactive || u.is_active).length === 0 ? (
           <div className="p-8 text-center text-gray-500">No users found.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -599,7 +606,7 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {users.map((user) => (
+                {users.filter((u) => showInactive || u.is_active).map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
                       {user.worker_name || '-'}
@@ -657,7 +664,7 @@ export function AdminDashboard() {
                         </button>
                         <button
                           onClick={() => {
-                            if (window.confirm(`Permanently delete ${user.username}? This cannot be undone.`)) {
+                            if (window.confirm(`Permanently delete ${user.username}? Their paid timesheets will be kept on record. This cannot be undone.`)) {
                               deleteUserMutation.mutate(user.id);
                             }
                           }}

@@ -1086,8 +1086,14 @@ export function ManagerDashboard() {
                                             } else {
                                               schedule.push({ worker_id: worker.id, date: d });
                                             }
-                                            const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
-                                            return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
+                                            const workerStillInSchedule = schedule.some((ws) => ws.worker_id === worker.id);
+                                            const currentAssigned = prev.assigned_worker_ids || [];
+                                            const newAssigned = workerStillInSchedule
+                                              ? currentAssigned.includes(worker.id)
+                                                ? currentAssigned
+                                                : [...currentAssigned, worker.id]
+                                              : currentAssigned.filter((id) => id !== worker.id);
+                                            return { ...prev, worker_schedule: schedule, assigned_worker_ids: newAssigned };
                                           });
                                         }}
                                         className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
