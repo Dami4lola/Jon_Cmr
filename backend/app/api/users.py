@@ -353,10 +353,8 @@ def delete_user(
     admin: AdminUser,
 ):
     """
-    Delete a user (admin only). Blocked if the worker has unpaid timesheets,
-    since payroll processing needs their hourly rate. Paid timesheets are
-    kept on record (orphaned, with the employee's name preserved) rather
-    than deleted or blocking deletion.
+    Delete a user (admin only). All timesheets are orphaned (worker_id set to NULL,
+    name preserved via worker_name_snapshot) so payroll history is retained.
     """
     user = session.get(User, user_id)
     if not user:
@@ -367,31 +365,23 @@ def delete_user(
 
     worker = session.exec(select(Worker).where(Worker.user_id == user_id)).first()
     if worker:
-        has_unpaid_timesheets = session.exec(
-            select(Timesheet).where(
-                Timesheet.worker_id == worker.id,
-                Timesheet.is_paid == False,
-            )
-        ).first()
-        if has_unpaid_timesheets:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete an employee with unpaid timesheets. Process payroll for them first.",
-            )
-
-        # Orphan paid timesheets, preserving the employee's name for historical records
-        paid_timesheets = session.exec(
+        # Orphan all timesheets (paid and unpaid), preserving the employee's name for historical records
+        timesheets = session.exec(
             select(Timesheet).where(Timesheet.worker_id == worker.id)
         ).all()
-        for ts in paid_timesheets:
+        for ts in timesheets:
             ts.worker_name_snapshot = worker.name
             ts.worker_id = None
             session.add(ts)
+
+        session.flush()
 
         # Clean up operational records with no financial/historical value
         session.exec(sa_delete(TimeOffRequest).where(TimeOffRequest.worker_id == worker.id))
         session.exec(sa_delete(JobWorkerLink).where(JobWorkerLink.worker_id == worker.id))
         session.exec(sa_delete(JobWorkerSchedule).where(JobWorkerSchedule.worker_id == worker.id))
+
+        session.flush()
 
         session.delete(worker)
 
