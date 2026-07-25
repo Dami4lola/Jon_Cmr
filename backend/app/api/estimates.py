@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from ..models.settings import AppSettings
 from ..services.distance import calculate_distance
+from ..services.material_pricing import search_materials
 from ..schemas.estimate import (
     JobTypeOption,
     JobTypeRate,
@@ -19,6 +20,7 @@ from ..schemas.estimate import (
     QuickQuoteRatesResponse,
     DistancePreviewRequest,
     DistancePreviewResponse,
+    MaterialSearchResult,
 )
 from .invoices import LABOUR_RATE, REDSEAL_RATE, MINIMUM_HOURS, DEFAULT_KM_RATE, HST_RATE
 from .deps import DBSession, ManagerUser
@@ -231,3 +233,23 @@ def distance_preview(data: DistancePreviewRequest, current_user: ManagerUser):
     """Manager-only: preview round-trip travel km for an address before a job is created"""
     distance_km = calculate_distance(data.address)
     return DistancePreviewResponse(distance_km=distance_km, address=data.address)
+
+
+@router.get("/materials/search", response_model=list[MaterialSearchResult])
+def search_materials_endpoint(q: str, session: DBSession, current_user: ManagerUser):
+    """Manager-only: autocomplete search for Home Depot material prices, cached in the DB"""
+    if len(q.strip()) < 3:
+        return []
+
+    results = search_materials(session, q)
+    return [
+        MaterialSearchResult(
+            product_name=r.product_name,
+            price=r.price,
+            price_value=r.price_value,
+            thumbnail=r.thumbnail,
+            product_url=r.product_url,
+            source=r.source,
+        )
+        for r in results
+    ]

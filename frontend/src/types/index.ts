@@ -503,3 +503,12 @@ export interface DistancePreviewResponse {
   distance_km?: string | null;
   address: string;
 }
+
+export interface MaterialSearchResult {
+  product_name: string;
+  price?: string | null;
+  price_value?: number | null;
+  thumbnail?: string | null;
+  product_url?: string | null;
+  source: string;
+}

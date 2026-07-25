@@ -74,3 +74,13 @@ class DistancePreviewRequest(BaseModel):
 class DistancePreviewResponse(BaseModel):
     distance_km: Decimal | None
     address: str
+
+
+class MaterialSearchResult(BaseModel):
+    """A single cached/live Home Depot material match for the manager's autocomplete"""
+    product_name: str
+    price: str | None
+    price_value: float | None
+    thumbnail: str | None
+    product_url: str | None
+    source: str

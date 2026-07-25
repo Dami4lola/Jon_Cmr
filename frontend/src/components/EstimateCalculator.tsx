@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { estimatesApi } from '../api/estimates';
 import { formatCurrency } from '../lib/utils';
+import type { MaterialSearchResult } from '../types';
 
 interface EstimateCalculatorProps {
   initialAddress?: string;
@@ -38,6 +39,15 @@ interface MaterialRow {
 let rowIdCounter = 1;
 function nextId() {
   return rowIdCounter++;
+}
+
+function useDebouncedValue(value: string, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(handle);
+  }, [value, delayMs]);
+  return debounced;
 }
 
 const EQUIPMENT_DEFAULTS: Record<EquipmentRow['category'], { desc: string; rate: number; unit: string }> = {
@@ -84,6 +94,7 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
   const [distanceError, setDistanceError] = useState<string | null>(null);
   const [equipmentRows, setEquipmentRows] = useState<EquipmentRow[]>([]);
   const [materialRows, setMaterialRows] = useState<MaterialRow[]>([]);
+  const [activeSearchRowId, setActiveSearchRowId] = useState<number | null>(null);
   const [includeAdmin, setIncludeAdmin] = useState(true);
   const [adminFee, setAdminFee] = useState(50);
   const [includeHst, setIncludeHst] = useState(true);
@@ -351,41 +362,15 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
         <p className="text-xs font-medium text-gray-600 mb-1">Materials</p>
         <div className="space-y-2">
           {materialRows.map((row) => (
-            <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
-              <input
-                placeholder="Item"
-                className={`${inputClass} col-span-6`}
-                value={row.desc}
-                onChange={(e) => updateMaterialRow(row.id, { desc: e.target.value })}
-              />
-              <input
-                type="number"
-                min={0}
-                className={`${inputClass} col-span-2`}
-                value={row.qty}
-                onChange={(e) => updateMaterialRow(row.id, { qty: parseFloat(e.target.value) || 0 })}
-                title="Qty"
-              />
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className={`${inputClass} col-span-2`}
-                value={row.unitCost}
-                onChange={(e) => updateMaterialRow(row.id, { unitCost: parseFloat(e.target.value) || 0 })}
-                title="Unit cost"
-              />
-              <span className="col-span-1 text-xs text-right font-medium">
-                {formatCurrency(materialLineTotal(row))}
-              </span>
-              <button
-                type="button"
-                onClick={() => removeMaterialRow(row.id)}
-                className="text-red-500 text-xs justify-self-end"
-              >
-                &times;
-              </button>
-            </div>
+            <MaterialRowInput
+              key={row.id}
+              row={row}
+              onUpdate={(patch) => updateMaterialRow(row.id, patch)}
+              onRemove={() => removeMaterialRow(row.id)}
+              isActive={activeSearchRowId === row.id}
+              onFocus={() => setActiveSearchRowId(row.id)}
+              onBlur={() => setActiveSearchRowId((id) => (id === row.id ? null : id))}
+            />
           ))}
         </div>
         <button type="button" onClick={addMaterialRow} className="text-xs text-obatek mt-1 hover:underline">
@@ -444,6 +429,94 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
           Use This Estimate
         </button>
       </div>
+    </div>
+  );
+}
+
+interface MaterialRowInputProps {
+  row: MaterialRow;
+  onUpdate: (patch: Partial<MaterialRow>) => void;
+  onRemove: () => void;
+  isActive: boolean;
+  onFocus: () => void;
+  onBlur: () => void;
+}
+
+function MaterialRowInput({ row, onUpdate, onRemove, isActive, onFocus, onBlur }: MaterialRowInputProps) {
+  const debouncedDesc = useDebouncedValue(row.desc, 500);
+  const shouldSearch = isActive && debouncedDesc.trim().length >= 3;
+
+  const { data: suggestions } = useQuery({
+    queryKey: ['material-search', row.id, debouncedDesc],
+    queryFn: () => estimatesApi.searchMaterials(debouncedDesc),
+    enabled: shouldSearch,
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const showDropdown = isActive && shouldSearch && !!suggestions?.length;
+
+  const selectSuggestion = (s: MaterialSearchResult) => {
+    onUpdate({
+      desc: s.product_name,
+      unitCost: s.price_value ?? row.unitCost,
+    });
+  };
+
+  return (
+    <div className="grid grid-cols-12 gap-2 items-center">
+      <div className="col-span-6 relative">
+        <input
+          placeholder="Item"
+          className={inputClass}
+          value={row.desc}
+          onChange={(e) => onUpdate({ desc: e.target.value })}
+          onFocus={onFocus}
+          onBlur={() => setTimeout(onBlur, 150)}
+        />
+        {showDropdown && (
+          <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-auto text-xs">
+            {suggestions!.map((s, i) => (
+              <li
+                key={i}
+                className="px-2 py-1.5 hover:bg-obatek/10 cursor-pointer flex justify-between gap-2"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(s);
+                }}
+              >
+                <span className="truncate">{s.product_name}</span>
+                <span className="font-medium text-gray-500 shrink-0">
+                  {s.price_value != null ? formatCurrency(s.price_value) : s.price}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <input
+        type="number"
+        min={0}
+        className={`${inputClass} col-span-2`}
+        value={row.qty}
+        onChange={(e) => onUpdate({ qty: parseFloat(e.target.value) || 0 })}
+        title="Qty"
+      />
+      <input
+        type="number"
+        min={0}
+        step="0.01"
+        className={`${inputClass} col-span-2`}
+        value={row.unitCost}
+        onChange={(e) => onUpdate({ unitCost: parseFloat(e.target.value) || 0 })}
+        title="Unit cost"
+      />
+      <span className="col-span-1 text-xs text-right font-medium">
+        {formatCurrency(row.qty * row.unitCost)}
+      </span>
+      <button type="button" onClick={onRemove} className="text-red-500 text-xs justify-self-end">
+        &times;
+      </button>
     </div>
   );
 }

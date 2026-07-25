@@ -7,6 +7,7 @@ import type {
   QuickQuoteResponse,
   QuickQuoteRates,
   DistancePreviewResponse,
+  MaterialSearchResult,
 } from '../types';
 
 export const estimatesApi = {
@@ -40,6 +41,12 @@ export const estimatesApi = {
   // Manager-only: preview round-trip travel km for an address before a job exists
   distancePreview: async (address: string): Promise<DistancePreviewResponse> => {
     const response = await api.post('/estimates/distance-preview', { address });
+    return response.data;
+  },
+
+  // Manager-only: autocomplete search for Home Depot material prices, cached in the DB
+  searchMaterials: async (q: string): Promise<MaterialSearchResult[]> => {
+    const response = await api.get('/estimates/materials/search', { params: { q } });
     return response.data;
   },
 };
