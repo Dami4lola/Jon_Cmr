@@ -28,6 +28,7 @@ export function Navbar() {
   // Add admin-only items
   if (isAdmin()) {
     navItems.push({ href: '/admin', label: 'Admin' });
+    navItems.push({ href: '/admin/estimate', label: 'Estimate Calculator' });
   }
 
   return (

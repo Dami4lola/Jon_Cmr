@@ -8,6 +8,7 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
+import { GetEstimate } from './pages/GetEstimate';
 import { Dashboard } from './pages/Dashboard';
 import { ManagerDashboard } from './pages/ManagerDashboard';
 import { Calendar } from './pages/Calendar';
@@ -17,6 +18,7 @@ import { CreateInspection } from './pages/CreateInspection';
 import { ViewInspection } from './pages/ViewInspection';
 import { Invoices } from './pages/Invoices';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { AdminEstimate } from './pages/AdminEstimate';
 import { ViewTimesheet } from './pages/ViewTimesheet';
 import { CompletedJobs } from './pages/CompletedJobs';
 import { PaidTimesheets } from './pages/PaidTimesheets';
@@ -30,6 +32,7 @@ function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/quote" element={<GetEstimate />} />
 
       {/* Protected routes */}
       <Route
@@ -87,6 +90,14 @@ function App() {
           element={
             <ProtectedRoute requireAdmin>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/estimate"
+          element={
+            <ProtectedRoute requireAdmin>
+              <AdminEstimate />
             </ProtectedRoute>
           }
         />

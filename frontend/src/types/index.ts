@@ -447,3 +447,59 @@ export interface TimeOffRequestReview {
 export interface ApiError {
   detail: string;
 }
+
+// Estimate Types
+export interface JobTypeOption {
+  value: string;
+  label: string;
+}
+
+export interface QuickQuoteRequest {
+  job_type: string;
+  address: string;
+  area_sqft: number;
+}
+
+export interface QuickQuoteResponse {
+  job_type: string;
+  job_type_label: string;
+  address: string;
+  area_sqft: string;
+  distance_km?: string | null;
+  estimated_hours: string;
+  labour_amount: string;
+  travel_amount: string;
+  materials_amount: string;
+  admin_fee: string;
+  subtotal: string;
+  hst_amount: string;
+  total: string;
+  disclaimer: string;
+}
+
+export interface JobTypeRate {
+  job_type: string;
+  label: string;
+  hours_per_sqft: string;
+  materials_per_sqft: string;
+}
+
+export interface QuickQuoteRates {
+  labour_rate: string;
+  redseal_rate: string;
+  minimum_hours: string;
+  km_rate: string;
+  hst_rate: string;
+  admin_fee: string;
+  job_types: JobTypeRate[];
+}
+
+export interface JobTypeRateUpdate {
+  hours_per_sqft: number;
+  materials_per_sqft: number;
+}
+
+export interface DistancePreviewResponse {
+  distance_km?: string | null;
+  address: string;
+}

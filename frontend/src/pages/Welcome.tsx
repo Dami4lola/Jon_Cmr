@@ -39,6 +39,13 @@ export function Welcome() {
             </Link>
           </div>
         )}
+
+        <Link
+          to="/quote"
+          className="block w-full mt-4 text-center py-3 px-4 rounded-lg font-medium text-obatek hover:bg-obatek/5 transition-colors border border-dashed border-obatek/40"
+        >
+          Get a Free Estimate
+        </Link>
       </div>
 
       <p className="text-white/60 text-sm mt-8">

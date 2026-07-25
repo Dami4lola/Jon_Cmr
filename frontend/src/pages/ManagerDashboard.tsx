@@ -8,6 +8,7 @@ import { workersApi } from '../api/workers';
 import { payrollApi } from '../api/payroll';
 import { timeOffApi } from '../api/timeOff';
 import { formatCurrency, formatDate } from '../lib/utils';
+import { EstimateCalculator } from '../components/EstimateCalculator';
 import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, TimeOffRequest } from '../types';
 
 function getDateRange(start: string, end: string): string[] {
@@ -69,6 +70,8 @@ export function ManagerDashboard() {
   });
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [editPhotoFiles, setEditPhotoFiles] = useState<File[]>([]);
+  const [showEstimateCalc, setShowEstimateCalc] = useState(false);
+  const [showEditEstimateCalc, setShowEditEstimateCalc] = useState(false);
   const [clientFormData, setClientFormData] = useState<ClientCreate>({
     name: '',
     phone_number: '',
@@ -153,6 +156,7 @@ export function ManagerDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       setShowCreateJob(false);
+      setShowEstimateCalc(false);
       setPhotoFiles([]);
       setFormData({
         client_id: 0,
@@ -563,9 +567,18 @@ export function ManagerDashboard() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Estimate Amount ($)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Estimate Amount ($)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowEstimateCalc(!showEstimateCalc)}
+                    className="text-xs text-obatek hover:underline"
+                  >
+                    {showEstimateCalc ? 'Hide calculator' : 'Calculate'}
+                  </button>
+                </div>
                 <input
                   type="number"
                   step="0.01"
@@ -589,6 +602,17 @@ export function ManagerDashboard() {
                 />
               </div>
             </div>
+
+            {showEstimateCalc && (
+              <EstimateCalculator
+                initialAddress={formData.address_override || clients.find((c) => c.id === formData.client_id)?.address}
+                onApply={(total) => {
+                  setFormData({ ...formData, estimate_amount: total });
+                  setShowEstimateCalc(false);
+                }}
+                onClose={() => setShowEstimateCalc(false)}
+              />
+            )}
 
             <div>
               <label className="flex items-center gap-3 cursor-pointer">
@@ -990,9 +1014,18 @@ export function ManagerDashboard() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Estimate Amount ($)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Estimate Amount ($)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowEditEstimateCalc(!showEditEstimateCalc)}
+                      className="text-xs text-obatek hover:underline"
+                    >
+                      {showEditEstimateCalc ? 'Hide calculator' : 'Calculate'}
+                    </button>
+                  </div>
                   <input
                     type="number"
                     step="0.01"
@@ -1016,6 +1049,17 @@ export function ManagerDashboard() {
                   />
                 </div>
               </div>
+
+              {showEditEstimateCalc && (
+                <EstimateCalculator
+                  initialAddress={editFormData.address_override || clients.find((c) => c.id === editFormData.client_id)?.address}
+                  onApply={(total) => {
+                    setEditFormData({ ...editFormData, estimate_amount: total });
+                    setShowEditEstimateCalc(false);
+                  }}
+                  onClose={() => setShowEditEstimateCalc(false)}
+                />
+              )}
 
               <div>
                 <label className="flex items-center gap-3 cursor-pointer">
