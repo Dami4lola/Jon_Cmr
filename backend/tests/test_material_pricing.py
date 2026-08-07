@@ -44,6 +44,11 @@ class TestParsePrice:
     def test_unparseable(self):
         assert material_pricing._parse_price("Call for price") is None
 
+    def test_numeric_price(self):
+        # SerpApi sometimes returns price as a raw number instead of a "$X.XX" string
+        assert material_pricing._parse_price(8.98) == 8.98
+        assert material_pricing._parse_price(15) == 15.0
+
 
 class TestSearchMaterials:
     def test_missing_api_key_returns_empty_list(self, session, monkeypatch):
@@ -68,6 +73,22 @@ class TestSearchMaterials:
 
         rows = session.exec(select(MaterialPriceCache)).all()
         assert len(rows) == 1
+
+    def test_cache_miss_with_numeric_price_from_serpapi(self, session, monkeypatch):
+        # Regression test: SerpApi can return "price" as a raw number rather than
+        # a "$X.XX" string, which previously crashed the request.
+        monkeypatch.setattr(material_pricing.settings, "SERPAPI_KEY", "fake-key")
+        with patch("app.services.material_pricing.requests.get") as mock_get:
+            mock_get.return_value.json.return_value = {
+                "products": [
+                    {"title": "Drywall Screws 1lb", "price": 8.98, "thumbnails": ["http://img"], "link": "http://link"}
+                ]
+            }
+            result = material_pricing.search_materials(session, "drywall screws")
+
+        assert len(result) == 1
+        assert result[0].price_value == 8.98
+        assert result[0].price == "8.98"
 
     def test_cache_hit_skips_http_call(self, session, monkeypatch):
         monkeypatch.setattr(material_pricing.settings, "SERPAPI_KEY", "fake-key")

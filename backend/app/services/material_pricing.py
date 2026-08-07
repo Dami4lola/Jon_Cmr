@@ -25,11 +25,15 @@ def _normalize_query(query: str) -> str:
     return " ".join(query.strip().lower().split())
 
 
-def _parse_price(raw: str | None) -> float | None:
-    """Parse a SerpApi price string into a float. Ranges like "$12.98 - $45.00"
-    are resolved to their median, matching a single quoted product price."""
-    if not raw:
+def _parse_price(raw: str | float | int | None) -> float | None:
+    """Parse a SerpApi price value into a float. SerpApi sometimes returns a plain
+    number instead of a "$X.XX" string, so numeric types are accepted as-is. Ranges
+    like "$12.98 - $45.00" are resolved to their median, matching a single quoted
+    product price."""
+    if raw is None:
         return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
 
     numbers = [float(n.replace(",", "")) for n in _NUMBER_RE.findall(raw)]
     if not numbers:
@@ -110,11 +114,12 @@ def search_materials(session: Session, query: str, ttl_hours: int | None = None)
         if not title:
             continue
         thumbnails = product.get("thumbnails") or []
+        raw_price = product.get("price")
         row = MaterialPriceCache(
             query=normalized,
             product_name=title,
-            price=product.get("price"),
-            price_value=_parse_price(product.get("price")),
+            price=str(raw_price) if raw_price is not None else None,
+            price_value=_parse_price(raw_price),
             thumbnail=thumbnails[0] if thumbnails else None,
             product_url=product.get("link"),
             source="home_depot",
