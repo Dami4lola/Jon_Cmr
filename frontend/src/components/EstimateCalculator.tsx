@@ -116,7 +116,14 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
   const materialLineTotal = (row: MaterialRow) => row.qty * row.unitCost;
 
   const laborTotal = laborRows.reduce((s, r) => s + laborLineTotal(r), 0);
-  const travelTotal = techsTraveling * (distanceKm || 0) * kmRate;
+  // Multi-day jobs mean multiple round trips: total job hours / 7-hour day,
+  // rounded up, gives the number of days the crew drives out.
+  const totalLaborHours = laborRows.reduce((s, r) => {
+    const hrs = r.applyMin ? Math.max(r.hours, minimumHours) : r.hours;
+    return s + hrs;
+  }, 0);
+  const travelDays = totalLaborHours > 0 ? Math.ceil(totalLaborHours / 7) : 0;
+  const travelTotal = techsTraveling * (distanceKm || 0) * kmRate * travelDays;
   const equipTotal = equipmentRows.reduce((s, r) => s + equipLineTotal(r), 0);
   const materialsTotal = materialRows.reduce((s, r) => s + materialLineTotal(r), 0);
   const adminAmt = includeAdmin ? adminFee : 0;
@@ -285,6 +292,11 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
             onChange={(e) => setDistanceKm(e.target.value ? parseFloat(e.target.value) : null)}
           />
           {distanceError && <span className="text-xs text-amber-600">{distanceError}</span>}
+          {travelDays > 0 && (
+            <span className="text-xs text-gray-500">
+              {travelDays} travel day{travelDays === 1 ? '' : 's'} ({totalLaborHours}h / 7)
+            </span>
+          )}
         </div>
       </div>
 
