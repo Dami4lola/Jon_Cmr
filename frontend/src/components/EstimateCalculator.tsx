@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { estimatesApi } from '../api/estimates';
 import { formatCurrency } from '../lib/utils';
-import type { MaterialSearchResult } from '../types';
+import type { Estimate, EstimatePayload, EstimatePhaseKey, MaterialSearchResult } from '../types';
 
 interface EstimateCalculatorProps {
   initialAddress?: string;
-  onApply: (total: number) => void;
+  initialEstimate?: Estimate;
+  jobId?: number | null;
+  clientId?: number | null;
+  clientNameOverride?: string | null;
+  onApply?: (total: number) => void;
+  onSaved?: (estimate: Estimate) => void;
   onClose: () => void;
 }
 
-interface LaborRow {
+interface TaskRow {
   id: number;
-  trade: 'standard' | 'redseal' | 'custom';
-  customRate: number;
-  techs: number;
+  phase: EstimatePhaseKey;
+  description: string;
   hours: number;
-  applyMin: boolean;
+  usesHeavyEquipment: boolean;
 }
 
 interface EquipmentRow {
@@ -66,10 +70,50 @@ const CATEGORY_LABELS: Record<EquipmentRow['category'], string> = {
   fuel: 'Fuel',
 };
 
+const PHASES: { key: EstimatePhaseKey; label: string }[] = [
+  { key: 'preplanning', label: 'Preplanning' },
+  { key: 'build', label: 'The Build' },
+  { key: 'finishing', label: 'Finishing' },
+];
+
 const inputClass =
   'w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none';
 
-export function EstimateCalculator({ initialAddress, onApply, onClose }: EstimateCalculatorProps) {
+function tasksFromEstimate(estimate?: Estimate): TaskRow[] {
+  if (!estimate) return [];
+  return [...estimate.tasks]
+    .sort((a, b) => (a.phase === b.phase ? a.sort_order - b.sort_order : 0))
+    .map((t) => ({
+      id: nextId(), phase: t.phase, description: t.description,
+      hours: parseFloat(t.hours), usesHeavyEquipment: t.uses_heavy_equipment,
+    }));
+}
+
+function equipmentFromEstimate(estimate?: Estimate): EquipmentRow[] {
+  if (!estimate) return [];
+  return estimate.equipment_rows.map((r) => ({
+    id: nextId(), category: r.category, desc: r.description,
+    rate: parseFloat(r.rate), unit: r.unit, qty: parseFloat(r.quantity), markup: parseFloat(r.markup_pct),
+  }));
+}
+
+function materialsFromEstimate(estimate?: Estimate): MaterialRow[] {
+  if (!estimate) return [];
+  return estimate.material_rows.map((r) => ({
+    id: nextId(), desc: r.description, qty: parseFloat(r.quantity), unitCost: parseFloat(r.unit_cost),
+  }));
+}
+
+export function EstimateCalculator({
+  initialAddress,
+  initialEstimate,
+  jobId,
+  clientId,
+  clientNameOverride,
+  onApply,
+  onSaved,
+  onClose,
+}: EstimateCalculatorProps) {
   const { data: rates } = useQuery({
     queryKey: ['estimate-rates'],
     queryFn: estimatesApi.getRates,
@@ -78,56 +122,67 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
   });
 
   const labourRate = rates ? parseFloat(rates.labour_rate) : 80;
-  const redsealRate = rates ? parseFloat(rates.redseal_rate) : 100;
-  const minimumHours = rates ? parseFloat(rates.minimum_hours) : 4;
   const kmRate = rates ? parseFloat(rates.km_rate) : 1.5;
   const hstRate = rates ? parseFloat(rates.hst_rate) : 0.13;
   const defaultAdminFee = rates ? parseFloat(rates.admin_fee) : 50;
 
-  const [laborRows, setLaborRows] = useState<LaborRow[]>([
-    { id: nextId(), trade: 'standard', customRate: 80, techs: 1, hours: 4, applyMin: true },
-  ]);
-  const [address, setAddress] = useState(initialAddress || '');
-  const [techsTraveling, setTechsTraveling] = useState(1);
-  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [estimateId, setEstimateId] = useState<number | null>(initialEstimate?.id ?? null);
+  const [estimateNumber, setEstimateNumber] = useState<string | null>(initialEstimate?.estimate_number ?? null);
+
+  const [scopeOfWork, setScopeOfWork] = useState(initialEstimate?.scope_of_work || '');
+  const [tasks, setTasks] = useState<TaskRow[]>(() => tasksFromEstimate(initialEstimate));
+  const [crewSize, setCrewSize] = useState(initialEstimate?.crew_size ?? 1);
+  const [techsTraveling, setTechsTraveling] = useState(initialEstimate?.techs_traveling ?? 1);
+  const [linkTravelToCrew, setLinkTravelToCrew] = useState(!initialEstimate);
+
+  const [address, setAddress] = useState(initialEstimate?.address_override || initialAddress || '');
+  const [distanceKm, setDistanceKm] = useState<number | null>(
+    initialEstimate?.distance_km != null ? parseFloat(initialEstimate.distance_km) : null
+  );
   const [distanceLoading, setDistanceLoading] = useState(false);
   const [distanceError, setDistanceError] = useState<string | null>(null);
-  const [equipmentRows, setEquipmentRows] = useState<EquipmentRow[]>([]);
-  const [materialRows, setMaterialRows] = useState<MaterialRow[]>([]);
+
+  const [equipmentRows, setEquipmentRows] = useState<EquipmentRow[]>(() => equipmentFromEstimate(initialEstimate));
+  const [materialRows, setMaterialRows] = useState<MaterialRow[]>(() => materialsFromEstimate(initialEstimate));
   const [activeSearchRowId, setActiveSearchRowId] = useState<number | null>(null);
-  const [includeAdmin, setIncludeAdmin] = useState(true);
-  const [adminFee, setAdminFee] = useState(50);
-  const [includeHst, setIncludeHst] = useState(true);
+
+  const [dumpFee, setDumpFee] = useState(initialEstimate ? parseFloat(initialEstimate.dump_fee) : 0);
+  const [permitsFee, setPermitsFee] = useState(initialEstimate ? parseFloat(initialEstimate.permits_fee) : 0);
+  const [redsealAmount, setRedsealAmount] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_amount) : 0);
+  const [includeAdmin, setIncludeAdmin] = useState(initialEstimate?.include_admin_fee ?? true);
+  const [adminFee, setAdminFee] = useState(initialEstimate ? parseFloat(initialEstimate.admin_fee) : 50);
+  const [includeHst, setIncludeHst] = useState(initialEstimate?.include_hst ?? true);
 
   useEffect(() => {
-    setAdminFee(defaultAdminFee);
-  }, [defaultAdminFee]);
+    if (!initialEstimate) setAdminFee(defaultAdminFee);
+  }, [defaultAdminFee, initialEstimate]);
 
-  const laborRateFor = (row: LaborRow) => {
-    if (row.trade === 'standard') return labourRate;
-    if (row.trade === 'redseal') return redsealRate;
-    return row.customRate;
-  };
-  const laborLineTotal = (row: LaborRow) => {
-    const hrs = row.applyMin ? Math.max(row.hours, minimumHours) : row.hours;
-    return laborRateFor(row) * row.techs * hrs;
-  };
-  const equipLineTotal = (row: EquipmentRow) => row.rate * row.qty * (1 + row.markup / 100);
-  const materialLineTotal = (row: MaterialRow) => row.qty * row.unitCost;
+  useEffect(() => {
+    if (linkTravelToCrew) setTechsTraveling(crewSize);
+  }, [crewSize, linkTravelToCrew]);
 
-  const laborTotal = laborRows.reduce((s, r) => s + laborLineTotal(r), 0);
-  // Multi-day jobs mean multiple round trips: total job hours / 7-hour day,
+  // Multi-day jobs mean multiple round trips: total task hours / 7-hour day,
   // rounded up, gives the number of days the crew drives out.
-  const totalLaborHours = laborRows.reduce((s, r) => {
-    const hrs = r.applyMin ? Math.max(r.hours, minimumHours) : r.hours;
-    return s + hrs;
-  }, 0);
-  const travelDays = totalLaborHours > 0 ? Math.ceil(totalLaborHours / 7) : 0;
+  const totalHours = tasks.reduce((s, t) => s + t.hours, 0);
+  const travelDays = totalHours > 0 ? Math.ceil(totalHours / 7) : 0;
+
+  const labourTotal = totalHours * crewSize * labourRate;
   const travelTotal = techsTraveling * (distanceKm || 0) * kmRate * travelDays;
-  const equipTotal = equipmentRows.reduce((s, r) => s + equipLineTotal(r), 0);
+
+  const equipLineTotal = (row: EquipmentRow) => row.rate * row.qty * (1 + row.markup / 100);
+  const heavyEquipmentTotal = equipmentRows.filter((r) => r.category === 'heavy').reduce((s, r) => s + equipLineTotal(r), 0);
+  const fuelTotal = equipmentRows.filter((r) => r.category === 'fuel').reduce((s, r) => s + equipLineTotal(r), 0);
+  const rentalTotal = equipmentRows
+    .filter((r) => r.category === 'ownedRental' || r.category === 'scaffolding' || r.category === 'rentalVillage')
+    .reduce((s, r) => s + equipLineTotal(r), 0);
+
+  const materialLineTotal = (row: MaterialRow) => row.qty * row.unitCost;
   const materialsTotal = materialRows.reduce((s, r) => s + materialLineTotal(r), 0);
+
   const adminAmt = includeAdmin ? adminFee : 0;
-  const subtotal = laborTotal + travelTotal + equipTotal + materialsTotal + adminAmt;
+  const subtotal =
+    labourTotal + travelTotal + materialsTotal + heavyEquipmentTotal + rentalTotal + fuelTotal
+    + dumpFee + permitsFee + redsealAmount + adminAmt;
   const hst = includeHst ? subtotal * hstRate : 0;
   const grandTotal = subtotal + hst;
 
@@ -148,15 +203,11 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
     }
   };
 
-  const updateLaborRow = (id: number, patch: Partial<LaborRow>) => {
-    setLaborRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  };
-  const removeLaborRow = (id: number) => setLaborRows((rows) => rows.filter((r) => r.id !== id));
-  const addLaborRow = () =>
-    setLaborRows((rows) => [
-      ...rows,
-      { id: nextId(), trade: 'standard', customRate: labourRate, techs: 1, hours: minimumHours, applyMin: true },
-    ]);
+  const addTask = (phase: EstimatePhaseKey) =>
+    setTasks((rows) => [...rows, { id: nextId(), phase, description: '', hours: 0, usesHeavyEquipment: false }]);
+  const updateTask = (id: number, patch: Partial<TaskRow>) =>
+    setTasks((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const removeTask = (id: number) => setTasks((rows) => rows.filter((r) => r.id !== id));
 
   const addEquipmentRow = (category: EquipmentRow['category']) => {
     const d = EQUIPMENT_DEFAULTS[category];
@@ -177,89 +228,98 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
   };
   const removeMaterialRow = (id: number) => setMaterialRows((rows) => rows.filter((r) => r.id !== id));
 
+  const buildPayload = (): EstimatePayload => ({
+    job_id: jobId ?? null,
+    client_id: clientId ?? null,
+    client_name_override: clientNameOverride ?? null,
+    address_override: address || null,
+    scope_of_work: scopeOfWork || null,
+    crew_size: crewSize,
+    techs_traveling: techsTraveling,
+    distance_km: distanceKm,
+    km_rate: kmRate,
+    dump_fee: dumpFee,
+    permits_fee: permitsFee,
+    admin_fee: adminFee,
+    redseal_amount: redsealAmount,
+    include_admin_fee: includeAdmin,
+    include_hst: includeHst,
+    tasks: tasks
+      .filter((t) => t.description.trim().length > 0)
+      .map((t, i) => ({
+        phase: t.phase, description: t.description, hours: t.hours, uses_heavy_equipment: t.usesHeavyEquipment, sort_order: i,
+      })),
+    equipment_rows: equipmentRows.map((r, i) => ({
+      category: r.category, description: r.desc, rate: r.rate, unit: r.unit, quantity: r.qty, markup_pct: r.markup, sort_order: i,
+    })),
+    material_rows: materialRows
+      .filter((r) => r.desc.trim().length > 0)
+      .map((r, i) => ({ description: r.desc, quantity: r.qty, unit_cost: r.unitCost, sort_order: i })),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: () => (estimateId ? estimatesApi.update(estimateId, buildPayload()) : estimatesApi.create(buildPayload())),
+    onSuccess: (saved) => {
+      setEstimateId(saved.id);
+      setEstimateNumber(saved.estimate_number);
+      onSaved?.(saved);
+    },
+  });
+
+  const handleDownloadPdf = async () => {
+    if (!estimateId || !estimateNumber) return;
+    try {
+      await estimatesApi.downloadPdfToFile(estimateId, estimateNumber);
+    } catch {
+      alert('Failed to download PDF');
+    }
+  };
+
   return (
     <div className="border border-obatek/30 rounded-lg p-4 bg-obatek/5 space-y-4 mt-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-800">Estimate Calculator</h3>
+        <h3 className="text-sm font-semibold text-gray-800">
+          Estimate Calculator{estimateNumber ? ` — ${estimateNumber}` : ''}
+        </h3>
         <button type="button" onClick={onClose} className="text-xs text-gray-500 hover:text-gray-700">
           Close
         </button>
       </div>
 
-      {/* Labor */}
+      {/* Scope of Work */}
       <div>
-        <p className="text-xs font-medium text-gray-600 mb-1">Labor</p>
-        <div className="space-y-2">
-          {laborRows.map((row) => (
-            <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
-              <select
-                className={`${inputClass} col-span-4`}
-                value={row.trade}
-                onChange={(e) => updateLaborRow(row.id, { trade: e.target.value as LaborRow['trade'] })}
-              >
-                <option value="standard">Standard (${labourRate}/hr)</option>
-                <option value="redseal">Red Seal - plumbing/electrical (${redsealRate}/hr)</option>
-                <option value="custom">Custom rate</option>
-              </select>
-              {row.trade === 'custom' && (
-                <input
-                  type="number"
-                  step="0.01"
-                  className={`${inputClass} col-span-2`}
-                  value={row.customRate}
-                  onChange={(e) => updateLaborRow(row.id, { customRate: parseFloat(e.target.value) || 0 })}
-                />
-              )}
-              <input
-                type="number"
-                min={1}
-                className={`${inputClass} ${row.trade === 'custom' ? 'col-span-2' : 'col-span-2'}`}
-                value={row.techs}
-                onChange={(e) => updateLaborRow(row.id, { techs: parseInt(e.target.value) || 1 })}
-                title="Number of techs"
-              />
-              <input
-                type="number"
-                min={0}
-                step={0.25}
-                className={`${inputClass} col-span-2`}
-                value={row.hours}
-                onChange={(e) => updateLaborRow(row.id, { hours: parseFloat(e.target.value) || 0 })}
-                title="Hours"
-              />
-              <label className="col-span-1 flex items-center justify-center text-xs" title="Apply 4-hr minimum">
-                <input
-                  type="checkbox"
-                  checked={row.applyMin}
-                  onChange={(e) => updateLaborRow(row.id, { applyMin: e.target.checked })}
-                />
-              </label>
-              <span className="col-span-1 text-xs text-right font-medium">
-                {formatCurrency(laborLineTotal(row))}
-              </span>
-              <button
-                type="button"
-                onClick={() => removeLaborRow(row.id)}
-                className="text-red-500 text-xs justify-self-end"
-              >
-                &times;
-              </button>
-            </div>
-          ))}
-        </div>
-        <button type="button" onClick={addLaborRow} className="text-xs text-obatek mt-1 hover:underline">
-          + Add labor line
-        </button>
+        <p className="text-xs font-medium text-gray-600 mb-1">Scope of Work</p>
+        <textarea
+          rows={5}
+          className={`${inputClass} resize-y`}
+          placeholder={'- pick up materials\n- setup ground protection mats\n- ...'}
+          value={scopeOfWork}
+          onChange={(e) => setScopeOfWork(e.target.value)}
+        />
       </div>
 
-      {/* Travel */}
+      {/* Crew & Travel */}
       <div>
-        <p className="text-xs font-medium text-gray-600 mb-1">Travel (round trip)</p>
+        <p className="text-xs font-medium text-gray-600 mb-1">Crew &amp; Travel</p>
         <div className="grid grid-cols-12 gap-2 items-center">
+          <label className="col-span-2 text-xs text-gray-500">Crew size</label>
+          <input
+            type="number"
+            min={1}
+            className={`${inputClass} col-span-1`}
+            value={crewSize}
+            onChange={(e) => setCrewSize(parseInt(e.target.value) || 1)}
+            title="Number of techs on the job"
+          />
+          <span className="col-span-2 text-xs text-gray-500 text-right">${labourRate}/hr each</span>
+          <span className="col-span-3" />
+          <span className="col-span-4 text-xs text-right font-medium">Labour {formatCurrency(labourTotal)}</span>
+        </div>
+        <div className="grid grid-cols-12 gap-2 items-center mt-2">
           <input
             type="text"
             placeholder="Job address"
-            className={`${inputClass} col-span-6`}
+            className={`${inputClass} col-span-5`}
             value={address}
             onChange={(e) => setAddress(e.target.value)}
           />
@@ -276,12 +336,15 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
             min={1}
             className={`${inputClass} col-span-1`}
             value={techsTraveling}
-            onChange={(e) => setTechsTraveling(parseInt(e.target.value) || 1)}
+            onChange={(e) => {
+              setLinkTravelToCrew(false);
+              setTechsTraveling(parseInt(e.target.value) || 1);
+            }}
             title="Techs traveling"
           />
-          <span className="col-span-2 text-xs text-right font-medium">{formatCurrency(travelTotal)}</span>
+          <span className="col-span-3 text-xs text-right font-medium">Km fee {formatCurrency(travelTotal)}</span>
         </div>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex flex-wrap items-center gap-2 mt-1">
           <label className="text-xs text-gray-500">Round-trip km:</label>
           <input
             type="number"
@@ -294,9 +357,77 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
           {distanceError && <span className="text-xs text-amber-600">{distanceError}</span>}
           {travelDays > 0 && (
             <span className="text-xs text-gray-500">
-              {travelDays} travel day{travelDays === 1 ? '' : 's'} ({totalLaborHours}h / 7)
+              {travelDays} travel day{travelDays === 1 ? '' : 's'} ({totalHours}h / 7)
             </span>
           )}
+          <label className="flex items-center gap-1 text-xs text-gray-500 ml-auto">
+            <input
+              type="checkbox"
+              checked={linkTravelToCrew}
+              onChange={(e) => {
+                setLinkTravelToCrew(e.target.checked);
+                if (e.target.checked) setTechsTraveling(crewSize);
+              }}
+            />
+            Traveling techs = crew size
+          </label>
+        </div>
+      </div>
+
+      {/* Hour breakdown by phase */}
+      <div>
+        <p className="text-xs font-medium text-gray-600 mb-1">Hour Breakdown</p>
+        <div className="space-y-3">
+          {PHASES.map((phase) => (
+            <div key={phase.key}>
+              <p className="text-xs font-semibold text-obatek mb-1">{phase.label}</p>
+              <div className="space-y-2">
+                {tasks
+                  .filter((t) => t.phase === phase.key)
+                  .map((row) => (
+                    <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
+                      <input
+                        placeholder="Task"
+                        className={`${inputClass} col-span-6`}
+                        value={row.description}
+                        onChange={(e) => updateTask(row.id, { description: e.target.value })}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.25}
+                        className={`${inputClass} col-span-2`}
+                        value={row.hours}
+                        onChange={(e) => updateTask(row.id, { hours: parseFloat(e.target.value) || 0 })}
+                        title="Hours"
+                      />
+                      <label className="col-span-3 flex items-center gap-1 text-xs text-gray-500">
+                        <input
+                          type="checkbox"
+                          checked={row.usesHeavyEquipment}
+                          onChange={(e) => updateTask(row.id, { usesHeavyEquipment: e.target.checked })}
+                        />
+                        Heavy equipment
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeTask(row.id)}
+                        className="text-red-500 text-xs justify-self-end"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => addTask(phase.key)}
+                className="text-xs text-obatek mt-1 hover:underline"
+              >
+                + Add task
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -390,6 +521,43 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
         </button>
       </div>
 
+      {/* Flat fees */}
+      <div>
+        <p className="text-xs font-medium text-gray-600 mb-1">Other Fees</p>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Red seal trades ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              className={inputClass}
+              value={redsealAmount}
+              onChange={(e) => setRedsealAmount(parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Dump fee ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              className={inputClass}
+              value={dumpFee}
+              onChange={(e) => setDumpFee(parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Permits fee ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              className={inputClass}
+              value={permitsFee}
+              onChange={(e) => setPermitsFee(parseFloat(e.target.value) || 0)}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Admin fee + HST */}
       <div className="flex flex-wrap gap-4 items-center text-xs">
         <label className="flex items-center gap-1">
@@ -412,6 +580,68 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
       {/* Summary */}
       <div className="border-t border-obatek/30 pt-3 space-y-1 text-sm">
         <div className="flex justify-between text-gray-600">
+          <span>Days</span>
+          <span>{travelDays}</span>
+        </div>
+        <div className="flex justify-between text-gray-600">
+          <span>Hours</span>
+          <span>{totalHours}</span>
+        </div>
+        <div className="flex justify-between text-gray-600">
+          <span>Labour</span>
+          <span>{formatCurrency(labourTotal)}</span>
+        </div>
+        <div className="flex justify-between text-gray-600">
+          <span>Km fee</span>
+          <span>{formatCurrency(travelTotal)}</span>
+        </div>
+        <div className="flex justify-between text-gray-600">
+          <span>Materials</span>
+          <span>{formatCurrency(materialsTotal)}</span>
+        </div>
+        {heavyEquipmentTotal > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Heavy equipment</span>
+            <span>{formatCurrency(heavyEquipmentTotal)}</span>
+          </div>
+        )}
+        {redsealAmount > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Red seal trades</span>
+            <span>{formatCurrency(redsealAmount)}</span>
+          </div>
+        )}
+        {rentalTotal > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Rental</span>
+            <span>{formatCurrency(rentalTotal)}</span>
+          </div>
+        )}
+        {fuelTotal > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Fuel</span>
+            <span>{formatCurrency(fuelTotal)}</span>
+          </div>
+        )}
+        {dumpFee > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Dump fee</span>
+            <span>{formatCurrency(dumpFee)}</span>
+          </div>
+        )}
+        {adminAmt > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Admin fee</span>
+            <span>{formatCurrency(adminAmt)}</span>
+          </div>
+        )}
+        {permitsFee > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Permits fee</span>
+            <span>{formatCurrency(permitsFee)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-gray-600 pt-1 border-t border-obatek/20 mt-1">
           <span>Subtotal</span>
           <span>{formatCurrency(subtotal)}</span>
         </div>
@@ -420,12 +650,18 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
           <span>{formatCurrency(hst)}</span>
         </div>
         <div className="flex justify-between font-bold text-obatek text-base">
-          <span>Total</span>
+          <span>Total after taxes</span>
           <span>{formatCurrency(grandTotal)}</span>
         </div>
       </div>
 
-      <div className="flex justify-end gap-2">
+      {saveMutation.isError && (
+        <div className="bg-red-50 text-red-600 p-2 rounded-lg text-xs">
+          Failed to save estimate. Please try again.
+        </div>
+      )}
+
+      <div className="flex flex-wrap justify-end gap-2">
         <button
           type="button"
           onClick={onClose}
@@ -433,13 +669,32 @@ export function EstimateCalculator({ initialAddress, onApply, onClose }: Estimat
         >
           Cancel
         </button>
+        {estimateId && (
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            className="px-3 py-1.5 border border-obatek text-obatek rounded-lg text-xs font-medium hover:bg-obatek/10"
+          >
+            Download PDF
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => onApply(Math.round(grandTotal * 100) / 100)}
-          className="px-3 py-1.5 bg-obatek text-white rounded-lg text-xs font-medium hover:bg-obatek-dark"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          className="px-3 py-1.5 border border-obatek text-obatek rounded-lg text-xs font-medium hover:bg-obatek/10 disabled:opacity-50"
         >
-          Use This Estimate
+          {saveMutation.isPending ? 'Saving...' : estimateId ? 'Save Changes' : 'Save Estimate'}
         </button>
+        {onApply && (
+          <button
+            type="button"
+            onClick={() => onApply(Math.round(grandTotal * 100) / 100)}
+            className="px-3 py-1.5 bg-obatek text-white rounded-lg text-xs font-medium hover:bg-obatek-dark"
+          >
+            Use This Estimate
+          </button>
+        )}
       </div>
     </div>
   );

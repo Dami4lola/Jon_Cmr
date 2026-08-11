@@ -1,15 +1,25 @@
 """
 Estimate API endpoints - a public quick quote calculator for customers, plus
-manager tools for previewing travel distance and tuning the quick quote's
-per-job-type area heuristics before a job exists.
+manager tools for previewing travel distance, tuning the quick quote's
+per-job-type area heuristics before a job exists, and building/persisting a
+full estimate (scope of work, phased task hours, full cost breakdown).
 """
+import math
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import Response
+from sqlmodel import select
+from sqlalchemy.orm import selectinload
 
 from ..models.settings import AppSettings
+from ..models import Estimate, EstimateTask, EstimateEquipmentRow, EstimateMaterialRow, Job, Client
 from ..services.distance import calculate_distance
 from ..services.material_pricing import search_materials
+from ..services.estimate_pdf import generate_estimate_pdf
+from ..schemas.job import JobBrief
+from ..schemas.client import ClientBrief
 from ..schemas.estimate import (
     JobTypeOption,
     JobTypeRate,
@@ -21,6 +31,14 @@ from ..schemas.estimate import (
     DistancePreviewRequest,
     DistancePreviewResponse,
     MaterialSearchResult,
+    EstimateCreate,
+    EstimateUpdate,
+    EstimateResponse,
+    EstimateTaskResponse,
+    EstimateEquipmentRowResponse,
+    EstimateMaterialRowResponse,
+    EstimateAmounts,
+    EstimateListItem,
 )
 from .invoices import LABOUR_RATE, REDSEAL_RATE, MINIMUM_HOURS, DEFAULT_KM_RATE, HST_RATE
 from .deps import DBSession, ManagerUser
@@ -253,3 +271,444 @@ def search_materials_endpoint(q: str, session: DBSession, current_user: ManagerU
         )
         for r in results
     ]
+
+
+# ============================================================
+# Persisted Estimate builder (scope of work, phased task hours,
+# full cost breakdown) - manager only
+# ============================================================
+
+def _calculate_estimate_amounts(
+    tasks,
+    equipment_rows,
+    material_rows,
+    crew_size: int,
+    techs_traveling: int,
+    distance_km: Decimal | None,
+    km_rate: Decimal,
+    dump_fee: Decimal,
+    permits_fee: Decimal,
+    admin_fee: Decimal,
+    redseal_amount: Decimal,
+    include_admin_fee: bool,
+    include_hst: bool,
+    labour_rate: Decimal = LABOUR_RATE,
+    hst_rate: Decimal = HST_RATE,
+) -> dict:
+    """
+    Pure calculation for a persisted estimate - no DB/HTTP needed. Shared by
+    the /preview endpoint and the authoritative recompute-on-save.
+
+    Total hours is the sum of every phased task's hours (the task list
+    replaces the old simple labor rows entirely). Travel days is total hours
+    divided by a 7-hour day, rounded up - multi-day jobs mean multiple round
+    trips.
+    """
+    total_hours = sum((t.hours for t in tasks), Decimal("0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    travel_days = math.ceil(total_hours / 7) if total_hours > 0 else 0
+
+    labour_amount = (total_hours * crew_size * labour_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    if distance_km is not None:
+        travel_amount = (techs_traveling * distance_km * km_rate * travel_days).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    else:
+        travel_amount = Decimal("0.00")
+
+    materials_amount = sum((r.quantity * r.unit_cost for r in material_rows), Decimal("0")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+    heavy_equipment_amount = Decimal("0")
+    rental_amount = Decimal("0")
+    fuel_amount = Decimal("0")
+    for row in equipment_rows:
+        line_total = row.rate * row.quantity * (1 + row.markup_pct / 100)
+        if row.category == "heavy":
+            heavy_equipment_amount += line_total
+        elif row.category == "fuel":
+            fuel_amount += line_total
+        else:  # ownedRental, scaffolding, rentalVillage all roll up to Rental
+            rental_amount += line_total
+
+    heavy_equipment_amount = heavy_equipment_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    rental_amount = rental_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    fuel_amount = fuel_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    dump_fee = dump_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    permits_fee = permits_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    redseal_amount = redseal_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    admin_amt = admin_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_admin_fee else Decimal("0.00")
+
+    subtotal = (
+        labour_amount + travel_amount + materials_amount + heavy_equipment_amount
+        + rental_amount + fuel_amount + dump_fee + permits_fee + redseal_amount + admin_amt
+    )
+    hst_amount = (subtotal * hst_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_hst else Decimal("0.00")
+    total = subtotal + hst_amount
+
+    return {
+        "total_hours": total_hours,
+        "travel_days": travel_days,
+        "labour_amount": labour_amount,
+        "travel_amount": travel_amount,
+        "materials_amount": materials_amount,
+        "heavy_equipment_amount": heavy_equipment_amount,
+        "rental_amount": rental_amount,
+        "fuel_amount": fuel_amount,
+        "subtotal": subtotal,
+        "hst_amount": hst_amount,
+        "total": total,
+    }
+
+
+def generate_estimate_number(session) -> str:
+    """Generate unique estimate number: EST-YYYY-NNNN"""
+    year = date.today().year
+    prefix = f"EST-{year}-"
+
+    statement = (
+        select(Estimate)
+        .where(Estimate.estimate_number.startswith(prefix))
+        .order_by(Estimate.estimate_number.desc())
+    )
+    last_estimate = session.exec(statement).first()
+
+    if last_estimate:
+        last_num = int(last_estimate.estimate_number.split("-")[-1])
+        new_num = last_num + 1
+    else:
+        new_num = 1
+
+    return f"{prefix}{new_num:04d}"
+
+
+def _load_estimate(session, estimate_id: int) -> Estimate | None:
+    statement = (
+        select(Estimate)
+        .where(Estimate.id == estimate_id)
+        .options(
+            selectinload(Estimate.job).selectinload(Job.client),
+            selectinload(Estimate.client),
+            selectinload(Estimate.tasks),
+            selectinload(Estimate.equipment_rows),
+            selectinload(Estimate.material_rows),
+        )
+    )
+    return session.exec(statement).first()
+
+
+def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
+    job_brief = None
+    if estimate.job:
+        client_name = estimate.job.client.name if estimate.job.client else (estimate.client_name_override or "")
+        job_brief = JobBrief(
+            id=estimate.job.id,
+            title=estimate.job.title,
+            client_name=client_name,
+            start_date=estimate.job.start_date,
+            end_date=estimate.job.end_date,
+        )
+
+    client_brief = None
+    if estimate.client:
+        client_brief = ClientBrief(
+            id=estimate.client.id,
+            name=estimate.client.name,
+            phone_number=estimate.client.phone_number,
+            address=estimate.client.address,
+        )
+
+    return EstimateResponse(
+        id=estimate.id,
+        estimate_number=estimate.estimate_number,
+        created_date=estimate.created_date,
+        status=estimate.status,
+        job=job_brief,
+        client=client_brief,
+        client_name_override=estimate.client_name_override,
+        address_override=estimate.address_override,
+        scope_of_work=estimate.scope_of_work,
+        notes=estimate.notes,
+        crew_size=estimate.crew_size,
+        techs_traveling=estimate.techs_traveling,
+        distance_km=estimate.distance_km,
+        km_rate=estimate.km_rate,
+        dump_fee=estimate.dump_fee,
+        permits_fee=estimate.permits_fee,
+        admin_fee=estimate.admin_fee,
+        redseal_amount=estimate.redseal_amount,
+        include_admin_fee=estimate.include_admin_fee,
+        include_hst=estimate.include_hst,
+        total_hours=estimate.total_hours,
+        travel_days=estimate.travel_days,
+        labour_amount=estimate.labour_amount,
+        travel_amount=estimate.travel_amount,
+        materials_amount=estimate.materials_amount,
+        heavy_equipment_amount=estimate.heavy_equipment_amount,
+        rental_amount=estimate.rental_amount,
+        fuel_amount=estimate.fuel_amount,
+        subtotal=estimate.subtotal,
+        hst_amount=estimate.hst_amount,
+        total=estimate.total,
+        tasks=[
+            EstimateTaskResponse.model_validate(t)
+            for t in sorted(estimate.tasks, key=lambda t: (t.phase, t.sort_order))
+        ],
+        equipment_rows=[
+            EstimateEquipmentRowResponse.model_validate(r)
+            for r in sorted(estimate.equipment_rows, key=lambda r: r.sort_order)
+        ],
+        material_rows=[
+            EstimateMaterialRowResponse.model_validate(m)
+            for m in sorted(estimate.material_rows, key=lambda m: m.sort_order)
+        ],
+    )
+
+
+def _get_estimate_or_404(session, estimate_id: int) -> EstimateResponse:
+    estimate = _load_estimate(session, estimate_id)
+    if not estimate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estimate not found")
+    return _estimate_to_response(estimate)
+
+
+def _estimate_to_list_item(estimate: Estimate) -> EstimateListItem:
+    client_name = estimate.client.name if estimate.client else estimate.client_name_override
+    return EstimateListItem(
+        id=estimate.id,
+        estimate_number=estimate.estimate_number,
+        created_date=estimate.created_date,
+        status=estimate.status,
+        job_id=estimate.job_id,
+        client_name=client_name,
+        total=estimate.total,
+    )
+
+
+@router.post("/preview", response_model=EstimateAmounts)
+def preview_estimate(data: EstimateCreate, current_user: ManagerUser):
+    """Manager-only: compute totals without persisting, for live totals while editing"""
+    amounts = _calculate_estimate_amounts(
+        tasks=data.tasks,
+        equipment_rows=data.equipment_rows,
+        material_rows=data.material_rows,
+        crew_size=data.crew_size,
+        techs_traveling=data.techs_traveling,
+        distance_km=data.distance_km,
+        km_rate=data.km_rate,
+        dump_fee=data.dump_fee,
+        permits_fee=data.permits_fee,
+        admin_fee=data.admin_fee,
+        redseal_amount=data.redseal_amount,
+        include_admin_fee=data.include_admin_fee,
+        include_hst=data.include_hst,
+    )
+    return EstimateAmounts(**amounts)
+
+
+@router.post("/", response_model=EstimateResponse, status_code=status.HTTP_201_CREATED)
+def create_estimate(data: EstimateCreate, session: DBSession, current_user: ManagerUser):
+    """Manager-only: create a new estimate (standalone or job-linked)"""
+    if data.job_id is not None:
+        if not session.get(Job, data.job_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        existing = session.exec(select(Estimate).where(Estimate.job_id == data.job_id)).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Estimate {existing.estimate_number} already exists for this job",
+            )
+
+    if data.client_id is not None and not session.get(Client, data.client_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    amounts = _calculate_estimate_amounts(
+        tasks=data.tasks,
+        equipment_rows=data.equipment_rows,
+        material_rows=data.material_rows,
+        crew_size=data.crew_size,
+        techs_traveling=data.techs_traveling,
+        distance_km=data.distance_km,
+        km_rate=data.km_rate,
+        dump_fee=data.dump_fee,
+        permits_fee=data.permits_fee,
+        admin_fee=data.admin_fee,
+        redseal_amount=data.redseal_amount,
+        include_admin_fee=data.include_admin_fee,
+        include_hst=data.include_hst,
+    )
+
+    estimate = Estimate(
+        job_id=data.job_id,
+        client_id=data.client_id,
+        client_name_override=data.client_name_override,
+        address_override=data.address_override,
+        estimate_number=generate_estimate_number(session),
+        scope_of_work=data.scope_of_work,
+        notes=data.notes,
+        crew_size=data.crew_size,
+        techs_traveling=data.techs_traveling,
+        distance_km=data.distance_km,
+        km_rate=data.km_rate,
+        dump_fee=data.dump_fee,
+        permits_fee=data.permits_fee,
+        admin_fee=data.admin_fee,
+        redseal_amount=data.redseal_amount,
+        include_admin_fee=data.include_admin_fee,
+        include_hst=data.include_hst,
+        **amounts,
+    )
+    session.add(estimate)
+    session.flush()  # assign estimate.id before adding children
+
+    for t in data.tasks:
+        session.add(EstimateTask(estimate_id=estimate.id, **t.model_dump()))
+    for r in data.equipment_rows:
+        session.add(EstimateEquipmentRow(estimate_id=estimate.id, **r.model_dump()))
+    for m in data.material_rows:
+        session.add(EstimateMaterialRow(estimate_id=estimate.id, **m.model_dump()))
+
+    session.commit()
+
+    return _get_estimate_or_404(session, estimate.id)
+
+
+@router.get("/", response_model=list[EstimateListItem])
+def list_estimates(
+    session: DBSession,
+    current_user: ManagerUser,
+    job_id: int | None = None,
+    standalone: bool = False,
+    status_filter: str | None = None,
+):
+    """Manager-only: list estimates, optionally filtered to one job or standalone-only"""
+    statement = select(Estimate).options(selectinload(Estimate.client))
+
+    if job_id is not None:
+        statement = statement.where(Estimate.job_id == job_id)
+    elif standalone:
+        statement = statement.where(Estimate.job_id.is_(None))
+
+    if status_filter:
+        statement = statement.where(Estimate.status == status_filter)
+
+    statement = statement.order_by(Estimate.created_date.desc(), Estimate.id.desc())
+    estimates = session.exec(statement).all()
+
+    return [_estimate_to_list_item(e) for e in estimates]
+
+
+@router.get("/{estimate_id}", response_model=EstimateResponse)
+def get_estimate(estimate_id: int, session: DBSession, current_user: ManagerUser):
+    """Manager-only: full estimate detail (with itemized rows) for reopening/editing"""
+    return _get_estimate_or_404(session, estimate_id)
+
+
+@router.put("/{estimate_id}", response_model=EstimateResponse)
+def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, current_user: ManagerUser):
+    """Manager-only: full update - child rows (tasks/equipment/materials) are replaced wholesale"""
+    estimate = session.get(Estimate, estimate_id)
+    if not estimate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estimate not found")
+
+    if data.job_id is not None and data.job_id != estimate.job_id:
+        if not session.get(Job, data.job_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        existing = session.exec(
+            select(Estimate).where(Estimate.job_id == data.job_id, Estimate.id != estimate_id)
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Estimate {existing.estimate_number} already exists for this job",
+            )
+
+    if data.client_id is not None and not session.get(Client, data.client_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    amounts = _calculate_estimate_amounts(
+        tasks=data.tasks,
+        equipment_rows=data.equipment_rows,
+        material_rows=data.material_rows,
+        crew_size=data.crew_size,
+        techs_traveling=data.techs_traveling,
+        distance_km=data.distance_km,
+        km_rate=data.km_rate,
+        dump_fee=data.dump_fee,
+        permits_fee=data.permits_fee,
+        admin_fee=data.admin_fee,
+        redseal_amount=data.redseal_amount,
+        include_admin_fee=data.include_admin_fee,
+        include_hst=data.include_hst,
+    )
+
+    estimate.job_id = data.job_id
+    estimate.client_id = data.client_id
+    estimate.client_name_override = data.client_name_override
+    estimate.address_override = data.address_override
+    estimate.scope_of_work = data.scope_of_work
+    estimate.notes = data.notes
+    estimate.crew_size = data.crew_size
+    estimate.techs_traveling = data.techs_traveling
+    estimate.distance_km = data.distance_km
+    estimate.km_rate = data.km_rate
+    estimate.dump_fee = data.dump_fee
+    estimate.permits_fee = data.permits_fee
+    estimate.admin_fee = data.admin_fee
+    estimate.redseal_amount = data.redseal_amount
+    estimate.include_admin_fee = data.include_admin_fee
+    estimate.include_hst = data.include_hst
+    if data.status is not None:
+        estimate.status = data.status
+    for key, value in amounts.items():
+        setattr(estimate, key, value)
+
+    for t in list(estimate.tasks):
+        session.delete(t)
+    for r in list(estimate.equipment_rows):
+        session.delete(r)
+    for m in list(estimate.material_rows):
+        session.delete(m)
+    session.flush()
+
+    for t in data.tasks:
+        session.add(EstimateTask(estimate_id=estimate.id, **t.model_dump()))
+    for r in data.equipment_rows:
+        session.add(EstimateEquipmentRow(estimate_id=estimate.id, **r.model_dump()))
+    for m in data.material_rows:
+        session.add(EstimateMaterialRow(estimate_id=estimate.id, **m.model_dump()))
+
+    session.commit()
+
+    return _get_estimate_or_404(session, estimate.id)
+
+
+@router.delete("/{estimate_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_estimate(estimate_id: int, session: DBSession, current_user: ManagerUser):
+    """Manager-only: delete an estimate"""
+    estimate = session.get(Estimate, estimate_id)
+    if not estimate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estimate not found")
+    session.delete(estimate)
+    session.commit()
+
+
+@router.get("/{estimate_id}/pdf")
+def download_estimate_pdf(estimate_id: int, session: DBSession, current_user: ManagerUser, inline: bool = False):
+    """Manager-only: download the estimate as a PDF"""
+    estimate = _load_estimate(session, estimate_id)
+    if not estimate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estimate not found")
+
+    pdf_content = generate_estimate_pdf(estimate)
+
+    disposition = "inline" if inline else "attachment"
+    filename = f"Estimate_{estimate.estimate_number}.pdf"
+
+    return Response(
+        content=pdf_content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+    )

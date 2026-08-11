@@ -9,7 +9,8 @@ import { payrollApi } from '../api/payroll';
 import { timeOffApi } from '../api/timeOff';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { EstimateCalculator } from '../components/EstimateCalculator';
-import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, TimeOffRequest } from '../types';
+import { estimatesApi, estimateToPayload } from '../api/estimates';
+import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, TimeOffRequest, Estimate } from '../types';
 
 function getDateRange(start: string, end: string): string[] {
   const dates: string[] = [];
@@ -72,6 +73,9 @@ export function ManagerDashboard() {
   const [editPhotoFiles, setEditPhotoFiles] = useState<File[]>([]);
   const [showEstimateCalc, setShowEstimateCalc] = useState(false);
   const [showEditEstimateCalc, setShowEditEstimateCalc] = useState(false);
+  // Estimate saved during job *creation*, before the job has an id - attached
+  // to the job once it's created (see createJobMutation below).
+  const [pendingEstimate, setPendingEstimate] = useState<Estimate | null>(null);
   const [clientFormData, setClientFormData] = useState<ClientCreate>({
     name: '',
     phone_number: '',
@@ -122,6 +126,20 @@ export function ManagerDashboard() {
     queryFn: () => timeOffApi.list(),
   });
 
+  // Fetch the estimate linked to the job being edited, if any, so the
+  // calculator can be reopened with everything already filled in.
+  const { data: editingJobEstimates = [] } = useQuery({
+    queryKey: ['estimates', 'job', editingJob?.id],
+    queryFn: () => estimatesApi.list({ job_id: editingJob!.id }),
+    enabled: !!editingJob && showEditEstimateCalc,
+  });
+  const linkedEstimateId = editingJobEstimates[0]?.id;
+  const { data: linkedEstimate } = useQuery({
+    queryKey: ['estimate', linkedEstimateId],
+    queryFn: () => estimatesApi.get(linkedEstimateId!),
+    enabled: !!linkedEstimateId,
+  });
+
   const pendingTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'pending');
   const approvedTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'approved');
 
@@ -151,12 +169,18 @@ export function ManagerDashboard() {
       if (photoFiles.length > 0) {
         await jobsApi.uploadPhotos(job.id, photoFiles);
       }
+      // If an estimate was saved before the job existed, attach it now
+      if (pendingEstimate) {
+        await estimatesApi.update(pendingEstimate.id, { ...estimateToPayload(pendingEstimate), job_id: job.id });
+      }
       return job;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
       setShowCreateJob(false);
       setShowEstimateCalc(false);
+      setPendingEstimate(null);
       setPhotoFiles([]);
       setFormData({
         client_id: 0,
@@ -606,10 +630,12 @@ export function ManagerDashboard() {
             {showEstimateCalc && (
               <EstimateCalculator
                 initialAddress={formData.address_override || clients.find((c) => c.id === formData.client_id)?.address}
+                clientId={formData.client_id || null}
                 onApply={(total) => {
                   setFormData({ ...formData, estimate_amount: total });
                   setShowEstimateCalc(false);
                 }}
+                onSaved={(saved) => setPendingEstimate(saved)}
                 onClose={() => setShowEstimateCalc(false)}
               />
             )}
@@ -1052,10 +1078,17 @@ export function ManagerDashboard() {
 
               {showEditEstimateCalc && (
                 <EstimateCalculator
+                  key={linkedEstimate?.id ?? 'new-edit-estimate'}
+                  initialEstimate={linkedEstimate || undefined}
+                  jobId={editingJob?.id}
+                  clientId={editFormData.client_id || null}
                   initialAddress={editFormData.address_override || clients.find((c) => c.id === editFormData.client_id)?.address}
                   onApply={(total) => {
                     setEditFormData({ ...editFormData, estimate_amount: total });
                     setShowEditEstimateCalc(false);
+                  }}
+                  onSaved={() => {
+                    queryClient.invalidateQueries({ queryKey: ['estimates', 'job', editingJob?.id] });
                   }}
                   onClose={() => setShowEditEstimateCalc(false)}
                 />

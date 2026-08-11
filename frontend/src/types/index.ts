@@ -512,3 +512,133 @@ export interface MaterialSearchResult {
   product_url?: string | null;
   source: string;
 }
+
+// Persisted Estimate builder types
+export type EstimatePhaseKey = 'preplanning' | 'build' | 'finishing';
+export type EquipmentCategoryKey = 'heavy' | 'ownedRental' | 'scaffolding' | 'rentalVillage' | 'fuel';
+
+export interface EstimateTaskPayload {
+  phase: EstimatePhaseKey;
+  description: string;
+  hours: number;
+  uses_heavy_equipment: boolean;
+  sort_order: number;
+}
+
+export interface EstimateTaskItem {
+  id: number;
+  phase: EstimatePhaseKey;
+  description: string;
+  hours: string;
+  uses_heavy_equipment: boolean;
+  sort_order: number;
+}
+
+export interface EstimateEquipmentRowPayload {
+  category: EquipmentCategoryKey;
+  description: string;
+  rate: number;
+  unit: string;
+  quantity: number;
+  markup_pct: number;
+  sort_order: number;
+}
+
+export interface EstimateEquipmentRowItem {
+  id: number;
+  category: EquipmentCategoryKey;
+  description: string;
+  rate: string;
+  unit: string;
+  quantity: string;
+  markup_pct: string;
+  sort_order: number;
+}
+
+export interface EstimateMaterialRowPayload {
+  description: string;
+  quantity: number;
+  unit_cost: number;
+  sort_order: number;
+}
+
+export interface EstimateMaterialRowItem {
+  id: number;
+  description: string;
+  quantity: string;
+  unit_cost: string;
+  sort_order: number;
+}
+
+export interface EstimatePayload {
+  job_id?: number | null;
+  client_id?: number | null;
+  client_name_override?: string | null;
+  address_override?: string | null;
+  scope_of_work?: string | null;
+  notes?: string | null;
+  crew_size: number;
+  techs_traveling: number;
+  distance_km?: number | null;
+  km_rate: number;
+  dump_fee: number;
+  permits_fee: number;
+  admin_fee: number;
+  redseal_amount: number;
+  include_admin_fee: boolean;
+  include_hst: boolean;
+  status?: string;
+  tasks: EstimateTaskPayload[];
+  equipment_rows: EstimateEquipmentRowPayload[];
+  material_rows: EstimateMaterialRowPayload[];
+}
+
+export interface EstimateAmounts {
+  total_hours: string;
+  travel_days: number;
+  labour_amount: string;
+  travel_amount: string;
+  materials_amount: string;
+  heavy_equipment_amount: string;
+  rental_amount: string;
+  fuel_amount: string;
+  subtotal: string;
+  hst_amount: string;
+  total: string;
+}
+
+export interface Estimate extends EstimateAmounts {
+  id: number;
+  estimate_number: string;
+  created_date: string;
+  status: string;
+  job: JobBrief | null;
+  client: ClientBrief | null;
+  client_name_override: string | null;
+  address_override: string | null;
+  scope_of_work: string | null;
+  notes: string | null;
+  crew_size: number;
+  techs_traveling: number;
+  distance_km: string | null;
+  km_rate: string;
+  dump_fee: string;
+  permits_fee: string;
+  admin_fee: string;
+  redseal_amount: string;
+  include_admin_fee: boolean;
+  include_hst: boolean;
+  tasks: EstimateTaskItem[];
+  equipment_rows: EstimateEquipmentRowItem[];
+  material_rows: EstimateMaterialRowItem[];
+}
+
+export interface EstimateListItem {
+  id: number;
+  estimate_number: string;
+  created_date: string;
+  status: string;
+  job_id: number | null;
+  client_name: string | null;
+  total: string;
+}
