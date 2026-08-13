@@ -339,7 +339,11 @@ def _calculate_estimate_amounts(
     dump_fee = dump_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     permits_fee = permits_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     redseal_amount = redseal_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    admin_amt = admin_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_admin_fee else Decimal("0.00")
+
+    # Admin fee is charged per 7-day period of the job (same day count as
+    # travel), but always at least once even for a short job.
+    admin_days = max(travel_days, 1)
+    admin_amt = (admin_fee * admin_days).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_admin_fee else Decimal("0.00")
 
     subtotal = (
         labour_amount + travel_amount + materials_amount + heavy_equipment_amount
@@ -357,6 +361,7 @@ def _calculate_estimate_amounts(
         "heavy_equipment_amount": heavy_equipment_amount,
         "rental_amount": rental_amount,
         "fuel_amount": fuel_amount,
+        "admin_amount": admin_amt,
         "subtotal": subtotal,
         "hst_amount": hst_amount,
         "total": total,
@@ -449,6 +454,7 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         heavy_equipment_amount=estimate.heavy_equipment_amount,
         rental_amount=estimate.rental_amount,
         fuel_amount=estimate.fuel_amount,
+        admin_amount=estimate.admin_amount,
         subtotal=estimate.subtotal,
         hst_amount=estimate.hst_amount,
         total=estimate.total,

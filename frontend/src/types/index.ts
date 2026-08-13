@@ -602,6 +602,7 @@ export interface EstimateAmounts {
   heavy_equipment_amount: string;
   rental_amount: string;
   fuel_amount: string;
+  admin_amount: string;
   subtotal: string;
   hst_amount: string;
   total: string;

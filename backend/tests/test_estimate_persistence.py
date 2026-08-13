@@ -137,6 +137,28 @@ class TestCalculateEstimateAmounts:
         )
         assert amounts["subtotal"] == Decimal("325.00")
 
+    def test_admin_fee_scales_with_days(self):
+        # 14 hours -> ceil(14/7) = 2 days -> admin fee charged twice
+        amounts = _calculate_estimate_amounts(
+            tasks=[_task("build", 14)], equipment_rows=[], material_rows=[],
+            crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("50"),
+            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
+        )
+        assert amounts["travel_days"] == 2
+        assert amounts["admin_amount"] == Decimal("100.00")
+
+    def test_admin_fee_applies_at_least_once_with_zero_hours(self):
+        # No tasks -> 0 travel days, but the admin fee still applies once
+        amounts = _calculate_estimate_amounts(
+            tasks=[], equipment_rows=[], material_rows=[],
+            crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("50"),
+            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
+        )
+        assert amounts["travel_days"] == 0
+        assert amounts["admin_amount"] == Decimal("50.00")
+
 
 @pytest.fixture
 def client():

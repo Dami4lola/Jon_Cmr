@@ -282,8 +282,10 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
     if estimate.dump_fee > 0:
         charges_data.append(["Dump fee", "", f"${estimate.dump_fee:,.2f}"])
 
-    if estimate.include_admin_fee and estimate.admin_fee > 0:
-        charges_data.append(["Admin fee", "", f"${estimate.admin_fee:,.2f}"])
+    if estimate.include_admin_fee and estimate.admin_amount > 0:
+        admin_days = max(estimate.travel_days, 1)
+        admin_detail = f"${estimate.admin_fee:,.2f} x {admin_days} day(s)" if admin_days > 1 else ""
+        charges_data.append(["Admin fee", admin_detail, f"${estimate.admin_amount:,.2f}"])
 
     if estimate.permits_fee > 0:
         charges_data.append(["Permits fee", "", f"${estimate.permits_fee:,.2f}"])

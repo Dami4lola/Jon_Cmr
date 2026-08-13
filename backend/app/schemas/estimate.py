@@ -189,6 +189,7 @@ class EstimateAmounts(BaseModel):
     heavy_equipment_amount: Decimal
     rental_amount: Decimal
     fuel_amount: Decimal
+    admin_amount: Decimal
     subtotal: Decimal
     hst_amount: Decimal
     total: Decimal
@@ -229,6 +230,7 @@ class EstimateResponse(BaseModel):
     heavy_equipment_amount: Decimal
     rental_amount: Decimal
     fuel_amount: Decimal
+    admin_amount: Decimal
     subtotal: Decimal
     hst_amount: Decimal
     total: Decimal

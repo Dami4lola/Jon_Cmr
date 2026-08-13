@@ -79,6 +79,7 @@ class Estimate(SQLModel, table=True):
     heavy_equipment_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     rental_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     fuel_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    admin_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     subtotal: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     hst_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     total: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
