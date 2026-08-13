@@ -122,7 +122,7 @@ class TestCalculateEstimateAmounts:
         amounts = _calculate_estimate_amounts(
             tasks=[], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
-            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("100"),
+            dump_fee=Decimal("100"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
             redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
         )
         assert amounts["hst_amount"] == Decimal("0.00")
@@ -137,19 +137,39 @@ class TestCalculateEstimateAmounts:
         )
         assert amounts["subtotal"] == Decimal("325.00")
 
-    def test_admin_fee_scales_with_days(self):
-        # 14 hours -> ceil(14/7) = 2 days -> admin fee charged twice
+    @pytest.mark.parametrize(
+        "hours,expected_travel_days,expected_periods",
+        [
+            (49, 7, 1),    # 7 travel days -> 1 admin fee
+            (98, 14, 2),   # 14 travel days -> 2 admin fees
+            (147, 21, 3),  # 21 travel days -> 3 admin fees
+            (66.5, 10, 1),  # sample estimate: 10 travel days -> still just 1 fee
+        ],
+    )
+    def test_admin_fee_charged_once_per_complete_7day_period(self, hours, expected_travel_days, expected_periods):
         amounts = _calculate_estimate_amounts(
-            tasks=[_task("build", 14)], equipment_rows=[], material_rows=[],
+            tasks=[_task("build", hours)], equipment_rows=[], material_rows=[],
+            crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("50"),
+            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
+        )
+        assert amounts["travel_days"] == expected_travel_days
+        assert amounts["admin_amount"] == Decimal("50.00") * expected_periods
+
+    def test_admin_fee_applies_once_for_a_short_job_under_7_days(self):
+        # 10 hours -> 2 travel days (under a full 7-day period), but the
+        # admin fee still applies once since there's real work on the job.
+        amounts = _calculate_estimate_amounts(
+            tasks=[_task("build", 10)], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("50"),
             redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
         )
         assert amounts["travel_days"] == 2
-        assert amounts["admin_amount"] == Decimal("100.00")
+        assert amounts["admin_amount"] == Decimal("50.00")
 
-    def test_admin_fee_applies_at_least_once_with_zero_hours(self):
-        # No tasks -> 0 travel days, but the admin fee still applies once
+    def test_admin_fee_is_zero_with_no_tasks(self):
+        # No tasks at all -> nothing to charge an admin fee against yet
         amounts = _calculate_estimate_amounts(
             tasks=[], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
@@ -157,7 +177,7 @@ class TestCalculateEstimateAmounts:
             redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
         )
         assert amounts["travel_days"] == 0
-        assert amounts["admin_amount"] == Decimal("50.00")
+        assert amounts["admin_amount"] == Decimal("0.00")
 
 
 @pytest.fixture
