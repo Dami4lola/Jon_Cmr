@@ -340,10 +340,10 @@ def _calculate_estimate_amounts(
     permits_fee = permits_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     redseal_amount = redseal_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-    # Admin fee is charged once per complete 7-day period the job runs (7
-    # travel days = 1 fee, 14 = 2, 21 = 3, ...), with a floor of one charge
-    # whenever there's any work at all.
-    admin_periods = max(travel_days // 7, 1) if travel_days > 0 else 0
+    # Admin fee is charged once per 7-day period, rounding any partial week
+    # up (1-7 days = 1 fee, 8-14 = 2 fees, 15-21 = 3 fees, ...) - same
+    # rounding rule already used for the travel/km charge.
+    admin_periods = math.ceil(travel_days / 7) if travel_days > 0 else 0
     admin_amt = (admin_fee * admin_periods).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_admin_fee else Decimal("0.00")
 
     subtotal = (

@@ -179,10 +179,10 @@ export function EstimateCalculator({
   const materialLineTotal = (row: MaterialRow) => row.qty * row.unitCost;
   const materialsTotal = materialRows.reduce((s, r) => s + materialLineTotal(r), 0);
 
-  // Admin fee is charged once per complete 7-day period the job runs (7
-  // travel days = 1 fee, 14 = 2, 21 = 3, ...), with a floor of one charge
-  // whenever there's any work at all.
-  const adminPeriods = travelDays > 0 ? Math.max(Math.floor(travelDays / 7), 1) : 0;
+  // Admin fee is charged once per 7-day period, rounding any partial week
+  // up (1-7 days = 1 fee, 8-14 = 2 fees, 15-21 = 3 fees, ...) - same
+  // rounding rule already used for the travel/km charge.
+  const adminPeriods = travelDays > 0 ? Math.ceil(travelDays / 7) : 0;
   const adminAmt = includeAdmin ? adminFee * adminPeriods : 0;
   const subtotal =
     labourTotal + travelTotal + materialsTotal + heavyEquipmentTotal + rentalTotal + fuelTotal

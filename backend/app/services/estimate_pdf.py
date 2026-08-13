@@ -2,6 +2,7 @@
 PDF Estimate Generation for Just Jon Handyman Services
 Uses ReportLab, structurally mirroring invoice_pdf.py's layout.
 """
+import math
 import os
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
@@ -283,7 +284,7 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
         charges_data.append(["Dump fee", "", f"${estimate.dump_fee:,.2f}"])
 
     if estimate.include_admin_fee and estimate.admin_amount > 0:
-        admin_periods = max(estimate.travel_days // 7, 1) if estimate.travel_days > 0 else 0
+        admin_periods = math.ceil(estimate.travel_days / 7) if estimate.travel_days > 0 else 0
         admin_detail = f"${estimate.admin_fee:,.2f} x {admin_periods}" if admin_periods > 1 else ""
         charges_data.append(["Admin fee", admin_detail, f"${estimate.admin_amount:,.2f}"])
 

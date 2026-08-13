@@ -140,13 +140,15 @@ class TestCalculateEstimateAmounts:
     @pytest.mark.parametrize(
         "hours,expected_travel_days,expected_periods",
         [
-            (49, 7, 1),    # 7 travel days -> 1 admin fee
-            (98, 14, 2),   # 14 travel days -> 2 admin fees
-            (147, 21, 3),  # 21 travel days -> 3 admin fees
-            (66.5, 10, 1),  # sample estimate: 10 travel days -> still just 1 fee
+            (49, 7, 1),     # 7 travel days -> 1 admin fee
+            (56, 8, 2),     # 8 travel days -> rounds up into a 2nd fee
+            (98, 14, 2),    # 14 travel days -> 2 admin fees
+            (105, 15, 3),   # 15 travel days -> rounds up into a 3rd fee
+            (147, 21, 3),   # 21 travel days -> 3 admin fees
+            (66.5, 10, 2),  # sample estimate: 10 travel days -> 2 admin fees
         ],
     )
-    def test_admin_fee_charged_once_per_complete_7day_period(self, hours, expected_travel_days, expected_periods):
+    def test_admin_fee_rounds_up_any_partial_7day_period(self, hours, expected_travel_days, expected_periods):
         amounts = _calculate_estimate_amounts(
             tasks=[_task("build", hours)], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
