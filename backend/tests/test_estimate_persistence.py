@@ -13,8 +13,11 @@ from app.api.estimates import _calculate_estimate_amounts
 from app.schemas.estimate import EstimateTaskCreate, EstimateEquipmentRowCreate, EstimateMaterialRowCreate
 
 
-def _task(phase, hours, heavy=False):
-    return EstimateTaskCreate(phase=phase, description="task", hours=Decimal(str(hours)), uses_heavy_equipment=heavy)
+def _task(phase, hours, heavy=False, redseal=False):
+    return EstimateTaskCreate(
+        phase=phase, description="task", hours=Decimal(str(hours)),
+        uses_heavy_equipment=heavy, uses_redseal=redseal,
+    )
 
 
 def _equipment(category, rate, qty=1, markup=0):
@@ -45,7 +48,7 @@ class TestCalculateEstimateAmounts:
             tasks=tasks, equipment_rows=[], material_rows=[],
             crew_size=2, techs_traveling=2, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=True,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=True,
         )
         assert amounts["total_hours"] == Decimal("66.5")
         assert amounts["travel_days"] == 10
@@ -56,7 +59,7 @@ class TestCalculateEstimateAmounts:
             tasks=[_task("build", 14)], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=2, distance_km=Decimal("20"), km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=True,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=True,
         )
         # 14 hours -> ceil(14/7) = 2 days; 2 techs * 20km * $1.50 * 2 days = $120
         assert amounts["travel_days"] == 2
@@ -67,7 +70,7 @@ class TestCalculateEstimateAmounts:
             tasks=[_task("build", 10)], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=True,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=True,
         )
         assert amounts["travel_amount"] == Decimal("0.00")
 
@@ -76,7 +79,7 @@ class TestCalculateEstimateAmounts:
             tasks=[], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=Decimal("20"), km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=True,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=True,
         )
         assert amounts["travel_days"] == 0
         assert amounts["travel_amount"] == Decimal("0.00")
@@ -93,7 +96,7 @@ class TestCalculateEstimateAmounts:
             tasks=[], equipment_rows=equipment_rows, material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=True,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=True,
         )
         assert amounts["heavy_equipment_amount"] == Decimal("100.00")
         assert amounts["fuel_amount"] == Decimal("40.00")
@@ -105,7 +108,7 @@ class TestCalculateEstimateAmounts:
             tasks=[], equipment_rows=[], material_rows=[_material(3, 10), _material(2, 5)],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=True,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=True,
         )
         assert amounts["materials_amount"] == Decimal("40.00")
 
@@ -114,7 +117,7 @@ class TestCalculateEstimateAmounts:
             tasks=[], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("100"),
-            redseal_amount=Decimal("0"), include_admin_fee=False, include_hst=True,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=False, include_hst=True,
         )
         assert amounts["subtotal"] == Decimal("0.00")
 
@@ -123,19 +126,56 @@ class TestCalculateEstimateAmounts:
             tasks=[], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("100"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
         )
         assert amounts["hst_amount"] == Decimal("0.00")
         assert amounts["total"] == amounts["subtotal"] == Decimal("100.00")
 
-    def test_dump_permits_redseal_are_flat_additions(self):
+    def test_dump_and_permits_are_flat_additions(self):
         amounts = _calculate_estimate_amounts(
             tasks=[], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("50"), permits_fee=Decimal("75"), admin_fee=Decimal("0"),
-            redseal_amount=Decimal("200"), include_admin_fee=True, include_hst=False,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
         )
-        assert amounts["subtotal"] == Decimal("325.00")
+        assert amounts["subtotal"] == Decimal("125.00")
+
+    def test_redseal_premium_is_additive_on_top_of_standard_labour(self):
+        # A 10-hour task tagged Red Seal: labour still bills all 10 hours at
+        # the standard rate, PLUS a separate Red Seal premium for those same
+        # hours at the (higher) Red Seal rate - not netted against labour.
+        amounts = _calculate_estimate_amounts(
+            tasks=[_task("build", 10, redseal=True)], equipment_rows=[], material_rows=[],
+            crew_size=2, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
+            redseal_techs=1, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
+        )
+        # labour: 10 hrs x 2 crew x $80/hr standard rate
+        assert amounts["labour_amount"] == Decimal("1600.00")
+        # redseal premium: 10 hrs x 1 redseal tech x $100/hr, on top
+        assert amounts["redseal_amount"] == Decimal("1000.00")
+        assert amounts["subtotal"] == Decimal("2600.00")
+
+    def test_redseal_premium_only_counts_tagged_task_hours(self):
+        amounts = _calculate_estimate_amounts(
+            tasks=[_task("build", 10, redseal=True), _task("build", 5, redseal=False)],
+            equipment_rows=[], material_rows=[],
+            crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
+            redseal_techs=1, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
+        )
+        assert amounts["total_hours"] == Decimal("15.00")
+        assert amounts["redseal_amount"] == Decimal("1000.00")  # only the 10 tagged hours
+
+    def test_redseal_amount_is_zero_with_no_redseal_techs(self):
+        # Tasks tagged Red Seal but no Red Seal techs assigned -> no premium
+        amounts = _calculate_estimate_amounts(
+            tasks=[_task("build", 10, redseal=True)], equipment_rows=[], material_rows=[],
+            crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
+        )
+        assert amounts["redseal_amount"] == Decimal("0.00")
 
     @pytest.mark.parametrize(
         "hours,expected_travel_days,expected_periods",
@@ -153,7 +193,7 @@ class TestCalculateEstimateAmounts:
             tasks=[_task("build", hours)], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("50"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
         )
         assert amounts["travel_days"] == expected_travel_days
         assert amounts["admin_amount"] == Decimal("50.00") * expected_periods
@@ -165,7 +205,7 @@ class TestCalculateEstimateAmounts:
             tasks=[_task("build", 10)], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("50"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
         )
         assert amounts["travel_days"] == 2
         assert amounts["admin_amount"] == Decimal("50.00")
@@ -176,7 +216,7 @@ class TestCalculateEstimateAmounts:
             tasks=[], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("50"),
-            redseal_amount=Decimal("0"), include_admin_fee=True, include_hst=False,
+            redseal_techs=0, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
         )
         assert amounts["travel_days"] == 0
         assert amounts["admin_amount"] == Decimal("0.00")
@@ -222,12 +262,13 @@ MINIMAL_PAYLOAD = {
     "dump_fee": 0,
     "permits_fee": 0,
     "admin_fee": 50,
-    "redseal_amount": 0,
+    "redseal_techs": 0,
+    "redseal_rate": 100,
     "include_admin_fee": True,
     "include_hst": True,
     "tasks": [
-        {"phase": "preplanning", "description": "Prep", "hours": 3.5, "uses_heavy_equipment": False, "sort_order": 0},
-        {"phase": "build", "description": "Build", "hours": 10, "uses_heavy_equipment": True, "sort_order": 0},
+        {"phase": "preplanning", "description": "Prep", "hours": 3.5, "uses_heavy_equipment": False, "uses_redseal": False, "sort_order": 0},
+        {"phase": "build", "description": "Build", "hours": 10, "uses_heavy_equipment": True, "uses_redseal": False, "sort_order": 0},
     ],
     "equipment_rows": [
         {"category": "heavy", "description": "Excavator", "rate": 100, "unit": "per day", "quantity": 1, "markup_pct": 0, "sort_order": 0},

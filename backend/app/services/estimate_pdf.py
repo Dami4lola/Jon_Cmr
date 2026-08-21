@@ -228,11 +228,12 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
 
             phase_data = [["Task", "Hours", ""]]
             for task in phase_tasks:
-                phase_data.append([
-                    task.description,
-                    f"{task.hours:g}",
-                    "Heavy equipment" if task.uses_heavy_equipment else "",
-                ])
+                tags = []
+                if task.uses_heavy_equipment:
+                    tags.append("Heavy equipment")
+                if task.uses_redseal:
+                    tags.append("Red Seal")
+                phase_data.append([task.description, f"{task.hours:g}", ", ".join(tags)])
 
             t_phase = Table(phase_data, colWidths=[4.2 * inch, 0.8 * inch, 2.5 * inch])
             t_phase.setStyle(TableStyle([
@@ -272,7 +273,9 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
         charges_data.append(["Heavy equipment", "", f"${estimate.heavy_equipment_amount:,.2f}"])
 
     if estimate.redseal_amount > 0:
-        charges_data.append(["Red seal trades", "", f"${estimate.redseal_amount:,.2f}"])
+        redseal_hours = sum((t.hours for t in estimate.tasks if t.uses_redseal), 0)
+        redseal_detail = f"{redseal_hours:g} hrs x {estimate.redseal_techs} techs x ${estimate.redseal_rate:,.2f}/hr"
+        charges_data.append(["Red seal trades", redseal_detail, f"${estimate.redseal_amount:,.2f}"])
 
     if estimate.rental_amount > 0:
         charges_data.append(["Rental", "", f"${estimate.rental_amount:,.2f}"])
@@ -284,7 +287,7 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
         charges_data.append(["Dump fee", "", f"${estimate.dump_fee:,.2f}"])
 
     if estimate.include_admin_fee and estimate.admin_amount > 0:
-        admin_periods = math.ceil(estimate.travel_days / 7) if estimate.travel_days > 0 else 0
+        admin_periods = math.ceil(estimate.travel_days / 5) if estimate.travel_days > 0 else 0
         admin_detail = f"${estimate.admin_fee:,.2f} x {admin_periods}" if admin_periods > 1 else ""
         charges_data.append(["Admin fee", admin_detail, f"${estimate.admin_amount:,.2f}"])
 

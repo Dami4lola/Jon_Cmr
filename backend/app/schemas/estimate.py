@@ -103,6 +103,7 @@ class EstimateTaskCreate(BaseModel):
     description: str = Field(..., max_length=500)
     hours: Decimal = Field(..., ge=0)
     uses_heavy_equipment: bool = False
+    uses_redseal: bool = False
     sort_order: int = 0
 
 
@@ -162,10 +163,12 @@ class EstimateCreate(BaseModel):
     distance_km: Decimal | None = None
     km_rate: Decimal = Decimal("1.50")
 
+    redseal_techs: int = Field(default=0, ge=0)
+    redseal_rate: Decimal = Decimal("100.00")
+
     dump_fee: Decimal = Decimal("0")
     permits_fee: Decimal = Decimal("0")
     admin_fee: Decimal = Decimal("0")
-    redseal_amount: Decimal = Decimal("0")
     include_admin_fee: bool = True
     include_hst: bool = True
 
@@ -184,6 +187,7 @@ class EstimateAmounts(BaseModel):
     total_hours: Decimal
     travel_days: int
     labour_amount: Decimal
+    redseal_amount: Decimal
     travel_amount: Decimal
     materials_amount: Decimal
     heavy_equipment_amount: Decimal
@@ -215,16 +219,19 @@ class EstimateResponse(BaseModel):
     distance_km: Decimal | None
     km_rate: Decimal
 
+    redseal_techs: int
+    redseal_rate: Decimal
+
     dump_fee: Decimal
     permits_fee: Decimal
     admin_fee: Decimal
-    redseal_amount: Decimal
     include_admin_fee: bool
     include_hst: bool
 
     total_hours: Decimal
     travel_days: int
     labour_amount: Decimal
+    redseal_amount: Decimal
     travel_amount: Decimal
     materials_amount: Decimal
     heavy_equipment_amount: Decimal

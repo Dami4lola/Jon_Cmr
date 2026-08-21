@@ -522,6 +522,7 @@ export interface EstimateTaskPayload {
   description: string;
   hours: number;
   uses_heavy_equipment: boolean;
+  uses_redseal: boolean;
   sort_order: number;
 }
 
@@ -531,6 +532,7 @@ export interface EstimateTaskItem {
   description: string;
   hours: string;
   uses_heavy_equipment: boolean;
+  uses_redseal: boolean;
   sort_order: number;
 }
 
@@ -581,10 +583,11 @@ export interface EstimatePayload {
   techs_traveling: number;
   distance_km?: number | null;
   km_rate: number;
+  redseal_techs: number;
+  redseal_rate: number;
   dump_fee: number;
   permits_fee: number;
   admin_fee: number;
-  redseal_amount: number;
   include_admin_fee: boolean;
   include_hst: boolean;
   status?: string;
@@ -597,6 +600,7 @@ export interface EstimateAmounts {
   total_hours: string;
   travel_days: number;
   labour_amount: string;
+  redseal_amount: string;
   travel_amount: string;
   materials_amount: string;
   heavy_equipment_amount: string;
@@ -623,10 +627,11 @@ export interface Estimate extends EstimateAmounts {
   techs_traveling: number;
   distance_km: string | null;
   km_rate: string;
+  redseal_techs: number;
+  redseal_rate: string;
   dump_fee: string;
   permits_fee: string;
   admin_fee: string;
-  redseal_amount: string;
   include_admin_fee: boolean;
   include_hst: boolean;
   tasks: EstimateTaskItem[];

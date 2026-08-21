@@ -289,7 +289,8 @@ def _calculate_estimate_amounts(
     dump_fee: Decimal,
     permits_fee: Decimal,
     admin_fee: Decimal,
-    redseal_amount: Decimal,
+    redseal_techs: int,
+    redseal_rate: Decimal,
     include_admin_fee: bool,
     include_hst: bool,
     labour_rate: Decimal = LABOUR_RATE,
@@ -303,11 +304,19 @@ def _calculate_estimate_amounts(
     replaces the old simple labor rows entirely). Travel days is total hours
     divided by a 7-hour day, rounded up - multi-day jobs mean multiple round
     trips.
+
+    Tasks tagged uses_redseal contribute a Red Seal premium (their hours x
+    redseal_techs x redseal_rate) *in addition to* standard labour - those
+    hours are still counted in total_hours/labour_amount at the standard
+    rate, not moved out of it.
     """
     total_hours = sum((t.hours for t in tasks), Decimal("0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     travel_days = math.ceil(total_hours / 7) if total_hours > 0 else 0
 
     labour_amount = (total_hours * crew_size * labour_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    redseal_hours = sum((t.hours for t in tasks if t.uses_redseal), Decimal("0"))
+    redseal_amount = (redseal_hours * redseal_techs * redseal_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     if distance_km is not None:
         travel_amount = (techs_traveling * distance_km * km_rate * travel_days).quantize(
@@ -338,7 +347,6 @@ def _calculate_estimate_amounts(
 
     dump_fee = dump_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     permits_fee = permits_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    redseal_amount = redseal_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     # Admin fee is charged once per 7-day period, rounding any partial week
     # up (1-7 days = 1 fee, 8-14 = 2 fees, 15-21 = 3 fees, ...) - same
@@ -357,6 +365,7 @@ def _calculate_estimate_amounts(
         "total_hours": total_hours,
         "travel_days": travel_days,
         "labour_amount": labour_amount,
+        "redseal_amount": redseal_amount,
         "travel_amount": travel_amount,
         "materials_amount": materials_amount,
         "heavy_equipment_amount": heavy_equipment_amount,
@@ -441,15 +450,17 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         techs_traveling=estimate.techs_traveling,
         distance_km=estimate.distance_km,
         km_rate=estimate.km_rate,
+        redseal_techs=estimate.redseal_techs,
+        redseal_rate=estimate.redseal_rate,
         dump_fee=estimate.dump_fee,
         permits_fee=estimate.permits_fee,
         admin_fee=estimate.admin_fee,
-        redseal_amount=estimate.redseal_amount,
         include_admin_fee=estimate.include_admin_fee,
         include_hst=estimate.include_hst,
         total_hours=estimate.total_hours,
         travel_days=estimate.travel_days,
         labour_amount=estimate.labour_amount,
+        redseal_amount=estimate.redseal_amount,
         travel_amount=estimate.travel_amount,
         materials_amount=estimate.materials_amount,
         heavy_equipment_amount=estimate.heavy_equipment_amount,
@@ -508,7 +519,8 @@ def preview_estimate(data: EstimateCreate, current_user: ManagerUser):
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
         admin_fee=data.admin_fee,
-        redseal_amount=data.redseal_amount,
+        redseal_techs=data.redseal_techs,
+        redseal_rate=data.redseal_rate,
         include_admin_fee=data.include_admin_fee,
         include_hst=data.include_hst,
     )
@@ -542,7 +554,8 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
         admin_fee=data.admin_fee,
-        redseal_amount=data.redseal_amount,
+        redseal_techs=data.redseal_techs,
+        redseal_rate=data.redseal_rate,
         include_admin_fee=data.include_admin_fee,
         include_hst=data.include_hst,
     )
@@ -559,10 +572,11 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
         techs_traveling=data.techs_traveling,
         distance_km=data.distance_km,
         km_rate=data.km_rate,
+        redseal_techs=data.redseal_techs,
+        redseal_rate=data.redseal_rate,
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
         admin_fee=data.admin_fee,
-        redseal_amount=data.redseal_amount,
         include_admin_fee=data.include_admin_fee,
         include_hst=data.include_hst,
         **amounts,
@@ -646,7 +660,8 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
         admin_fee=data.admin_fee,
-        redseal_amount=data.redseal_amount,
+        redseal_techs=data.redseal_techs,
+        redseal_rate=data.redseal_rate,
         include_admin_fee=data.include_admin_fee,
         include_hst=data.include_hst,
     )
@@ -661,10 +676,11 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
     estimate.techs_traveling = data.techs_traveling
     estimate.distance_km = data.distance_km
     estimate.km_rate = data.km_rate
+    estimate.redseal_techs = data.redseal_techs
+    estimate.redseal_rate = data.redseal_rate
     estimate.dump_fee = data.dump_fee
     estimate.permits_fee = data.permits_fee
     estimate.admin_fee = data.admin_fee
-    estimate.redseal_amount = data.redseal_amount
     estimate.include_admin_fee = data.include_admin_fee
     estimate.include_hst = data.include_hst
     if data.status is not None:

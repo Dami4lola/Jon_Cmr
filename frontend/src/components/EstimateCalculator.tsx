@@ -21,6 +21,7 @@ interface TaskRow {
   description: string;
   hours: number;
   usesHeavyEquipment: boolean;
+  usesRedseal: boolean;
 }
 
 interface EquipmentRow {
@@ -85,7 +86,7 @@ function tasksFromEstimate(estimate?: Estimate): TaskRow[] {
     .sort((a, b) => (a.phase === b.phase ? a.sort_order - b.sort_order : 0))
     .map((t) => ({
       id: nextId(), phase: t.phase, description: t.description,
-      hours: parseFloat(t.hours), usesHeavyEquipment: t.uses_heavy_equipment,
+      hours: parseFloat(t.hours), usesHeavyEquipment: t.uses_heavy_equipment, usesRedseal: t.uses_redseal,
     }));
 }
 
@@ -148,7 +149,9 @@ export function EstimateCalculator({
 
   const [dumpFee, setDumpFee] = useState(initialEstimate ? parseFloat(initialEstimate.dump_fee) : 0);
   const [permitsFee, setPermitsFee] = useState(initialEstimate ? parseFloat(initialEstimate.permits_fee) : 0);
-  const [redsealAmount, setRedsealAmount] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_amount) : 0);
+  const [redsealTechs, setRedsealTechs] = useState(initialEstimate?.redseal_techs ?? 0);
+  const [redsealRate, setRedsealRate] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_rate) : 100);
+  const [linkRedsealToCrew, setLinkRedsealToCrew] = useState(!initialEstimate);
   const [includeAdmin, setIncludeAdmin] = useState(initialEstimate?.include_admin_fee ?? true);
   const [adminFee, setAdminFee] = useState(initialEstimate ? parseFloat(initialEstimate.admin_fee) : 50);
   const [includeHst, setIncludeHst] = useState(initialEstimate?.include_hst ?? true);
@@ -161,6 +164,10 @@ export function EstimateCalculator({
     if (linkTravelToCrew) setTechsTraveling(crewSize);
   }, [crewSize, linkTravelToCrew]);
 
+  useEffect(() => {
+    if (linkRedsealToCrew) setRedsealTechs(crewSize);
+  }, [crewSize, linkRedsealToCrew]);
+
   // Multi-day jobs mean multiple round trips: total task hours / 7-hour day,
   // rounded up, gives the number of days the crew drives out.
   const totalHours = tasks.reduce((s, t) => s + t.hours, 0);
@@ -168,6 +175,12 @@ export function EstimateCalculator({
 
   const labourTotal = totalHours * crewSize * labourRate;
   const travelTotal = techsTraveling * (distanceKm || 0) * kmRate * travelDays;
+
+  // Red Seal premium: tagged task hours x redseal techs x redseal rate,
+  // added on top of standard labour (those hours are still billed at the
+  // standard rate above too, not moved out of it).
+  const redsealHours = tasks.filter((t) => t.usesRedseal).reduce((s, t) => s + t.hours, 0);
+  const redsealTotal = redsealHours * redsealTechs * redsealRate;
 
   const equipLineTotal = (row: EquipmentRow) => row.rate * row.qty * (1 + row.markup / 100);
   const heavyEquipmentTotal = equipmentRows.filter((r) => r.category === 'heavy').reduce((s, r) => s + equipLineTotal(r), 0);
@@ -186,7 +199,7 @@ export function EstimateCalculator({
   const adminAmt = includeAdmin ? adminFee * adminPeriods : 0;
   const subtotal =
     labourTotal + travelTotal + materialsTotal + heavyEquipmentTotal + rentalTotal + fuelTotal
-    + dumpFee + permitsFee + redsealAmount + adminAmt;
+    + dumpFee + permitsFee + redsealTotal + adminAmt;
   const hst = includeHst ? subtotal * hstRate : 0;
   const grandTotal = subtotal + hst;
 
@@ -208,7 +221,7 @@ export function EstimateCalculator({
   };
 
   const addTask = (phase: EstimatePhaseKey) =>
-    setTasks((rows) => [...rows, { id: nextId(), phase, description: '', hours: 0, usesHeavyEquipment: false }]);
+    setTasks((rows) => [...rows, { id: nextId(), phase, description: '', hours: 0, usesHeavyEquipment: false, usesRedseal: false }]);
   const updateTask = (id: number, patch: Partial<TaskRow>) =>
     setTasks((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const removeTask = (id: number) => setTasks((rows) => rows.filter((r) => r.id !== id));
@@ -242,16 +255,18 @@ export function EstimateCalculator({
     techs_traveling: techsTraveling,
     distance_km: distanceKm,
     km_rate: kmRate,
+    redseal_techs: redsealTechs,
+    redseal_rate: redsealRate,
     dump_fee: dumpFee,
     permits_fee: permitsFee,
     admin_fee: adminFee,
-    redseal_amount: redsealAmount,
     include_admin_fee: includeAdmin,
     include_hst: includeHst,
     tasks: tasks
       .filter((t) => t.description.trim().length > 0)
       .map((t, i) => ({
-        phase: t.phase, description: t.description, hours: t.hours, uses_heavy_equipment: t.usesHeavyEquipment, sort_order: i,
+        phase: t.phase, description: t.description, hours: t.hours,
+        uses_heavy_equipment: t.usesHeavyEquipment, uses_redseal: t.usesRedseal, sort_order: i,
       })),
     equipment_rows: equipmentRows.map((r, i) => ({
       category: r.category, description: r.desc, rate: r.rate, unit: r.unit, quantity: r.qty, markup_pct: r.markup, sort_order: i,
@@ -348,6 +363,48 @@ export function EstimateCalculator({
           />
           <span className="col-span-3 text-xs text-right font-medium">Km fee {formatCurrency(travelTotal)}</span>
         </div>
+        <div className="grid grid-cols-12 gap-2 items-center mt-2">
+          <label className="col-span-2 text-xs text-gray-500">Red Seal techs</label>
+          <input
+            type="number"
+            min={0}
+            className={`${inputClass} col-span-1`}
+            value={redsealTechs}
+            onChange={(e) => {
+              setLinkRedsealToCrew(false);
+              setRedsealTechs(parseInt(e.target.value) || 0);
+            }}
+            title="Number of Red Seal certified techs"
+          />
+          <label className="col-span-2 text-xs text-gray-500 text-right">Rate $/hr</label>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            className={`${inputClass} col-span-2`}
+            value={redsealRate}
+            onChange={(e) => setRedsealRate(parseFloat(e.target.value) || 0)}
+          />
+          <span className="col-span-5 text-xs text-right font-medium">Red Seal {formatCurrency(redsealTotal)}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          <label className="flex items-center gap-1 text-xs text-gray-500">
+            <input
+              type="checkbox"
+              checked={linkRedsealToCrew}
+              onChange={(e) => {
+                setLinkRedsealToCrew(e.target.checked);
+                if (e.target.checked) setRedsealTechs(crewSize);
+              }}
+            />
+            Red Seal techs = crew size
+          </label>
+          {redsealHours > 0 && (
+            <span className="text-xs text-gray-500">
+              {redsealHours}h tagged Red Seal
+            </span>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <label className="text-xs text-gray-500">Round-trip km:</label>
           <input
@@ -392,7 +449,7 @@ export function EstimateCalculator({
                     <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
                       <input
                         placeholder="Task"
-                        className={`${inputClass} col-span-6`}
+                        className={`${inputClass} col-span-5`}
                         value={row.description}
                         onChange={(e) => updateTask(row.id, { description: e.target.value })}
                       />
@@ -405,13 +462,21 @@ export function EstimateCalculator({
                         onChange={(e) => updateTask(row.id, { hours: parseFloat(e.target.value) || 0 })}
                         title="Hours"
                       />
-                      <label className="col-span-3 flex items-center gap-1 text-xs text-gray-500">
+                      <label className="col-span-2 flex items-center gap-1 text-xs text-gray-500">
                         <input
                           type="checkbox"
                           checked={row.usesHeavyEquipment}
                           onChange={(e) => updateTask(row.id, { usesHeavyEquipment: e.target.checked })}
                         />
-                        Heavy equipment
+                        Heavy equip.
+                      </label>
+                      <label className="col-span-2 flex items-center gap-1 text-xs text-gray-500">
+                        <input
+                          type="checkbox"
+                          checked={row.usesRedseal}
+                          onChange={(e) => updateTask(row.id, { usesRedseal: e.target.checked })}
+                        />
+                        Red Seal
                       </label>
                       <button
                         type="button"
@@ -528,17 +593,7 @@ export function EstimateCalculator({
       {/* Flat fees */}
       <div>
         <p className="text-xs font-medium text-gray-600 mb-1">Other Fees</p>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Red seal trades ($)</label>
-            <input
-              type="number"
-              step="0.01"
-              className={inputClass}
-              value={redsealAmount}
-              onChange={(e) => setRedsealAmount(parseFloat(e.target.value) || 0)}
-            />
-          </div>
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Dump fee ($)</label>
             <input
@@ -609,10 +664,10 @@ export function EstimateCalculator({
             <span>{formatCurrency(heavyEquipmentTotal)}</span>
           </div>
         )}
-        {redsealAmount > 0 && (
+        {redsealTotal > 0 && (
           <div className="flex justify-between text-gray-600">
-            <span>Red seal trades</span>
-            <span>{formatCurrency(redsealAmount)}</span>
+            <span>Red seal trades ({redsealHours}h &times; {redsealTechs} &times; {formatCurrency(redsealRate)})</span>
+            <span>{formatCurrency(redsealTotal)}</span>
           </div>
         )}
         {rentalTotal > 0 && (

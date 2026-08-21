@@ -62,11 +62,16 @@ class Estimate(SQLModel, table=True):
     distance_km: Decimal | None = Field(default=None, max_digits=6, decimal_places=2)
     km_rate: Decimal = Field(default=Decimal("1.50"), max_digits=5, decimal_places=2)
 
+    # Red Seal trade premium: computed from tasks tagged uses_redseal, at
+    # redseal_techs x redseal_rate, added on top of standard labour (not
+    # netted out of it - those hours are billed both ways).
+    redseal_techs: int = Field(default=0)
+    redseal_rate: Decimal = Field(default=Decimal("100.00"), max_digits=6, decimal_places=2)
+
     # Flat manually-entered fees (no formula - typed in directly, like admin_fee)
     dump_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     permits_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     admin_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
-    redseal_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     include_admin_fee: bool = Field(default=True)
     include_hst: bool = Field(default=True)
 
@@ -74,6 +79,7 @@ class Estimate(SQLModel, table=True):
     total_hours: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
     travel_days: int = Field(default=0)
     labour_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    redseal_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     travel_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     materials_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     heavy_equipment_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
@@ -111,6 +117,7 @@ class EstimateTask(SQLModel, table=True):
     description: str = Field(max_length=500)
     hours: Decimal = Field(max_digits=6, decimal_places=2)
     uses_heavy_equipment: bool = Field(default=False)
+    uses_redseal: bool = Field(default=False)
     sort_order: int = Field(default=0)
 
     estimate: Optional["Estimate"] = Relationship(back_populates="tasks")
