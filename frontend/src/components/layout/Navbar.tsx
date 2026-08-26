@@ -23,6 +23,7 @@ export function Navbar() {
   if (isManager()) {
     navItems.push({ href: '/manager', label: 'Manager' });
     navItems.push({ href: '/invoices', label: 'Invoices' });
+    navItems.push({ href: '/clients', label: 'Clients' });
   }
 
   // Add admin-only items

@@ -20,7 +20,7 @@ def list_clients(
     session: DBSession,
     current_user: ManagerUser,
     skip: int = 0,
-    limit: int = 50,
+    limit: int = 1000,
 ):
     """List all clients (manager only)"""
     statement = select(Client).order_by(Client.name).offset(skip).limit(limit)

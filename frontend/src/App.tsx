@@ -19,6 +19,7 @@ import { ViewInspection } from './pages/ViewInspection';
 import { Invoices } from './pages/Invoices';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { AdminEstimate } from './pages/AdminEstimate';
+import { Clients } from './pages/Clients';
 import { ViewTimesheet } from './pages/ViewTimesheet';
 import { CompletedJobs } from './pages/CompletedJobs';
 import { PaidTimesheets } from './pages/PaidTimesheets';
@@ -71,6 +72,14 @@ function App() {
           element={
             <ProtectedRoute requireManager>
               <PaidTimesheets />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clients"
+          element={
+            <ProtectedRoute requireManager>
+              <Clients />
             </ProtectedRoute>
           }
         />
