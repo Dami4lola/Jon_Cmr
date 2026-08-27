@@ -126,6 +126,7 @@ export function EstimateCalculator({
   const kmRate = rates ? parseFloat(rates.km_rate) : 1.5;
   const hstRate = rates ? parseFloat(rates.hst_rate) : 0.13;
   const defaultAdminFee = rates ? parseFloat(rates.admin_fee) : 50;
+  const defaultRedsealRate = rates ? parseFloat(rates.redseal_rate) : 100;
 
   const [estimateId, setEstimateId] = useState<number | null>(initialEstimate?.id ?? null);
   const [estimateNumber, setEstimateNumber] = useState<string | null>(initialEstimate?.estimate_number ?? null);
@@ -150,7 +151,7 @@ export function EstimateCalculator({
   const [dumpFee, setDumpFee] = useState(initialEstimate ? parseFloat(initialEstimate.dump_fee) : 0);
   const [permitsFee, setPermitsFee] = useState(initialEstimate ? parseFloat(initialEstimate.permits_fee) : 0);
   const [redsealTechs, setRedsealTechs] = useState(initialEstimate?.redseal_techs ?? 0);
-  const [redsealRate, setRedsealRate] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_rate) : 100);
+  const [redsealRate, setRedsealRate] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_rate) : defaultRedsealRate);
   const [linkRedsealToCrew, setLinkRedsealToCrew] = useState(!initialEstimate);
   const [includeAdmin, setIncludeAdmin] = useState(initialEstimate?.include_admin_fee ?? true);
   const [adminFee, setAdminFee] = useState(initialEstimate ? parseFloat(initialEstimate.admin_fee) : 50);
@@ -159,6 +160,10 @@ export function EstimateCalculator({
   useEffect(() => {
     if (!initialEstimate) setAdminFee(defaultAdminFee);
   }, [defaultAdminFee, initialEstimate]);
+
+  useEffect(() => {
+    if (!initialEstimate) setRedsealRate(defaultRedsealRate);
+  }, [defaultRedsealRate, initialEstimate]);
 
   useEffect(() => {
     if (linkTravelToCrew) setTechsTraveling(crewSize);
