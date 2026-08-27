@@ -16,6 +16,8 @@ from .job_photo import JobPhoto
 from .settings import AppSettings
 from .sms_log import SmsLog
 from .time_off_request import TimeOffRequest
+from .material_price_cache import MaterialPriceCache
+from .estimate import Estimate, EstimateTask, EstimateEquipmentRow, EstimateMaterialRow
 
 __all__ = [
     "Role",
@@ -37,4 +39,9 @@ __all__ = [
     "InspectionPhoto",
     "SmsLog",
     "TimeOffRequest",
+    "MaterialPriceCache",
+    "Estimate",
+    "EstimateTask",
+    "EstimateEquipmentRow",
+    "EstimateMaterialRow",
 ]

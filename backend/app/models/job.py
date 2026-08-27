@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from .invoice import Invoice
     from .inspection import JobInspection
     from .job_photo import JobPhoto
+    from .estimate import Estimate
 
 
 class JobWorkerLink(SQLModel, table=True):
@@ -72,6 +73,10 @@ class Job(SQLModel, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     invoice: Optional["Invoice"] = Relationship(
+        back_populates="job",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    estimate: Optional["Estimate"] = Relationship(
         back_populates="job",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
