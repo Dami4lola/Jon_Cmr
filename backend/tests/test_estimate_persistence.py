@@ -180,15 +180,15 @@ class TestCalculateEstimateAmounts:
     @pytest.mark.parametrize(
         "hours,expected_travel_days,expected_periods",
         [
-            (49, 7, 1),     # 7 travel days -> 1 admin fee
-            (56, 8, 2),     # 8 travel days -> rounds up into a 2nd fee
-            (98, 14, 2),    # 14 travel days -> 2 admin fees
-            (105, 15, 3),   # 15 travel days -> rounds up into a 3rd fee
-            (147, 21, 3),   # 21 travel days -> 3 admin fees
+            (35, 5, 1),     # 5 travel days -> exactly 1 admin fee (5-day work week)
+            (42, 6, 2),     # 6 travel days -> rounds up into a 2nd fee
+            (70, 10, 2),    # 10 travel days -> exactly 2 admin fees
+            (77, 11, 3),    # 11 travel days -> rounds up into a 3rd fee
+            (105, 15, 3),   # 15 travel days -> exactly 3 admin fees
             (66.5, 10, 2),  # sample estimate: 10 travel days -> 2 admin fees
         ],
     )
-    def test_admin_fee_rounds_up_any_partial_7day_period(self, hours, expected_travel_days, expected_periods):
+    def test_admin_fee_rounds_up_any_partial_5day_workweek(self, hours, expected_travel_days, expected_periods):
         amounts = _calculate_estimate_amounts(
             tasks=[_task("build", hours)], equipment_rows=[], material_rows=[],
             crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
@@ -198,8 +198,8 @@ class TestCalculateEstimateAmounts:
         assert amounts["travel_days"] == expected_travel_days
         assert amounts["admin_amount"] == Decimal("50.00") * expected_periods
 
-    def test_admin_fee_applies_once_for_a_short_job_under_7_days(self):
-        # 10 hours -> 2 travel days (under a full 7-day period), but the
+    def test_admin_fee_applies_once_for_a_short_job_under_5_days(self):
+        # 10 hours -> 2 travel days (under a full 5-day work week), but the
         # admin fee still applies once since there's real work on the job.
         amounts = _calculate_estimate_amounts(
             tasks=[_task("build", 10)], equipment_rows=[], material_rows=[],
