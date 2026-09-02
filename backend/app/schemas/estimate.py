@@ -147,6 +147,36 @@ class EstimateMaterialRowResponse(EstimateMaterialRowCreate):
         from_attributes = True
 
 
+class EstimateScaffoldingRowCreate(BaseModel):
+    """One of the 4 fixed scaffolding component lines (frame/crosser/jack/plank)"""
+    component: str = Field(..., pattern="^(frame|crosser|jack|plank)$")
+    rate_per_day: Decimal = Decimal("0")
+    quantity: Decimal = Decimal("0")
+    sort_order: int = 0
+
+
+class EstimateScaffoldingRowResponse(EstimateScaffoldingRowCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class EstimateToolingRowCreate(BaseModel):
+    """A tooling/supplies line item"""
+    description: str = Field(..., max_length=500)
+    quantity: Decimal = Decimal("1")
+    unit_cost: Decimal = Decimal("0")
+    sort_order: int = 0
+
+
+class EstimateToolingRowResponse(EstimateToolingRowCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
 class EstimateCreate(BaseModel):
     """Create/replace an estimate. Child rows are always submitted in full -
     the server replaces existing rows wholesale rather than diffing them."""
@@ -168,6 +198,7 @@ class EstimateCreate(BaseModel):
 
     dump_fee: Decimal = Decimal("0")
     permits_fee: Decimal = Decimal("0")
+    engineering_fee: Decimal = Decimal("0")
     admin_fee: Decimal = Decimal("0")
     include_admin_fee: bool = True
     include_hst: bool = True
@@ -175,6 +206,8 @@ class EstimateCreate(BaseModel):
     tasks: list[EstimateTaskCreate] = []
     equipment_rows: list[EstimateEquipmentRowCreate] = []
     material_rows: list[EstimateMaterialRowCreate] = []
+    scaffolding_rows: list[EstimateScaffoldingRowCreate] = []
+    tooling_rows: list[EstimateToolingRowCreate] = []
 
 
 class EstimateUpdate(EstimateCreate):
@@ -193,6 +226,8 @@ class EstimateAmounts(BaseModel):
     heavy_equipment_amount: Decimal
     rental_amount: Decimal
     fuel_amount: Decimal
+    scaffolding_amount: Decimal
+    tooling_amount: Decimal
     admin_amount: Decimal
     subtotal: Decimal
     hst_amount: Decimal
@@ -224,6 +259,7 @@ class EstimateResponse(BaseModel):
 
     dump_fee: Decimal
     permits_fee: Decimal
+    engineering_fee: Decimal
     admin_fee: Decimal
     include_admin_fee: bool
     include_hst: bool
@@ -237,6 +273,8 @@ class EstimateResponse(BaseModel):
     heavy_equipment_amount: Decimal
     rental_amount: Decimal
     fuel_amount: Decimal
+    scaffolding_amount: Decimal
+    tooling_amount: Decimal
     admin_amount: Decimal
     subtotal: Decimal
     hst_amount: Decimal
@@ -245,6 +283,8 @@ class EstimateResponse(BaseModel):
     tasks: list[EstimateTaskResponse]
     equipment_rows: list[EstimateEquipmentRowResponse]
     material_rows: list[EstimateMaterialRowResponse]
+    scaffolding_rows: list[EstimateScaffoldingRowResponse]
+    tooling_rows: list[EstimateToolingRowResponse]
 
     class Config:
         from_attributes = True

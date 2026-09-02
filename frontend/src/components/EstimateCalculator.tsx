@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { estimatesApi } from '../api/estimates';
+import { clientsApi, type ClientCreate } from '../api/clients';
 import { formatCurrency } from '../lib/utils';
-import type { Estimate, EstimatePayload, EstimatePhaseKey, MaterialSearchResult } from '../types';
+import type { Estimate, EstimatePayload, EstimatePhaseKey, MaterialSearchResult, ScaffoldingComponentKey } from '../types';
 
 interface EstimateCalculatorProps {
   initialAddress?: string;
   initialEstimate?: Estimate;
   jobId?: number | null;
   clientId?: number | null;
-  clientNameOverride?: string | null;
+  pendingProspect?: ClientCreate | null;
   onApply?: (total: number) => void;
   onSaved?: (estimate: Estimate) => void;
   onClose: () => void;
@@ -35,6 +36,20 @@ interface EquipmentRow {
 }
 
 interface MaterialRow {
+  id: number;
+  desc: string;
+  qty: number;
+  unitCost: number;
+}
+
+interface ScaffoldingRow {
+  id: number;
+  component: ScaffoldingComponentKey;
+  rate: number;
+  qty: number;
+}
+
+interface ToolingRow {
   id: number;
   desc: string;
   qty: number;
@@ -77,6 +92,44 @@ const PHASES: { key: EstimatePhaseKey; label: string }[] = [
   { key: 'finishing', label: 'Finishing' },
 ];
 
+const SCAFFOLDING_LABELS: Record<ScaffoldingComponentKey, string> = {
+  frame: 'Frames',
+  crosser: 'Crossers',
+  jack: 'Jacks',
+  plank: 'Planks',
+};
+
+// Default per-day rate/qty for a brand-new estimate's scaffolding section.
+// Crossers are bundled into the Frame line's cost (business rule), so they
+// default to a $0 rate - the quantity is still tracked/shown.
+const SCAFFOLDING_DEFAULTS: Record<ScaffoldingComponentKey, { rate: number; qty: number }> = {
+  frame: { rate: 1, qty: 40 },
+  crosser: { rate: 0, qty: 56 },
+  jack: { rate: 2, qty: 20 },
+  plank: { rate: 3, qty: 35 },
+};
+
+function defaultScaffoldingRows(): ScaffoldingRow[] {
+  return (Object.keys(SCAFFOLDING_LABELS) as ScaffoldingComponentKey[]).map((component) => ({
+    id: nextId(), component, rate: SCAFFOLDING_DEFAULTS[component].rate, qty: SCAFFOLDING_DEFAULTS[component].qty,
+  }));
+}
+
+// The business always does the same prep/wrap-up tasks - seeded here so a
+// new estimate doesn't start with an empty Preplanning/Finishing phase.
+function defaultTasks(): TaskRow[] {
+  const seeds: { phase: EstimatePhaseKey; description: string }[] = [
+    { phase: 'preplanning', description: 'Pick up materials' },
+    { phase: 'preplanning', description: 'Unload tools/supplies' },
+    { phase: 'finishing', description: 'Clean up site' },
+    { phase: 'finishing', description: 'Pack up tools/supplies' },
+    { phase: 'finishing', description: 'Dump run garbage' },
+  ];
+  return seeds.map((s) => ({
+    id: nextId(), phase: s.phase, description: s.description, hours: 0, usesHeavyEquipment: false, usesRedseal: false,
+  }));
+}
+
 const inputClass =
   'w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none';
 
@@ -105,12 +158,26 @@ function materialsFromEstimate(estimate?: Estimate): MaterialRow[] {
   }));
 }
 
+function scaffoldingFromEstimate(estimate?: Estimate): ScaffoldingRow[] {
+  if (!estimate) return [];
+  return estimate.scaffolding_rows.map((r) => ({
+    id: nextId(), component: r.component, rate: parseFloat(r.rate_per_day), qty: parseFloat(r.quantity),
+  }));
+}
+
+function toolingFromEstimate(estimate?: Estimate): ToolingRow[] {
+  if (!estimate) return [];
+  return estimate.tooling_rows.map((r) => ({
+    id: nextId(), desc: r.description, qty: parseFloat(r.quantity), unitCost: parseFloat(r.unit_cost),
+  }));
+}
+
 export function EstimateCalculator({
   initialAddress,
   initialEstimate,
   jobId,
   clientId,
-  clientNameOverride,
+  pendingProspect,
   onApply,
   onSaved,
   onClose,
@@ -132,7 +199,7 @@ export function EstimateCalculator({
   const [estimateNumber, setEstimateNumber] = useState<string | null>(initialEstimate?.estimate_number ?? null);
 
   const [scopeOfWork, setScopeOfWork] = useState(initialEstimate?.scope_of_work || '');
-  const [tasks, setTasks] = useState<TaskRow[]>(() => tasksFromEstimate(initialEstimate));
+  const [tasks, setTasks] = useState<TaskRow[]>(() => (initialEstimate ? tasksFromEstimate(initialEstimate) : defaultTasks()));
   const [crewSize, setCrewSize] = useState(initialEstimate?.crew_size ?? 1);
   const [techsTraveling, setTechsTraveling] = useState(initialEstimate?.techs_traveling ?? 1);
   const [linkTravelToCrew, setLinkTravelToCrew] = useState(!initialEstimate);
@@ -146,10 +213,15 @@ export function EstimateCalculator({
 
   const [equipmentRows, setEquipmentRows] = useState<EquipmentRow[]>(() => equipmentFromEstimate(initialEstimate));
   const [materialRows, setMaterialRows] = useState<MaterialRow[]>(() => materialsFromEstimate(initialEstimate));
+  const [scaffoldingRows, setScaffoldingRows] = useState<ScaffoldingRow[]>(() =>
+    initialEstimate ? scaffoldingFromEstimate(initialEstimate) : defaultScaffoldingRows()
+  );
+  const [toolingRows, setToolingRows] = useState<ToolingRow[]>(() => toolingFromEstimate(initialEstimate));
   const [activeSearchRowId, setActiveSearchRowId] = useState<number | null>(null);
 
   const [dumpFee, setDumpFee] = useState(initialEstimate ? parseFloat(initialEstimate.dump_fee) : 0);
   const [permitsFee, setPermitsFee] = useState(initialEstimate ? parseFloat(initialEstimate.permits_fee) : 0);
+  const [engineeringFee, setEngineeringFee] = useState(initialEstimate ? parseFloat(initialEstimate.engineering_fee) : 0);
   const [redsealTechs, setRedsealTechs] = useState(initialEstimate?.redseal_techs ?? 0);
   const [redsealRate, setRedsealRate] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_rate) : defaultRedsealRate);
   const [linkRedsealToCrew, setLinkRedsealToCrew] = useState(!initialEstimate);
@@ -197,13 +269,22 @@ export function EstimateCalculator({
   const materialLineTotal = (row: MaterialRow) => row.qty * row.unitCost;
   const materialsTotal = materialRows.reduce((s, r) => s + materialLineTotal(r), 0);
 
+  // Scaffolding is billed for every day the crew is out on the job - reuses
+  // the same travelDays computed from task hours above.
+  const scaffoldingLineTotal = (row: ScaffoldingRow) => row.rate * row.qty * travelDays;
+  const scaffoldingTotal = scaffoldingRows.reduce((s, r) => s + scaffoldingLineTotal(r), 0);
+
+  const toolingLineTotal = (row: ToolingRow) => row.qty * row.unitCost;
+  const toolingTotal = toolingRows.reduce((s, r) => s + toolingLineTotal(r), 0);
+
   // Admin fee is charged once per 5-day work week, rounding any partial
   // week up (1-5 days = 1 fee, 6-10 = 2 fees, 11-15 = 3 fees, ...).
   const adminPeriods = travelDays > 0 ? Math.ceil(travelDays / 5) : 0;
   const adminAmt = includeAdmin ? adminFee * adminPeriods : 0;
   const subtotal =
     labourTotal + travelTotal + materialsTotal + heavyEquipmentTotal + rentalTotal + fuelTotal
-    + dumpFee + permitsFee + redsealTotal + adminAmt;
+    + scaffoldingTotal + toolingTotal
+    + dumpFee + permitsFee + engineeringFee + redsealTotal + adminAmt;
   const hst = includeHst ? subtotal * hstRate : 0;
   const grandTotal = subtotal + hst;
 
@@ -249,10 +330,24 @@ export function EstimateCalculator({
   };
   const removeMaterialRow = (id: number) => setMaterialRows((rows) => rows.filter((r) => r.id !== id));
 
-  const buildPayload = (): EstimatePayload => ({
+  const updateScaffoldingRow = (id: number, patch: Partial<ScaffoldingRow>) => {
+    setScaffoldingRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const addToolingRow = () =>
+    setToolingRows((rows) => [...rows, { id: nextId(), desc: '', qty: 1, unitCost: 0 }]);
+  const updateToolingRow = (id: number, patch: Partial<ToolingRow>) => {
+    setToolingRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+  const removeToolingRow = (id: number) => setToolingRows((rows) => rows.filter((r) => r.id !== id));
+
+  const buildPayload = (resolvedClientId: number | null): EstimatePayload => ({
     job_id: jobId ?? null,
-    client_id: clientId ?? null,
-    client_name_override: clientNameOverride ?? null,
+    client_id: resolvedClientId,
+    // Old prospect estimates saved before real Client records were created
+    // for prospects still carry a name-only override - preserve it on edit
+    // as long as no real client has since been linked.
+    client_name_override: resolvedClientId ? null : (initialEstimate?.client_name_override ?? null),
     address_override: address || null,
     scope_of_work: scopeOfWork || null,
     crew_size: crewSize,
@@ -263,6 +358,7 @@ export function EstimateCalculator({
     redseal_rate: redsealRate,
     dump_fee: dumpFee,
     permits_fee: permitsFee,
+    engineering_fee: engineeringFee,
     admin_fee: adminFee,
     include_admin_fee: includeAdmin,
     include_hst: includeHst,
@@ -278,10 +374,27 @@ export function EstimateCalculator({
     material_rows: materialRows
       .filter((r) => r.desc.trim().length > 0)
       .map((r, i) => ({ description: r.desc, quantity: r.qty, unit_cost: r.unitCost, sort_order: i })),
+    scaffolding_rows: scaffoldingRows.map((r, i) => ({
+      component: r.component, rate_per_day: r.rate, quantity: r.qty, sort_order: i,
+    })),
+    tooling_rows: toolingRows
+      .filter((r) => r.desc.trim().length > 0)
+      .map((r, i) => ({ description: r.desc, quantity: r.qty, unit_cost: r.unitCost, sort_order: i })),
   });
 
   const saveMutation = useMutation({
-    mutationFn: () => (estimateId ? estimatesApi.update(estimateId, buildPayload()) : estimatesApi.create(buildPayload())),
+    mutationFn: async () => {
+      // A "new prospect" estimate has no client_id yet - create the real
+      // Client record now, at save time, so it shows up in the client
+      // database with full contact info instead of a name-only override.
+      let resolvedClientId = clientId ?? null;
+      if (!resolvedClientId && pendingProspect) {
+        const created = await clientsApi.create(pendingProspect);
+        resolvedClientId = created.id;
+      }
+      const payload = buildPayload(resolvedClientId);
+      return estimateId ? estimatesApi.update(estimateId, payload) : estimatesApi.create(payload);
+    },
     onSuccess: (saved) => {
       setEstimateId(saved.id);
       setEstimateNumber(saved.estimate_number);
@@ -289,10 +402,10 @@ export function EstimateCalculator({
     },
   });
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = async (customer: boolean) => {
     if (!estimateId || !estimateNumber) return;
     try {
-      await estimatesApi.downloadPdfToFile(estimateId, estimateNumber);
+      await estimatesApi.downloadPdfToFile(estimateId, estimateNumber, customer);
     } catch {
       alert('Failed to download PDF');
     }
@@ -561,15 +674,50 @@ export function EstimateCalculator({
           <button type="button" onClick={() => addEquipmentRow('ownedRental')} className="text-xs text-obatek hover:underline">
             + Owned rental
           </button>
-          <button type="button" onClick={() => addEquipmentRow('scaffolding')} className="text-xs text-obatek hover:underline">
-            + Scaffolding
-          </button>
           <button type="button" onClick={() => addEquipmentRow('rentalVillage')} className="text-xs text-obatek hover:underline">
             + Outside rental
           </button>
           <button type="button" onClick={() => addEquipmentRow('fuel')} className="text-xs text-obatek hover:underline">
             + Fuel
           </button>
+        </div>
+      </div>
+
+      {/* Scaffolding */}
+      <div>
+        <p className="text-xs font-medium text-gray-600 mb-1">
+          Scaffolding
+          {travelDays > 0 && (
+            <span className="text-gray-400 font-normal"> (&times; {travelDays} travel day{travelDays === 1 ? '' : 's'})</span>
+          )}
+        </p>
+        <div className="space-y-2">
+          {scaffoldingRows.map((row) => (
+            <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
+              <span className="col-span-3 text-xs text-gray-600">{SCAFFOLDING_LABELS[row.component]}</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className={`${inputClass} col-span-3`}
+                value={row.rate}
+                onChange={(e) => updateScaffoldingRow(row.id, { rate: parseFloat(e.target.value) || 0 })}
+                title="Rate per unit per day"
+              />
+              <input
+                type="number"
+                min={0}
+                step={1}
+                className={`${inputClass} col-span-3`}
+                value={row.qty}
+                onChange={(e) => updateScaffoldingRow(row.id, { qty: parseFloat(e.target.value) || 0 })}
+                title="Quantity"
+              />
+              <span className="col-span-3 text-xs text-right font-medium">
+                {formatCurrency(scaffoldingLineTotal(row))}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -594,10 +742,53 @@ export function EstimateCalculator({
         </button>
       </div>
 
+      {/* Tooling / Supplies */}
+      <div>
+        <p className="text-xs font-medium text-gray-600 mb-1">Tooling / Supplies</p>
+        <div className="space-y-2">
+          {toolingRows.map((row) => (
+            <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
+              <input
+                placeholder="Item"
+                className={`${inputClass} col-span-6`}
+                value={row.desc}
+                onChange={(e) => updateToolingRow(row.id, { desc: e.target.value })}
+              />
+              <input
+                type="number"
+                min={0}
+                className={`${inputClass} col-span-2`}
+                value={row.qty}
+                onChange={(e) => updateToolingRow(row.id, { qty: parseFloat(e.target.value) || 0 })}
+                title="Qty"
+              />
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className={`${inputClass} col-span-2`}
+                value={row.unitCost}
+                onChange={(e) => updateToolingRow(row.id, { unitCost: parseFloat(e.target.value) || 0 })}
+                title="Unit cost"
+              />
+              <span className="col-span-1 text-xs text-right font-medium">
+                {formatCurrency(toolingLineTotal(row))}
+              </span>
+              <button type="button" onClick={() => removeToolingRow(row.id)} className="text-red-500 text-xs justify-self-end">
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={addToolingRow} className="text-xs text-obatek mt-1 hover:underline">
+          + Add tooling/supplies line
+        </button>
+      </div>
+
       {/* Flat fees */}
       <div>
         <p className="text-xs font-medium text-gray-600 mb-1">Other Fees</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Dump fee ($)</label>
             <input
@@ -616,6 +807,16 @@ export function EstimateCalculator({
               className={inputClass}
               value={permitsFee}
               onChange={(e) => setPermitsFee(parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Engineering fee ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              className={inputClass}
+              value={engineeringFee}
+              onChange={(e) => setEngineeringFee(parseFloat(e.target.value) || 0)}
             />
           </div>
         </div>
@@ -686,6 +887,18 @@ export function EstimateCalculator({
             <span>{formatCurrency(fuelTotal)}</span>
           </div>
         )}
+        {scaffoldingTotal > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Scaffolding</span>
+            <span>{formatCurrency(scaffoldingTotal)}</span>
+          </div>
+        )}
+        {toolingTotal > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Tooling / Supplies</span>
+            <span>{formatCurrency(toolingTotal)}</span>
+          </div>
+        )}
         {dumpFee > 0 && (
           <div className="flex justify-between text-gray-600">
             <span>Dump fee</span>
@@ -702,6 +915,12 @@ export function EstimateCalculator({
           <div className="flex justify-between text-gray-600">
             <span>Permits fee</span>
             <span>{formatCurrency(permitsFee)}</span>
+          </div>
+        )}
+        {engineeringFee > 0 && (
+          <div className="flex justify-between text-gray-600">
+            <span>Engineering fee</span>
+            <span>{formatCurrency(engineeringFee)}</span>
           </div>
         )}
         <div className="flex justify-between text-gray-600 pt-1 border-t border-obatek/20 mt-1">
@@ -733,13 +952,24 @@ export function EstimateCalculator({
           Cancel
         </button>
         {estimateId && (
-          <button
-            type="button"
-            onClick={handleDownloadPdf}
-            className="px-3 py-1.5 border border-obatek text-obatek rounded-lg text-xs font-medium hover:bg-obatek/10"
-          >
-            Download PDF
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => handleDownloadPdf(false)}
+              className="px-3 py-1.5 border border-obatek text-obatek rounded-lg text-xs font-medium hover:bg-obatek/10"
+              title="Full detail, including the Preplanning/Build/Finishing hour breakdown - for internal use"
+            >
+              Download PDF (Full)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownloadPdf(true)}
+              className="px-3 py-1.5 border border-obatek text-obatek rounded-lg text-xs font-medium hover:bg-obatek/10"
+              title="Summary only, no internal hour breakdown - the version to send to the client"
+            >
+              Download PDF (Customer Copy)
+            </button>
+          </>
         )}
         <button
           type="button"

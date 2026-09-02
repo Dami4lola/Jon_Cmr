@@ -109,8 +109,21 @@ def _draw_logo_text(canvas, right_x, top_y):
     canvas.drawRightString(right_x, top_y - 26, "Handyman Services")
 
 
-def generate_estimate_pdf(estimate: Estimate) -> bytes:
-    """Generate a PDF estimate and return it as bytes."""
+SCAFFOLDING_LABELS = {
+    "frame": "Frames",
+    "crosser": "Crossers",
+    "jack": "Jacks",
+    "plank": "Planks",
+}
+
+
+def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> bytes:
+    """Generate a PDF estimate and return it as bytes.
+
+    customer_copy=True omits the internal Preplanning/Build/Finishing hour
+    breakdown - that's the version meant to actually be sent to the client;
+    the full version (customer_copy=False) is for internal use.
+    """
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -216,7 +229,7 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
         if task.phase in tasks_by_phase:
             tasks_by_phase[task.phase].append(task)
 
-    if any(tasks_by_phase.values()):
+    if not customer_copy and any(tasks_by_phase.values()):
         elements.append(Paragraph("HOUR BREAKDOWN", section_heading))
 
         for phase in PHASE_ORDER:
@@ -283,6 +296,17 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
     if estimate.fuel_amount > 0:
         charges_data.append(["Fuel", "", f"${estimate.fuel_amount:,.2f}"])
 
+    for row in sorted(estimate.scaffolding_rows, key=lambda r: r.sort_order):
+        line_total = row.rate_per_day * row.quantity * estimate.travel_days
+        if line_total <= 0:
+            continue
+        label = SCAFFOLDING_LABELS.get(row.component, row.component.title())
+        detail = f"{row.quantity:g} units x {estimate.travel_days} day(s) @ ${row.rate_per_day:,.2f}"
+        charges_data.append([f"Scaffolding - {label}", detail, f"${line_total:,.2f}"])
+
+    if estimate.tooling_amount > 0:
+        charges_data.append(["Tooling / Supplies", "", f"${estimate.tooling_amount:,.2f}"])
+
     if estimate.dump_fee > 0:
         charges_data.append(["Dump fee", "", f"${estimate.dump_fee:,.2f}"])
 
@@ -293,6 +317,9 @@ def generate_estimate_pdf(estimate: Estimate) -> bytes:
 
     if estimate.permits_fee > 0:
         charges_data.append(["Permits fee", "", f"${estimate.permits_fee:,.2f}"])
+
+    if estimate.engineering_fee > 0:
+        charges_data.append(["Engineering fee", "", f"${estimate.engineering_fee:,.2f}"])
 
     col_widths = [2.8 * inch, 2.4 * inch, 2.3 * inch]
     t_charges = Table(charges_data, colWidths=col_widths)
