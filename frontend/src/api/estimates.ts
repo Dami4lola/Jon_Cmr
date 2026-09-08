@@ -32,6 +32,7 @@ export function estimateToPayload(estimate: Estimate): EstimatePayload {
     redseal_rate: parseFloat(estimate.redseal_rate),
     dump_fee: parseFloat(estimate.dump_fee),
     permits_fee: parseFloat(estimate.permits_fee),
+    engineering_fee: parseFloat(estimate.engineering_fee),
     admin_fee: parseFloat(estimate.admin_fee),
     include_admin_fee: estimate.include_admin_fee,
     include_hst: estimate.include_hst,
@@ -45,6 +46,12 @@ export function estimateToPayload(estimate: Estimate): EstimatePayload {
       unit: r.unit, quantity: parseFloat(r.quantity), markup_pct: parseFloat(r.markup_pct), sort_order: r.sort_order,
     })),
     material_rows: estimate.material_rows.map((r) => ({
+      description: r.description, quantity: parseFloat(r.quantity), unit_cost: parseFloat(r.unit_cost), sort_order: r.sort_order,
+    })),
+    scaffolding_rows: estimate.scaffolding_rows.map((r) => ({
+      component: r.component, rate_per_day: parseFloat(r.rate_per_day), quantity: parseFloat(r.quantity), sort_order: r.sort_order,
+    })),
+    tooling_rows: estimate.tooling_rows.map((r) => ({
       description: r.description, quantity: parseFloat(r.quantity), unit_cost: parseFloat(r.unit_cost), sort_order: r.sort_order,
     })),
   };
@@ -120,14 +127,14 @@ export const estimatesApi = {
     await api.delete(`/estimates/${id}`);
   },
 
-  downloadPdf: async (id: number): Promise<Blob> => {
-    const response = await api.get(`/estimates/${id}/pdf`, { responseType: 'blob' });
+  downloadPdf: async (id: number, customer = false): Promise<Blob> => {
+    const response = await api.get(`/estimates/${id}/pdf`, { params: { customer }, responseType: 'blob' });
     return response.data;
   },
 
-  downloadPdfToFile: async (id: number, estimateNumber: string): Promise<void> => {
-    const blob = await estimatesApi.downloadPdf(id);
-    const filename = `Estimate-${estimateNumber}.pdf`;
+  downloadPdfToFile: async (id: number, estimateNumber: string, customer = false): Promise<void> => {
+    const blob = await estimatesApi.downloadPdf(id, customer);
+    const filename = customer ? `Estimate-${estimateNumber}-Customer.pdf` : `Estimate-${estimateNumber}.pdf`;
 
     if ('showSaveFilePicker' in window) {
       try {

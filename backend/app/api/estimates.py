@@ -14,7 +14,16 @@ from sqlmodel import select
 from sqlalchemy.orm import selectinload
 
 from ..models.settings import AppSettings
-from ..models import Estimate, EstimateTask, EstimateEquipmentRow, EstimateMaterialRow, Job, Client
+from ..models import (
+    Estimate,
+    EstimateTask,
+    EstimateEquipmentRow,
+    EstimateMaterialRow,
+    EstimateScaffoldingRow,
+    EstimateToolingRow,
+    Job,
+    Client,
+)
 from ..services.distance import calculate_distance
 from ..services.material_pricing import search_materials
 from ..services.estimate_pdf import generate_estimate_pdf
@@ -37,6 +46,8 @@ from ..schemas.estimate import (
     EstimateTaskResponse,
     EstimateEquipmentRowResponse,
     EstimateMaterialRowResponse,
+    EstimateScaffoldingRowResponse,
+    EstimateToolingRowResponse,
     EstimateAmounts,
     EstimateListItem,
 )
@@ -293,6 +304,9 @@ def _calculate_estimate_amounts(
     redseal_rate: Decimal,
     include_admin_fee: bool,
     include_hst: bool,
+    scaffolding_rows=(),
+    tooling_rows=(),
+    engineering_fee: Decimal = Decimal("0"),
     labour_rate: Decimal = LABOUR_RATE,
     hst_rate: Decimal = HST_RATE,
 ) -> dict:
@@ -347,6 +361,18 @@ def _calculate_estimate_amounts(
 
     dump_fee = dump_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     permits_fee = permits_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    engineering_fee = engineering_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    # Scaffolding is billed per component (frame/crosser/jack/plank) for every
+    # day the crew is out on the job - same travel_days used for the km fee.
+    scaffolding_amount = sum(
+        (row.rate_per_day * row.quantity for row in scaffolding_rows), Decimal("0")
+    ) * travel_days
+    scaffolding_amount = scaffolding_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    tooling_amount = sum((r.quantity * r.unit_cost for r in tooling_rows), Decimal("0")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
     # Admin fee is charged once per 5-day work week, rounding any partial
     # week up (1-5 days = 1 fee, 6-10 = 2 fees, 11-15 = 3 fees, ...).
@@ -355,7 +381,8 @@ def _calculate_estimate_amounts(
 
     subtotal = (
         labour_amount + travel_amount + materials_amount + heavy_equipment_amount
-        + rental_amount + fuel_amount + dump_fee + permits_fee + redseal_amount + admin_amt
+        + rental_amount + fuel_amount + scaffolding_amount + tooling_amount
+        + dump_fee + permits_fee + engineering_fee + redseal_amount + admin_amt
     )
     hst_amount = (subtotal * hst_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_hst else Decimal("0.00")
     total = subtotal + hst_amount
@@ -370,6 +397,8 @@ def _calculate_estimate_amounts(
         "heavy_equipment_amount": heavy_equipment_amount,
         "rental_amount": rental_amount,
         "fuel_amount": fuel_amount,
+        "scaffolding_amount": scaffolding_amount,
+        "tooling_amount": tooling_amount,
         "admin_amount": admin_amt,
         "subtotal": subtotal,
         "hst_amount": hst_amount,
@@ -408,6 +437,8 @@ def _load_estimate(session, estimate_id: int) -> Estimate | None:
             selectinload(Estimate.tasks),
             selectinload(Estimate.equipment_rows),
             selectinload(Estimate.material_rows),
+            selectinload(Estimate.scaffolding_rows),
+            selectinload(Estimate.tooling_rows),
         )
     )
     return session.exec(statement).first()
@@ -453,6 +484,7 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         redseal_rate=estimate.redseal_rate,
         dump_fee=estimate.dump_fee,
         permits_fee=estimate.permits_fee,
+        engineering_fee=estimate.engineering_fee,
         admin_fee=estimate.admin_fee,
         include_admin_fee=estimate.include_admin_fee,
         include_hst=estimate.include_hst,
@@ -465,6 +497,8 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         heavy_equipment_amount=estimate.heavy_equipment_amount,
         rental_amount=estimate.rental_amount,
         fuel_amount=estimate.fuel_amount,
+        scaffolding_amount=estimate.scaffolding_amount,
+        tooling_amount=estimate.tooling_amount,
         admin_amount=estimate.admin_amount,
         subtotal=estimate.subtotal,
         hst_amount=estimate.hst_amount,
@@ -480,6 +514,14 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         material_rows=[
             EstimateMaterialRowResponse.model_validate(m)
             for m in sorted(estimate.material_rows, key=lambda m: m.sort_order)
+        ],
+        scaffolding_rows=[
+            EstimateScaffoldingRowResponse.model_validate(s)
+            for s in sorted(estimate.scaffolding_rows, key=lambda s: s.sort_order)
+        ],
+        tooling_rows=[
+            EstimateToolingRowResponse.model_validate(g)
+            for g in sorted(estimate.tooling_rows, key=lambda g: g.sort_order)
         ],
     )
 
@@ -511,12 +553,15 @@ def preview_estimate(data: EstimateCreate, current_user: ManagerUser):
         tasks=data.tasks,
         equipment_rows=data.equipment_rows,
         material_rows=data.material_rows,
+        scaffolding_rows=data.scaffolding_rows,
+        tooling_rows=data.tooling_rows,
         crew_size=data.crew_size,
         techs_traveling=data.techs_traveling,
         distance_km=data.distance_km,
         km_rate=data.km_rate,
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
+        engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
         redseal_techs=data.redseal_techs,
         redseal_rate=data.redseal_rate,
@@ -546,12 +591,15 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
         tasks=data.tasks,
         equipment_rows=data.equipment_rows,
         material_rows=data.material_rows,
+        scaffolding_rows=data.scaffolding_rows,
+        tooling_rows=data.tooling_rows,
         crew_size=data.crew_size,
         techs_traveling=data.techs_traveling,
         distance_km=data.distance_km,
         km_rate=data.km_rate,
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
+        engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
         redseal_techs=data.redseal_techs,
         redseal_rate=data.redseal_rate,
@@ -575,6 +623,7 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
         redseal_rate=data.redseal_rate,
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
+        engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
         include_admin_fee=data.include_admin_fee,
         include_hst=data.include_hst,
@@ -589,6 +638,10 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
         session.add(EstimateEquipmentRow(estimate_id=estimate.id, **r.model_dump()))
     for m in data.material_rows:
         session.add(EstimateMaterialRow(estimate_id=estimate.id, **m.model_dump()))
+    for s in data.scaffolding_rows:
+        session.add(EstimateScaffoldingRow(estimate_id=estimate.id, **s.model_dump()))
+    for g in data.tooling_rows:
+        session.add(EstimateToolingRow(estimate_id=estimate.id, **g.model_dump()))
 
     session.commit()
 
@@ -652,12 +705,15 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
         tasks=data.tasks,
         equipment_rows=data.equipment_rows,
         material_rows=data.material_rows,
+        scaffolding_rows=data.scaffolding_rows,
+        tooling_rows=data.tooling_rows,
         crew_size=data.crew_size,
         techs_traveling=data.techs_traveling,
         distance_km=data.distance_km,
         km_rate=data.km_rate,
         dump_fee=data.dump_fee,
         permits_fee=data.permits_fee,
+        engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
         redseal_techs=data.redseal_techs,
         redseal_rate=data.redseal_rate,
@@ -679,6 +735,7 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
     estimate.redseal_rate = data.redseal_rate
     estimate.dump_fee = data.dump_fee
     estimate.permits_fee = data.permits_fee
+    estimate.engineering_fee = data.engineering_fee
     estimate.admin_fee = data.admin_fee
     estimate.include_admin_fee = data.include_admin_fee
     estimate.include_hst = data.include_hst
@@ -693,6 +750,10 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
         session.delete(r)
     for m in list(estimate.material_rows):
         session.delete(m)
+    for s in list(estimate.scaffolding_rows):
+        session.delete(s)
+    for g in list(estimate.tooling_rows):
+        session.delete(g)
     session.flush()
 
     for t in data.tasks:
@@ -701,6 +762,10 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
         session.add(EstimateEquipmentRow(estimate_id=estimate.id, **r.model_dump()))
     for m in data.material_rows:
         session.add(EstimateMaterialRow(estimate_id=estimate.id, **m.model_dump()))
+    for s in data.scaffolding_rows:
+        session.add(EstimateScaffoldingRow(estimate_id=estimate.id, **s.model_dump()))
+    for g in data.tooling_rows:
+        session.add(EstimateToolingRow(estimate_id=estimate.id, **g.model_dump()))
 
     session.commit()
 
@@ -718,16 +783,25 @@ def delete_estimate(estimate_id: int, session: DBSession, current_user: ManagerU
 
 
 @router.get("/{estimate_id}/pdf")
-def download_estimate_pdf(estimate_id: int, session: DBSession, current_user: ManagerUser, inline: bool = False):
-    """Manager-only: download the estimate as a PDF"""
+def download_estimate_pdf(
+    estimate_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+    inline: bool = False,
+    customer: bool = False,
+):
+    """Manager-only: download the estimate as a PDF. customer=true omits the
+    internal Preplanning/Build/Finishing hour breakdown - the version meant to
+    actually be sent to the client."""
     estimate = _load_estimate(session, estimate_id)
     if not estimate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estimate not found")
 
-    pdf_content = generate_estimate_pdf(estimate)
+    pdf_content = generate_estimate_pdf(estimate, customer_copy=customer)
 
     disposition = "inline" if inline else "attachment"
-    filename = f"Estimate_{estimate.estimate_number}.pdf"
+    suffix = "_Customer" if customer else ""
+    filename = f"Estimate_{estimate.estimate_number}{suffix}.pdf"
 
     return Response(
         content=pdf_content,

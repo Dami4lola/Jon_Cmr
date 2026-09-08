@@ -572,6 +572,38 @@ export interface EstimateMaterialRowItem {
   sort_order: number;
 }
 
+export type ScaffoldingComponentKey = 'frame' | 'crosser' | 'jack' | 'plank';
+
+export interface EstimateScaffoldingRowPayload {
+  component: ScaffoldingComponentKey;
+  rate_per_day: number;
+  quantity: number;
+  sort_order: number;
+}
+
+export interface EstimateScaffoldingRowItem {
+  id: number;
+  component: ScaffoldingComponentKey;
+  rate_per_day: string;
+  quantity: string;
+  sort_order: number;
+}
+
+export interface EstimateToolingRowPayload {
+  description: string;
+  quantity: number;
+  unit_cost: number;
+  sort_order: number;
+}
+
+export interface EstimateToolingRowItem {
+  id: number;
+  description: string;
+  quantity: string;
+  unit_cost: string;
+  sort_order: number;
+}
+
 export interface EstimatePayload {
   job_id?: number | null;
   client_id?: number | null;
@@ -587,6 +619,7 @@ export interface EstimatePayload {
   redseal_rate: number;
   dump_fee: number;
   permits_fee: number;
+  engineering_fee: number;
   admin_fee: number;
   include_admin_fee: boolean;
   include_hst: boolean;
@@ -594,6 +627,8 @@ export interface EstimatePayload {
   tasks: EstimateTaskPayload[];
   equipment_rows: EstimateEquipmentRowPayload[];
   material_rows: EstimateMaterialRowPayload[];
+  scaffolding_rows: EstimateScaffoldingRowPayload[];
+  tooling_rows: EstimateToolingRowPayload[];
 }
 
 export interface EstimateAmounts {
@@ -606,6 +641,8 @@ export interface EstimateAmounts {
   heavy_equipment_amount: string;
   rental_amount: string;
   fuel_amount: string;
+  scaffolding_amount: string;
+  tooling_amount: string;
   admin_amount: string;
   subtotal: string;
   hst_amount: string;
@@ -631,12 +668,15 @@ export interface Estimate extends EstimateAmounts {
   redseal_rate: string;
   dump_fee: string;
   permits_fee: string;
+  engineering_fee: string;
   admin_fee: string;
   include_admin_fee: boolean;
   include_hst: boolean;
   tasks: EstimateTaskItem[];
   equipment_rows: EstimateEquipmentRowItem[];
   material_rows: EstimateMaterialRowItem[];
+  scaffolding_rows: EstimateScaffoldingRowItem[];
+  tooling_rows: EstimateToolingRowItem[];
 }
 
 export interface EstimateListItem {

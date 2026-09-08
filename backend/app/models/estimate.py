@@ -71,6 +71,7 @@ class Estimate(SQLModel, table=True):
     # Flat manually-entered fees (no formula - typed in directly, like admin_fee)
     dump_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     permits_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    engineering_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     admin_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     include_admin_fee: bool = Field(default=True)
     include_hst: bool = Field(default=True)
@@ -85,6 +86,8 @@ class Estimate(SQLModel, table=True):
     heavy_equipment_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     rental_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     fuel_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    scaffolding_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    tooling_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     admin_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     subtotal: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     hst_amount: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
@@ -102,6 +105,12 @@ class Estimate(SQLModel, table=True):
         back_populates="estimate", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
     material_rows: List["EstimateMaterialRow"] = Relationship(
+        back_populates="estimate", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    scaffolding_rows: List["EstimateScaffoldingRow"] = Relationship(
+        back_populates="estimate", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    tooling_rows: List["EstimateToolingRow"] = Relationship(
         back_populates="estimate", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
 
@@ -154,3 +163,43 @@ class EstimateMaterialRow(SQLModel, table=True):
     sort_order: int = Field(default=0)
 
     estimate: Optional["Estimate"] = Relationship(back_populates="material_rows")
+
+
+class ScaffoldingComponent(str, Enum):
+    FRAME = "frame"
+    CROSSER = "crosser"
+    JACK = "jack"
+    PLANK = "plank"
+
+
+class EstimateScaffoldingRow(SQLModel, table=True):
+    """One of the 4 fixed scaffolding component lines (frame/crosser/jack/plank)
+    on an estimate. Line total = rate_per_day * quantity * estimate.travel_days -
+    scaffolding is billed for every day the crew is out on the job, not per task."""
+    __tablename__ = "estimate_scaffolding_row"
+
+    id: int | None = Field(default=None, primary_key=True)
+    estimate_id: int = Field(foreign_key="estimate.id", index=True)
+
+    component: str = Field(max_length=20)  # ScaffoldingComponent value
+    rate_per_day: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    quantity: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
+    sort_order: int = Field(default=0)
+
+    estimate: Optional["Estimate"] = Relationship(back_populates="scaffolding_rows")
+
+
+class EstimateToolingRow(SQLModel, table=True):
+    """A tooling/supplies line item on an estimate - tools/equipment needed for
+    the job, as distinct from consumable materials."""
+    __tablename__ = "estimate_tooling_row"
+
+    id: int | None = Field(default=None, primary_key=True)
+    estimate_id: int = Field(foreign_key="estimate.id", index=True)
+
+    description: str = Field(max_length=500)
+    quantity: Decimal = Field(default=Decimal("1"), max_digits=8, decimal_places=2)
+    unit_cost: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+    sort_order: int = Field(default=0)
+
+    estimate: Optional["Estimate"] = Relationship(back_populates="tooling_rows")

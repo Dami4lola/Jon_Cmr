@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { EstimateCalculator } from '../components/EstimateCalculator';
 import { estimatesApi } from '../api/estimates';
-import { clientsApi } from '../api/clients';
+import { clientsApi, type ClientCreate } from '../api/clients';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { Estimate } from '../types';
 
@@ -13,13 +13,15 @@ const STATUS_COLORS: Record<string, string> = {
   declined: 'bg-red-100 text-red-700',
 };
 
+const EMPTY_PROSPECT: ClientCreate = { name: '', address: '', phone_number: '', email: '' };
+
 export function AdminEstimate() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<'list' | 'builder'>('list');
   const [openEstimate, setOpenEstimate] = useState<Estimate | null>(null);
   const [clientMode, setClientMode] = useState<'existing' | 'prospect'>('existing');
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
-  const [prospectName, setProspectName] = useState('');
+  const [prospectDraft, setProspectDraft] = useState<ClientCreate>(EMPTY_PROSPECT);
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ['estimates', 'standalone'],
@@ -36,9 +38,9 @@ export function AdminEstimate() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['estimates', 'standalone'] }),
   });
 
-  const handleDownload = async (estimate: { id: number; estimate_number: string }) => {
+  const handleDownload = async (estimate: { id: number; estimate_number: string }, customer: boolean) => {
     try {
-      await estimatesApi.downloadPdfToFile(estimate.id, estimate.estimate_number);
+      await estimatesApi.downloadPdfToFile(estimate.id, estimate.estimate_number, customer);
     } catch {
       alert('Failed to download PDF');
     }
@@ -47,7 +49,7 @@ export function AdminEstimate() {
   const handleNew = () => {
     setOpenEstimate(null);
     setSelectedClientId(null);
-    setProspectName('');
+    setProspectDraft(EMPTY_PROSPECT);
     setClientMode('existing');
     setView('builder');
   };
@@ -69,11 +71,8 @@ export function AdminEstimate() {
 
   if (view === 'builder') {
     const clientId = openEstimate ? openEstimate.client?.id ?? null : clientMode === 'existing' ? selectedClientId : null;
-    const clientNameOverride = openEstimate
-      ? openEstimate.client_name_override
-      : clientMode === 'prospect'
-        ? prospectName
-        : null;
+    const pendingProspect =
+      !openEstimate && clientMode === 'prospect' && prospectDraft.name.trim() ? prospectDraft : null;
 
     return (
       <div className="space-y-4">
@@ -119,13 +118,36 @@ export function AdminEstimate() {
                 ))}
               </select>
             ) : (
-              <input
-                type="text"
-                placeholder="Prospect name"
-                value={prospectName}
-                onChange={(e) => setProspectName(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
-              />
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Prospect name"
+                  value={prospectDraft.name}
+                  onChange={(e) => setProspectDraft((d) => ({ ...d, name: e.target.value }))}
+                  className="col-span-2 w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Address"
+                  value={prospectDraft.address}
+                  onChange={(e) => setProspectDraft((d) => ({ ...d, address: e.target.value }))}
+                  className="col-span-2 w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Phone (optional)"
+                  value={prospectDraft.phone_number}
+                  onChange={(e) => setProspectDraft((d) => ({ ...d, phone_number: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                />
+                <input
+                  type="email"
+                  placeholder="Email (optional)"
+                  value={prospectDraft.email}
+                  onChange={(e) => setProspectDraft((d) => ({ ...d, email: e.target.value }))}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                />
+              </div>
             )}
           </div>
         )}
@@ -135,8 +157,12 @@ export function AdminEstimate() {
             key={openEstimate?.id ?? 'new'}
             initialEstimate={openEstimate || undefined}
             clientId={clientId}
-            clientNameOverride={clientNameOverride}
-            initialAddress={openEstimate?.address_override || (clientMode === 'existing' && selectedClientId ? clients.find((c) => c.id === selectedClientId)?.address : undefined)}
+            pendingProspect={pendingProspect}
+            initialAddress={
+              openEstimate?.address_override
+              || (clientMode === 'existing' && selectedClientId ? clients.find((c) => c.id === selectedClientId)?.address : undefined)
+              || (clientMode === 'prospect' ? prospectDraft.address : undefined)
+            }
             onSaved={(saved) => {
               setOpenEstimate(saved);
               handleSaved();
@@ -209,13 +235,18 @@ export function AdminEstimate() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => handleDownload(e)}
-                          className="text-obatek hover:text-obatek-dark transition-colors"
-                          title="Download PDF"
+                          onClick={() => handleDownload(e, false)}
+                          className="text-obatek hover:text-obatek-dark transition-colors text-xs font-medium"
+                          title="Download full PDF (internal use, includes hour breakdown)"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
+                          Full
+                        </button>
+                        <button
+                          onClick={() => handleDownload(e, true)}
+                          className="text-obatek hover:text-obatek-dark transition-colors text-xs font-medium"
+                          title="Download customer copy PDF (no internal hour breakdown)"
+                        >
+                          Customer
                         </button>
                         <button
                           onClick={() => handleOpen(e.id)}
