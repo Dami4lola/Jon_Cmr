@@ -34,6 +34,7 @@ export function estimateToPayload(estimate: Estimate): EstimatePayload {
     permits_fee: parseFloat(estimate.permits_fee),
     engineering_fee: parseFloat(estimate.engineering_fee),
     admin_fee: parseFloat(estimate.admin_fee),
+    heavy_equipment_rate: parseFloat(estimate.heavy_equipment_rate),
     include_admin_fee: estimate.include_admin_fee,
     include_hst: estimate.include_hst,
     status: estimate.status,

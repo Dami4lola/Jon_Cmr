@@ -29,6 +29,7 @@ export interface RegisterData {
   hourly_rate: number;
   charges_hst?: boolean;
   is_employee?: boolean;
+  wants_estimator_access?: boolean;
 }
 
 export interface LoginResponse {
@@ -621,6 +622,7 @@ export interface EstimatePayload {
   permits_fee: number;
   engineering_fee: number;
   admin_fee: number;
+  heavy_equipment_rate: number;
   include_admin_fee: boolean;
   include_hst: boolean;
   status?: string;
@@ -670,6 +672,7 @@ export interface Estimate extends EstimateAmounts {
   permits_fee: string;
   engineering_fee: string;
   admin_fee: string;
+  heavy_equipment_rate: string;
   include_admin_fee: boolean;
   include_hst: boolean;
   tasks: EstimateTaskItem[];

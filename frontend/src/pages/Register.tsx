@@ -15,6 +15,7 @@ export function Register() {
     name: '',
     charges_hst: false,
     is_employee: false,
+    wants_estimator_access: false,
   });
   const [validationError, setValidationError] = useState('');
 
@@ -53,6 +54,7 @@ export function Register() {
         hourly_rate: 0, // Default to 0, manager/admin will set the actual rate
         charges_hst: formData.charges_hst,
         is_employee: formData.is_employee,
+        wants_estimator_access: formData.wants_estimator_access,
       });
     } catch {
       // Error handled by mutation
@@ -175,6 +177,17 @@ export function Register() {
               <span className="text-sm text-gray-700">I'm an employee</span>
             </label>
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              name="wants_estimator_access"
+              checked={formData.wants_estimator_access}
+              onChange={handleChange}
+              className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+            />
+            <span className="text-sm text-gray-700">Request access to the Estimate Calculator</span>
+          </label>
 
           <button
             type="submit"

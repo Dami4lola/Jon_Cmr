@@ -200,6 +200,7 @@ class EstimateCreate(BaseModel):
     permits_fee: Decimal = Decimal("0")
     engineering_fee: Decimal = Decimal("0")
     admin_fee: Decimal = Decimal("0")
+    heavy_equipment_rate: Decimal = Decimal("120.00")
     include_admin_fee: bool = True
     include_hst: bool = True
 
@@ -261,6 +262,7 @@ class EstimateResponse(BaseModel):
     permits_fee: Decimal
     engineering_fee: Decimal
     admin_fee: Decimal
+    heavy_equipment_rate: Decimal
     include_admin_fee: bool
     include_hst: bool
 

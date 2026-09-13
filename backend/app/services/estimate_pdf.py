@@ -1,8 +1,9 @@
 """
 PDF Estimate Generation for Just Jon Handyman Services
-Uses ReportLab, structurally mirroring invoice_pdf.py's layout.
+Uses ReportLab. Layout mirrors the business's own "Work Estimate" template
+(plain white header, simple 2-column charges table, disclaimer/signature
+block at the bottom) rather than a generic invoice-style design.
 """
-import math
 import os
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
@@ -10,7 +11,7 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.enums import TA_LEFT
 
 from ..models import Estimate
 
@@ -25,8 +26,8 @@ COMPANY_EMAIL = "justjonindustries@gmail.com"
 THEME_COLOR = colors.HexColor("#1a1a2e")
 ACCENT_COLOR = colors.HexColor("#2c5f78")
 TEXT_COLOR = colors.HexColor("#333333")
-LIGHT_BG = colors.HexColor("#f8f9fa")
-BORDER_COLOR = colors.HexColor("#dee2e6")
+LIGHT_BG = colors.HexColor("#f0f0f0")
+BORDER_COLOR = colors.HexColor("#999999")
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "justjon_logo.png")
 
@@ -37,43 +38,43 @@ PHASE_LABELS = {
     "finishing": "Finishing",
 }
 
+SCAFFOLDING_LABELS = {
+    "frame": "Frames (incl. crossers)",
+    "crosser": "Crossers",
+    "jack": "Jacks",
+    "plank": "Planks",
+}
+
 
 def draw_header_footer(canvas, doc):
-    """Draw static header and footer on every page."""
+    """Draw the static company header and footer credit line on every page."""
     canvas.saveState()
     page_width, page_height = letter
 
-    # --- HEADER ---
-    header_height = 1.4 * inch
-    canvas.setFillColor(THEME_COLOR)
-    canvas.rect(0, page_height - header_height, page_width, header_height, fill=1, stroke=0)
-
     left_x = 0.5 * inch
-    top_y = page_height - 0.35 * inch
+    top_y = page_height - 0.6 * inch
 
-    canvas.setFillColor(colors.white)
-    canvas.setFont("Helvetica-Bold", 24)
-    canvas.drawString(left_x, top_y, "ESTIMATE")
-
+    canvas.setFillColor(TEXT_COLOR)
     canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(left_x, top_y - 24, COMPANY_NAME)
+    canvas.drawString(left_x, top_y, COMPANY_NAME)
 
     canvas.setFont("Helvetica", 9)
-    canvas.drawString(left_x, top_y - 38, COMPANY_ADDRESS)
-    canvas.drawString(left_x, top_y - 50, COMPANY_HST)
-    canvas.drawString(left_x, top_y - 62, f"{COMPANY_PHONE}  |  {COMPANY_EMAIL}")
+    canvas.drawString(left_x, top_y - 14, COMPANY_ADDRESS)
+    canvas.drawString(left_x, top_y - 26, COMPANY_HST)
+    canvas.drawString(left_x, top_y - 38, COMPANY_PHONE)
+    canvas.drawString(left_x, top_y - 50, COMPANY_EMAIL)
 
     right_x = page_width - 0.5 * inch
     if os.path.exists(LOGO_PATH):
         try:
             canvas.drawImage(
                 LOGO_PATH,
-                right_x - 1.8 * inch,
-                page_height - header_height + 0.2 * inch,
-                width=1.8 * inch,
-                height=1.0 * inch,
+                right_x - 1.6 * inch,
+                page_height - 1.5 * inch,
+                width=1.6 * inch,
+                height=1.15 * inch,
                 preserveAspectRatio=True,
-                anchor="sw",
+                anchor="n",
                 mask="auto",
             )
         except Exception:
@@ -81,21 +82,10 @@ def draw_header_footer(canvas, doc):
     else:
         _draw_logo_text(canvas, right_x, top_y)
 
-    # --- FOOTER ---
-    footer_top = 0.85 * inch
-    canvas.setStrokeColor(BORDER_COLOR)
-    canvas.setLineWidth(0.5)
-    canvas.line(0.5 * inch, footer_top, page_width - 0.5 * inch, footer_top)
-
-    canvas.setFillColor(TEXT_COLOR)
-    canvas.setFont("Helvetica", 8)
-    y = footer_top - 14
-    canvas.drawString(0.5 * inch, y, "This estimate is valid for 30 days from the date above.")
-    canvas.drawString(0.5 * inch, y - 12, "Final pricing may be adjusted after an on-site assessment.")
-
+    # --- FOOTER: just the branding credit line, page by page ---
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(colors.HexColor("#999999"))
-    canvas.drawRightString(right_x, 0.3 * inch, "Powered by OBATEK")
+    canvas.drawRightString(right_x, 0.35 * inch, "Powered by OBATEK")
 
     canvas.restoreState()
 
@@ -103,18 +93,16 @@ def draw_header_footer(canvas, doc):
 def _draw_logo_text(canvas, right_x, top_y):
     """Fallback: draw company name as styled text instead of logo image."""
     canvas.setFont("Helvetica-Bold", 14)
-    canvas.setFillColor(colors.white)
+    canvas.setFillColor(ACCENT_COLOR)
     canvas.drawRightString(right_x, top_y - 10, "Just Jon")
     canvas.setFont("Helvetica", 10)
     canvas.drawRightString(right_x, top_y - 26, "Handyman Services")
 
 
-SCAFFOLDING_LABELS = {
-    "frame": "Frames",
-    "crosser": "Crossers",
-    "jack": "Jacks",
-    "plank": "Planks",
-}
+def _amount_or_slash(value) -> str:
+    """Charges table cells show '/' for an unused line instead of $0.00,
+    matching the business's own template - every row is always listed."""
+    return f"${value:,.2f}" if value and value > 0 else "/"
 
 
 def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> bytes:
@@ -129,8 +117,8 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        topMargin=1.7 * inch,
-        bottomMargin=1.1 * inch,
+        topMargin=1.5 * inch,
+        bottomMargin=0.75 * inch,
         leftMargin=0.5 * inch,
         rightMargin=0.5 * inch,
     )
@@ -138,6 +126,16 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
     elements = []
     styles = getSampleStyleSheet()
 
+    title_style = ParagraphStyle(
+        "EstimateTitle", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=22,
+        textColor=colors.black, spaceAfter=10,
+    )
+    meta_style = ParagraphStyle(
+        "Meta", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9.5,
+        textColor=TEXT_COLOR, leading=15,
+    )
     label_style = ParagraphStyle(
         "Label", parent=styles["Normal"],
         fontName="Helvetica-Bold", fontSize=9,
@@ -148,20 +146,10 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
         fontName="Helvetica", fontSize=9,
         textColor=TEXT_COLOR, leading=13,
     )
-    bill_to_header = ParagraphStyle(
-        "BillToHeader", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=9,
-        alignment=TA_RIGHT, textColor=TEXT_COLOR,
-    )
-    bill_to_text = ParagraphStyle(
-        "BillToText", parent=styles["Normal"],
-        fontName="Helvetica", fontSize=9,
-        alignment=TA_RIGHT, textColor=TEXT_COLOR, leading=13,
-    )
     section_heading = ParagraphStyle(
         "SectionHeading", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=11,
-        textColor=THEME_COLOR, spaceAfter=6, spaceBefore=12,
+        fontName="Helvetica-Bold", fontSize=10.5,
+        textColor=colors.black, spaceAfter=4, spaceBefore=10,
     )
     phase_heading = ParagraphStyle(
         "PhaseHeading", parent=styles["Normal"],
@@ -171,58 +159,76 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
     scope_style = ParagraphStyle(
         "ScopeText", parent=styles["Normal"],
         fontName="Helvetica", fontSize=9,
-        textColor=TEXT_COLOR, leading=14, spaceAfter=12,
+        textColor=TEXT_COLOR, leading=14, spaceAfter=8,
+    )
+    duration_style = ParagraphStyle(
+        "Duration", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9.5,
+        textColor=TEXT_COLOR, leading=13, spaceBefore=4, spaceAfter=4,
+    )
+    footer_note_style = ParagraphStyle(
+        "FooterNote", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=8.5,
+        textColor=TEXT_COLOR, leading=13, alignment=TA_LEFT,
+    )
+    change_order_style = ParagraphStyle(
+        "ChangeOrder", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=8.5,
+        textColor=TEXT_COLOR, leading=13, spaceBefore=10,
+    )
+    signature_style = ParagraphStyle(
+        "Signature", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9.5,
+        textColor=TEXT_COLOR, leading=20, spaceBefore=6,
     )
 
     # ==============================
-    # 1. ESTIMATE META & BILL TO
+    # 1. TITLE + ESTIMATE META
     # ==============================
-    est_data = [
-        [Paragraph("Estimate No.", label_style), Paragraph(str(estimate.estimate_number), value_style)],
-        [Paragraph("Date", label_style), Paragraph(estimate.created_date.strftime("%B %d, %Y"), value_style)],
-    ]
-
-    t_left = Table(est_data, colWidths=[1.0 * inch, 2.2 * inch])
-    t_left.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
+    elements.append(Paragraph("Work Estimate", title_style))
 
     if estimate.client:
         name = estimate.client.name
         address = estimate.client.address
+        phone = estimate.client.phone_number
     else:
         name = estimate.client_name_override
         address = estimate.address_override
+        phone = None
 
-    bill_to_flowables = [Paragraph("<b>For</b>", bill_to_header)]
+    meta_lines = [
+        f"Estimate No: {estimate.estimate_number}",
+        f"Estimate Date: {estimate.created_date.strftime('%B %d, %Y')}",
+    ]
     if name:
-        bill_to_flowables.append(Paragraph(name, bill_to_text))
+        meta_lines.append(f"Client: {name}")
     if address:
-        for part in address.split("\n"):
-            bill_to_flowables.append(Paragraph(part, bill_to_text))
+        meta_lines.append(f"Address: {address.replace(chr(10), ', ')}")
+    if phone:
+        meta_lines.append(f"Phone: {phone}")
 
-    top_table_data = [[t_left, bill_to_flowables]]
-    t_top = Table(top_table_data, colWidths=[3.75 * inch, 3.75 * inch])
-    t_top.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-    ]))
-
-    elements.append(t_top)
-    elements.append(Spacer(1, 0.3 * inch))
+    elements.append(Paragraph("<br/>".join(meta_lines), meta_style))
+    elements.append(Spacer(1, 0.2 * inch))
 
     # ==============================
     # 2. SCOPE OF WORK
     # ==============================
     if estimate.scope_of_work:
-        elements.append(Paragraph("SCOPE OF WORK", section_heading))
+        elements.append(Paragraph("Scope of Work", section_heading))
         elements.append(Paragraph(estimate.scope_of_work, scope_style))
-        elements.append(Spacer(1, 0.1 * inch))
 
     # ==============================
-    # 3. HOUR BREAKDOWN
+    # 3. ESTIMATED DURATION
+    # ==============================
+    if estimate.travel_days > 0:
+        day_word = "Day" if estimate.travel_days == 1 else "Days"
+        elements.append(Paragraph(
+            f"<b>Estimated Duration to Complete:</b> {estimate.travel_days} {day_word}",
+            duration_style,
+        ))
+
+    # ==============================
+    # 4. HOUR BREAKDOWN (internal copy only)
     # ==============================
     tasks_by_phase: dict = {phase: [] for phase in PHASE_ORDER}
     for task in sorted(estimate.tasks, key=lambda t: (t.phase, t.sort_order)):
@@ -230,7 +236,7 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
             tasks_by_phase[task.phase].append(task)
 
     if not customer_copy and any(tasks_by_phase.values()):
-        elements.append(Paragraph("HOUR BREAKDOWN", section_heading))
+        elements.append(Paragraph("Hour Breakdown", section_heading))
 
         for phase in PHASE_ORDER:
             phase_tasks = tasks_by_phase[phase]
@@ -264,117 +270,53 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
         elements.append(Spacer(1, 0.1 * inch))
 
     # ==============================
-    # 4. CHARGES SUMMARY TABLE
+    # 5. CHARGES TABLE
     # ==============================
-    elements.append(Paragraph("CHARGES SUMMARY", section_heading))
+    scaffolding_total = sum(
+        (row.rate_per_day * row.quantity for row in estimate.scaffolding_rows), 0
+    ) * estimate.travel_days
 
-    charges_header = ["Description", "Detail", "Amount"]
-    charges_data = [charges_header]
+    charges_rows = [
+        ("Labour", estimate.labour_amount),
+        ("Kms", estimate.travel_amount),
+        ("Materials (before tax)", estimate.materials_amount),
+        ("Scaffolding", scaffolding_total),
+        ("Tooling / Supplies", estimate.tooling_amount),
+        ("Heavy Equipment", estimate.heavy_equipment_amount),
+        ("Red Seal Trades", estimate.redseal_amount),
+        ("Rental", estimate.rental_amount),
+        ("Fuel", estimate.fuel_amount),
+        ("Dump Fee", estimate.dump_fee),
+        ("Admin Fee", estimate.admin_amount),
+        ("Permit Fee", estimate.permits_fee),
+        ("Engineering Fee", estimate.engineering_fee),
+    ]
 
-    charges_data.append(["Days", "", f"{estimate.travel_days}"])
-    charges_data.append(["Labour", f"{estimate.total_hours:g} hrs x {estimate.crew_size} techs", f"${estimate.labour_amount:,.2f}"])
+    charges_data = [["Description", "Amount ($)"]]
+    for label, value in charges_rows:
+        charges_data.append([label, _amount_or_slash(value)])
 
-    if estimate.distance_km is not None:
-        km_display = f"{estimate.distance_km:,.0f} km @ ${estimate.km_rate:,.2f}/km x {estimate.travel_days} day(s)"
+    charges_data.append(["Subtotal", f"${estimate.subtotal:,.2f}"])
+    if estimate.include_hst:
+        charges_data.append(["Total with HST (13%)", f"${estimate.total:,.2f}"])
     else:
-        km_display = ""
-    charges_data.append(["Km fee", km_display, f"${estimate.travel_amount:,.2f}"])
+        charges_data.append(["Total", f"${estimate.total:,.2f}"])
 
-    charges_data.append(["Materials (before tax)", "", f"${estimate.materials_amount:,.2f}"])
-
-    if estimate.heavy_equipment_amount > 0:
-        charges_data.append(["Heavy equipment", "", f"${estimate.heavy_equipment_amount:,.2f}"])
-
-    if estimate.redseal_amount > 0:
-        redseal_hours = sum((t.hours for t in estimate.tasks if t.uses_redseal), 0)
-        redseal_detail = f"{redseal_hours:g} hrs x {estimate.redseal_techs} techs x ${estimate.redseal_rate:,.2f}/hr"
-        charges_data.append(["Red seal trades", redseal_detail, f"${estimate.redseal_amount:,.2f}"])
-
-    if estimate.rental_amount > 0:
-        charges_data.append(["Rental", "", f"${estimate.rental_amount:,.2f}"])
-
-    if estimate.fuel_amount > 0:
-        charges_data.append(["Fuel", "", f"${estimate.fuel_amount:,.2f}"])
-
-    for row in sorted(estimate.scaffolding_rows, key=lambda r: r.sort_order):
-        line_total = row.rate_per_day * row.quantity * estimate.travel_days
-        if line_total <= 0:
-            continue
-        label = SCAFFOLDING_LABELS.get(row.component, row.component.title())
-        detail = f"{row.quantity:g} units x {estimate.travel_days} day(s) @ ${row.rate_per_day:,.2f}"
-        charges_data.append([f"Scaffolding - {label}", detail, f"${line_total:,.2f}"])
-
-    if estimate.tooling_amount > 0:
-        charges_data.append(["Tooling / Supplies", "", f"${estimate.tooling_amount:,.2f}"])
-
-    if estimate.dump_fee > 0:
-        charges_data.append(["Dump fee", "", f"${estimate.dump_fee:,.2f}"])
-
-    if estimate.include_admin_fee and estimate.admin_amount > 0:
-        admin_periods = math.ceil(estimate.travel_days / 5) if estimate.travel_days > 0 else 0
-        admin_detail = f"${estimate.admin_fee:,.2f} x {admin_periods}" if admin_periods > 1 else ""
-        charges_data.append(["Admin fee", admin_detail, f"${estimate.admin_amount:,.2f}"])
-
-    if estimate.permits_fee > 0:
-        charges_data.append(["Permits fee", "", f"${estimate.permits_fee:,.2f}"])
-
-    if estimate.engineering_fee > 0:
-        charges_data.append(["Engineering fee", "", f"${estimate.engineering_fee:,.2f}"])
-
-    col_widths = [2.8 * inch, 2.4 * inch, 2.3 * inch]
-    t_charges = Table(charges_data, colWidths=col_widths)
-
-    charges_style = [
+    t_charges = Table(charges_data, colWidths=[5.0 * inch, 2.0 * inch])
+    t_charges.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER_COLOR),
+        ("BACKGROUND", (0, 0), (-1, 0), LIGHT_BG),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, -2), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_COLOR),
-        ("BACKGROUND", (0, 0), (-1, 0), LIGHT_BG),
-        ("LINEBELOW", (0, 0), (-1, 0), 1, BORDER_COLOR),
-        ("LINEBELOW", (0, -1), (-1, -1), 1, BORDER_COLOR),
-        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (0, -1), 6),
-    ]
-
-    for i in range(1, len(charges_data)):
-        if i % 2 == 0:
-            charges_style.append(("BACKGROUND", (0, i), (-1, i), LIGHT_BG))
-
-    t_charges.setStyle(TableStyle(charges_style))
-    elements.append(t_charges)
-    elements.append(Spacer(1, 0.2 * inch))
-
-    # ==============================
-    # 5. TOTALS
-    # ==============================
-    totals_data = [
-        ["Hours", f"{estimate.total_hours:g}"],
-        ["Subtotal", f"${estimate.subtotal:,.2f}"],
-    ]
-    if estimate.include_hst:
-        totals_data.append([f"HST (13%) - {COMPANY_HST}", f"${estimate.hst_amount:,.2f}"])
-    totals_data.append(["Total after taxes" if estimate.include_hst else "Total", f"${estimate.total:,.2f}"])
-
-    t_totals = Table(totals_data, colWidths=[2.5 * inch, 1.5 * inch])
-    t_totals.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("TEXTCOLOR", (0, 0), (-1, -1), TEXT_COLOR),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("LINEABOVE", (0, -1), (-1, -1), 1.5, THEME_COLOR),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, -1), (-1, -1), 12),
-        ("TEXTCOLOR", (0, -1), (-1, -1), THEME_COLOR),
-        ("TOPPADDING", (0, -1), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, -1), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (0, -1), 6),
     ]))
-
-    totals_wrapper = Table([[None, t_totals]], colWidths=[3.5 * inch, 4.0 * inch])
-    elements.append(totals_wrapper)
-    elements.append(Spacer(1, 0.3 * inch))
+    elements.append(t_charges)
+    elements.append(Spacer(1, 0.25 * inch))
 
     # ==============================
     # 6. NOTES
@@ -383,6 +325,31 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
         elements.append(Paragraph("<b>Notes</b>", label_style))
         elements.append(Spacer(1, 4))
         elements.append(Paragraph(estimate.notes, value_style))
+        elements.append(Spacer(1, 0.15 * inch))
+
+    # ==============================
+    # 7. DISCLAIMER + CHANGE ORDER + SIGNATURES
+    # ==============================
+    elements.append(Paragraph(
+        "This estimate is an approximation and is not guaranteed.<br/>"
+        "The estimate is based on information provided from the client regarding project requirements.<br/>"
+        "Actual cost may change once all project elements are finalized or negotiated.<br/>"
+        "Billable hours are invoiced at end of working week. Estimate valid for 30 days.",
+        footer_note_style,
+    ))
+    elements.append(Paragraph(
+        "Work requested beyond the Scope of Work will be treated as a change order at the "
+        "listed labour rate + materials + travel.",
+        change_order_style,
+    ))
+    elements.append(Paragraph(
+        "Customer Approval: _________________________ &nbsp;&nbsp;&nbsp;Date: ____________",
+        signature_style,
+    ))
+    elements.append(Paragraph(
+        "Authorized Signature: _________________________ &nbsp;&nbsp;&nbsp;Date: ____________",
+        signature_style,
+    ))
 
     doc.build(elements, onFirstPage=draw_header_footer, onLaterPages=draw_header_footer)
 

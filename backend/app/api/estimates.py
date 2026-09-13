@@ -52,7 +52,7 @@ from ..schemas.estimate import (
     EstimateListItem,
 )
 from .invoices import LABOUR_RATE, REDSEAL_RATE, MINIMUM_HOURS, DEFAULT_KM_RATE, HST_RATE
-from .deps import DBSession, ManagerUser
+from .deps import DBSession, ManagerUser, EstimatorUser
 
 router = APIRouter()
 
@@ -213,7 +213,7 @@ def quick_quote(data: QuickQuoteRequest, session: DBSession):
 
 
 @router.get("/quick-quote-rates", response_model=QuickQuoteRatesResponse)
-def get_quick_quote_rates(session: DBSession, current_user: ManagerUser):
+def get_quick_quote_rates(session: DBSession, current_user: EstimatorUser):
     """Manager-only: view the rates driving both invoices and the quick quote calculator"""
     return QuickQuoteRatesResponse(
         labour_rate=LABOUR_RATE,
@@ -258,14 +258,14 @@ def update_admin_fee(data: AdminFeeUpdate, session: DBSession, current_user: Man
 
 
 @router.post("/distance-preview", response_model=DistancePreviewResponse)
-def distance_preview(data: DistancePreviewRequest, current_user: ManagerUser):
+def distance_preview(data: DistancePreviewRequest, current_user: EstimatorUser):
     """Manager-only: preview round-trip travel km for an address before a job is created"""
     distance_km = calculate_distance(data.address)
     return DistancePreviewResponse(distance_km=distance_km, address=data.address)
 
 
 @router.get("/materials/search", response_model=list[MaterialSearchResult])
-def search_materials_endpoint(q: str, session: DBSession, current_user: ManagerUser):
+def search_materials_endpoint(q: str, session: DBSession, current_user: EstimatorUser):
     """Manager-only: autocomplete search for Home Depot material prices, cached in the DB"""
     if len(q.strip()) < 3:
         return []
@@ -307,6 +307,7 @@ def _calculate_estimate_amounts(
     scaffolding_rows=(),
     tooling_rows=(),
     engineering_fee: Decimal = Decimal("0"),
+    heavy_equipment_rate: Decimal = Decimal("120.00"),
     labour_rate: Decimal = LABOUR_RATE,
     hst_rate: Decimal = HST_RATE,
 ) -> dict:
@@ -354,6 +355,12 @@ def _calculate_estimate_amounts(
             fuel_amount += line_total
         else:  # ownedRental, scaffolding, rentalVillage all roll up to Rental
             rental_amount += line_total
+
+    # Tasks tagged uses_heavy_equipment add their hours x heavy_equipment_rate
+    # on top of any manually-added "heavy" Equipment & Fuel rows above - both
+    # feed the same heavy_equipment_amount total.
+    heavy_task_hours = sum((t.hours for t in tasks if t.uses_heavy_equipment), Decimal("0"))
+    heavy_equipment_amount += heavy_task_hours * heavy_equipment_rate
 
     heavy_equipment_amount = heavy_equipment_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     rental_amount = rental_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -486,6 +493,7 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         permits_fee=estimate.permits_fee,
         engineering_fee=estimate.engineering_fee,
         admin_fee=estimate.admin_fee,
+        heavy_equipment_rate=estimate.heavy_equipment_rate,
         include_admin_fee=estimate.include_admin_fee,
         include_hst=estimate.include_hst,
         total_hours=estimate.total_hours,
@@ -547,7 +555,7 @@ def _estimate_to_list_item(estimate: Estimate) -> EstimateListItem:
 
 
 @router.post("/preview", response_model=EstimateAmounts)
-def preview_estimate(data: EstimateCreate, current_user: ManagerUser):
+def preview_estimate(data: EstimateCreate, current_user: EstimatorUser):
     """Manager-only: compute totals without persisting, for live totals while editing"""
     amounts = _calculate_estimate_amounts(
         tasks=data.tasks,
@@ -563,6 +571,7 @@ def preview_estimate(data: EstimateCreate, current_user: ManagerUser):
         permits_fee=data.permits_fee,
         engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
+        heavy_equipment_rate=data.heavy_equipment_rate,
         redseal_techs=data.redseal_techs,
         redseal_rate=data.redseal_rate,
         include_admin_fee=data.include_admin_fee,
@@ -572,7 +581,7 @@ def preview_estimate(data: EstimateCreate, current_user: ManagerUser):
 
 
 @router.post("/", response_model=EstimateResponse, status_code=status.HTTP_201_CREATED)
-def create_estimate(data: EstimateCreate, session: DBSession, current_user: ManagerUser):
+def create_estimate(data: EstimateCreate, session: DBSession, current_user: EstimatorUser):
     """Manager-only: create a new estimate (standalone or job-linked)"""
     if data.job_id is not None:
         if not session.get(Job, data.job_id):
@@ -601,6 +610,7 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
         permits_fee=data.permits_fee,
         engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
+        heavy_equipment_rate=data.heavy_equipment_rate,
         redseal_techs=data.redseal_techs,
         redseal_rate=data.redseal_rate,
         include_admin_fee=data.include_admin_fee,
@@ -625,6 +635,7 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
         permits_fee=data.permits_fee,
         engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
+        heavy_equipment_rate=data.heavy_equipment_rate,
         include_admin_fee=data.include_admin_fee,
         include_hst=data.include_hst,
         **amounts,
@@ -651,7 +662,7 @@ def create_estimate(data: EstimateCreate, session: DBSession, current_user: Mana
 @router.get("/", response_model=list[EstimateListItem])
 def list_estimates(
     session: DBSession,
-    current_user: ManagerUser,
+    current_user: EstimatorUser,
     job_id: int | None = None,
     standalone: bool = False,
     status_filter: str | None = None,
@@ -674,13 +685,13 @@ def list_estimates(
 
 
 @router.get("/{estimate_id}", response_model=EstimateResponse)
-def get_estimate(estimate_id: int, session: DBSession, current_user: ManagerUser):
+def get_estimate(estimate_id: int, session: DBSession, current_user: EstimatorUser):
     """Manager-only: full estimate detail (with itemized rows) for reopening/editing"""
     return _get_estimate_or_404(session, estimate_id)
 
 
 @router.put("/{estimate_id}", response_model=EstimateResponse)
-def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, current_user: ManagerUser):
+def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, current_user: EstimatorUser):
     """Manager-only: full update - child rows (tasks/equipment/materials) are replaced wholesale"""
     estimate = session.get(Estimate, estimate_id)
     if not estimate:
@@ -715,6 +726,7 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
         permits_fee=data.permits_fee,
         engineering_fee=data.engineering_fee,
         admin_fee=data.admin_fee,
+        heavy_equipment_rate=data.heavy_equipment_rate,
         redseal_techs=data.redseal_techs,
         redseal_rate=data.redseal_rate,
         include_admin_fee=data.include_admin_fee,
@@ -737,6 +749,7 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
     estimate.permits_fee = data.permits_fee
     estimate.engineering_fee = data.engineering_fee
     estimate.admin_fee = data.admin_fee
+    estimate.heavy_equipment_rate = data.heavy_equipment_rate
     estimate.include_admin_fee = data.include_admin_fee
     estimate.include_hst = data.include_hst
     if data.status is not None:
@@ -773,7 +786,7 @@ def update_estimate(estimate_id: int, data: EstimateUpdate, session: DBSession, 
 
 
 @router.delete("/{estimate_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_estimate(estimate_id: int, session: DBSession, current_user: ManagerUser):
+def delete_estimate(estimate_id: int, session: DBSession, current_user: EstimatorUser):
     """Manager-only: delete an estimate"""
     estimate = session.get(Estimate, estimate_id)
     if not estimate:
@@ -786,7 +799,7 @@ def delete_estimate(estimate_id: int, session: DBSession, current_user: ManagerU
 def download_estimate_pdf(
     estimate_id: int,
     session: DBSession,
-    current_user: ManagerUser,
+    current_user: EstimatorUser,
     inline: bool = False,
     customer: bool = False,
 ):

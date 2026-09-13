@@ -45,6 +45,11 @@ class User(SQLModel, table=True):
         return self.has_role("admin")
 
     @property
+    def can_use_estimator(self) -> bool:
+        """Check if user can use the Estimate Calculator (managers/admins already could)"""
+        return self.has_role("estimator") or self.is_manager
+
+    @property
     def role_names(self) -> List[str]:
         """Get list of role names"""
         return [r.name for r in self.roles]

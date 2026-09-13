@@ -8,7 +8,7 @@ from sqlmodel import select
 from ..models import Client, Job
 from ..schemas.client import ClientCreate, ClientUpdate, ClientResponse
 from ..services.distance import calculate_distance
-from .deps import DBSession, ManagerUser
+from .deps import DBSession, ManagerUser, EstimatorUser
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,11 @@ router = APIRouter()
 @router.get("/", response_model=list[ClientResponse])
 def list_clients(
     session: DBSession,
-    current_user: ManagerUser,
+    current_user: EstimatorUser,
     skip: int = 0,
     limit: int = 1000,
 ):
-    """List all clients (manager only)"""
+    """List all clients (manager, admin, or estimator)"""
     statement = select(Client).order_by(Client.name).offset(skip).limit(limit)
     clients = session.exec(statement).all()
     return clients
@@ -32,9 +32,9 @@ def list_clients(
 def create_client(
     data: ClientCreate,
     session: DBSession,
-    current_user: ManagerUser,
+    current_user: EstimatorUser,
 ):
-    """Create a new client (manager only)"""
+    """Create a new client (manager, admin, or estimator - e.g. a new prospect on an estimate)"""
     client = Client(**data.model_dump())
     session.add(client)
     session.commit()

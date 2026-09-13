@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, AdminCreateUserData, UserWithWorker } from '../api/users';
 import { workersApi, WorkerUpdate } from '../api/workers';
 
-const AVAILABLE_ROLES = ['worker', 'manager', 'admin'] as const;
+const AVAILABLE_ROLES = ['worker', 'estimator', 'manager', 'admin'] as const;
 
 interface EditUserFormData {
   roles: string[];

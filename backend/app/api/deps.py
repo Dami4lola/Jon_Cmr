@@ -128,9 +128,22 @@ def require_admin(
     return current_user
 
 
+def require_estimator_access(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Require estimator role, or manager/admin (who already have full access)"""
+    if not current_user.can_use_estimator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Estimator access required",
+        )
+    return current_user
+
+
 # Type aliases for cleaner route signatures
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentWorker = Annotated[Worker, Depends(get_current_worker)]
 ManagerUser = Annotated[User, Depends(require_manager)]
 AdminUser = Annotated[User, Depends(require_admin)]
+EstimatorUser = Annotated[User, Depends(require_estimator_access)]
 DBSession = Annotated[Session, Depends(get_session)]
