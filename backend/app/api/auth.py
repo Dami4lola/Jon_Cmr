@@ -123,6 +123,10 @@ def register(
         is_active=True,
     )
     user.roles.append(worker_role)
+    if data.wants_estimator_access:
+        estimator_role = get_role_by_name(session, "estimator")
+        if estimator_role:
+            user.roles.append(estimator_role)
     session.add(user)
     session.commit()
     session.refresh(user)

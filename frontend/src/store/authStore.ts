@@ -11,6 +11,7 @@ interface AuthState {
   // Computed-like getters
   isManager: () => boolean;
   isAdmin: () => boolean;
+  isEstimator: () => boolean;
   hasRole: (role: string) => boolean;
 
   // Actions
@@ -36,6 +37,12 @@ export const useAuthStore = create<AuthState>()(
         const { user } = get();
         if (!user) return false;
         return user.roles.includes('admin');
+      },
+
+      isEstimator: () => {
+        const { user, isManager } = get();
+        if (!user) return false;
+        return user.roles.includes('estimator') || isManager();
       },
 
       hasRole: (role: string) => {

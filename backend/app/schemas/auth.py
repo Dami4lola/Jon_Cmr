@@ -34,6 +34,7 @@ class RegisterRequest(BaseModel):
     hourly_rate: float = Field(default=0.0, ge=0)
     charges_hst: bool = False
     is_employee: bool = False
+    wants_estimator_access: bool = False
 
 
 class ForgotPasswordRequest(BaseModel):

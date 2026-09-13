@@ -105,7 +105,7 @@ function App() {
         <Route
           path="/admin/estimate"
           element={
-            <ProtectedRoute requireAdmin>
+            <ProtectedRoute requireEstimator>
               <AdminEstimate />
             </ProtectedRoute>
           }

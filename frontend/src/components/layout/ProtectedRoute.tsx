@@ -5,14 +5,16 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
   requireManager?: boolean;
   requireAdmin?: boolean;
+  requireEstimator?: boolean;
 }
 
 export function ProtectedRoute({
   children,
   requireManager = false,
   requireAdmin = false,
+  requireEstimator = false,
 }: ProtectedRouteProps) {
-  const { isAuthenticated, isManager, isAdmin } = useAuthStore();
+  const { isAuthenticated, isManager, isAdmin, isEstimator } = useAuthStore();
   const location = useLocation();
 
   if (!isAuthenticated) {
@@ -24,6 +26,10 @@ export function ProtectedRoute({
   }
 
   if (requireManager && !isManager()) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requireEstimator && !isEstimator()) {
     return <Navigate to="/dashboard" replace />;
   }
 

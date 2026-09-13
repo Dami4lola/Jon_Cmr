@@ -93,15 +93,16 @@ const PHASES: { key: EstimatePhaseKey; label: string }[] = [
 ];
 
 const SCAFFOLDING_LABELS: Record<ScaffoldingComponentKey, string> = {
-  frame: 'Frames',
+  frame: 'Frames (incl. crossers)',
   crosser: 'Crossers',
   jack: 'Jacks',
   plank: 'Planks',
 };
 
 // Default per-day rate/qty for a brand-new estimate's scaffolding section.
-// Crossers are bundled into the Frame line's cost (business rule), so they
-// default to a $0 rate - the quantity is still tracked/shown.
+// Crossers are billed as part of the Frame line's cost, not a separate line
+// (business rule) - "crosser" stays a valid component so older saved
+// estimates with a standalone crosser row still load and display correctly.
 const SCAFFOLDING_DEFAULTS: Record<ScaffoldingComponentKey, { rate: number; qty: number }> = {
   frame: { rate: 1, qty: 40 },
   crosser: { rate: 0, qty: 56 },
@@ -109,8 +110,10 @@ const SCAFFOLDING_DEFAULTS: Record<ScaffoldingComponentKey, { rate: number; qty:
   plank: { rate: 3, qty: 35 },
 };
 
+const NEW_ESTIMATE_SCAFFOLDING_COMPONENTS: ScaffoldingComponentKey[] = ['frame', 'jack', 'plank'];
+
 function defaultScaffoldingRows(): ScaffoldingRow[] {
-  return (Object.keys(SCAFFOLDING_LABELS) as ScaffoldingComponentKey[]).map((component) => ({
+  return NEW_ESTIMATE_SCAFFOLDING_COMPONENTS.map((component) => ({
     id: nextId(), component, rate: SCAFFOLDING_DEFAULTS[component].rate, qty: SCAFFOLDING_DEFAULTS[component].qty,
   }));
 }
@@ -213,6 +216,12 @@ export function EstimateCalculator({
 
   const [equipmentRows, setEquipmentRows] = useState<EquipmentRow[]>(() => equipmentFromEstimate(initialEstimate));
   const [materialRows, setMaterialRows] = useState<MaterialRow[]>(() => materialsFromEstimate(initialEstimate));
+  // Separate section for items not on Home Depot's site / inventory items -
+  // no autocomplete search, just plain description/qty/unit-cost. Both lists
+  // are combined into one flat material_rows array on save (see buildPayload)
+  // since the backend doesn't distinguish where a material line came from -
+  // reopening an existing estimate loads everything into the Home Depot list.
+  const [nonHomeDepotMaterialRows, setNonHomeDepotMaterialRows] = useState<MaterialRow[]>([]);
   const [scaffoldingRows, setScaffoldingRows] = useState<ScaffoldingRow[]>(() =>
     initialEstimate ? scaffoldingFromEstimate(initialEstimate) : defaultScaffoldingRows()
   );
@@ -222,6 +231,9 @@ export function EstimateCalculator({
   const [dumpFee, setDumpFee] = useState(initialEstimate ? parseFloat(initialEstimate.dump_fee) : 0);
   const [permitsFee, setPermitsFee] = useState(initialEstimate ? parseFloat(initialEstimate.permits_fee) : 0);
   const [engineeringFee, setEngineeringFee] = useState(initialEstimate ? parseFloat(initialEstimate.engineering_fee) : 0);
+  const [heavyEquipmentRate, setHeavyEquipmentRate] = useState(
+    initialEstimate ? parseFloat(initialEstimate.heavy_equipment_rate) : 120
+  );
   const [redsealTechs, setRedsealTechs] = useState(initialEstimate?.redseal_techs ?? 0);
   const [redsealRate, setRedsealRate] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_rate) : defaultRedsealRate);
   const [linkRedsealToCrew, setLinkRedsealToCrew] = useState(!initialEstimate);
@@ -260,14 +272,21 @@ export function EstimateCalculator({
   const redsealTotal = redsealHours * redsealTechs * redsealRate;
 
   const equipLineTotal = (row: EquipmentRow) => row.rate * row.qty * (1 + row.markup / 100);
-  const heavyEquipmentTotal = equipmentRows.filter((r) => r.category === 'heavy').reduce((s, r) => s + equipLineTotal(r), 0);
+  // Tasks tagged "Heavy equip." add their hours x heavyEquipmentRate on top
+  // of any manually-added "heavy" Equipment & Fuel rows below.
+  const heavyTaskHours = tasks.filter((t) => t.usesHeavyEquipment).reduce((s, t) => s + t.hours, 0);
+  const heavyTaskAmount = heavyTaskHours * heavyEquipmentRate;
+  const heavyEquipmentTotal =
+    equipmentRows.filter((r) => r.category === 'heavy').reduce((s, r) => s + equipLineTotal(r), 0) + heavyTaskAmount;
   const fuelTotal = equipmentRows.filter((r) => r.category === 'fuel').reduce((s, r) => s + equipLineTotal(r), 0);
   const rentalTotal = equipmentRows
     .filter((r) => r.category === 'ownedRental' || r.category === 'scaffolding' || r.category === 'rentalVillage')
     .reduce((s, r) => s + equipLineTotal(r), 0);
 
   const materialLineTotal = (row: MaterialRow) => row.qty * row.unitCost;
-  const materialsTotal = materialRows.reduce((s, r) => s + materialLineTotal(r), 0);
+  const materialsTotal =
+    materialRows.reduce((s, r) => s + materialLineTotal(r), 0) +
+    nonHomeDepotMaterialRows.reduce((s, r) => s + materialLineTotal(r), 0);
 
   // Scaffolding is billed for every day the crew is out on the job - reuses
   // the same travelDays computed from task hours above.
@@ -330,6 +349,14 @@ export function EstimateCalculator({
   };
   const removeMaterialRow = (id: number) => setMaterialRows((rows) => rows.filter((r) => r.id !== id));
 
+  const addNonHomeDepotMaterialRow = () =>
+    setNonHomeDepotMaterialRows((rows) => [...rows, { id: nextId(), desc: '', qty: 1, unitCost: 0 }]);
+  const updateNonHomeDepotMaterialRow = (id: number, patch: Partial<MaterialRow>) => {
+    setNonHomeDepotMaterialRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+  const removeNonHomeDepotMaterialRow = (id: number) =>
+    setNonHomeDepotMaterialRows((rows) => rows.filter((r) => r.id !== id));
+
   const updateScaffoldingRow = (id: number, patch: Partial<ScaffoldingRow>) => {
     setScaffoldingRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
@@ -360,6 +387,7 @@ export function EstimateCalculator({
     permits_fee: permitsFee,
     engineering_fee: engineeringFee,
     admin_fee: adminFee,
+    heavy_equipment_rate: heavyEquipmentRate,
     include_admin_fee: includeAdmin,
     include_hst: includeHst,
     tasks: tasks
@@ -371,7 +399,7 @@ export function EstimateCalculator({
     equipment_rows: equipmentRows.map((r, i) => ({
       category: r.category, description: r.desc, rate: r.rate, unit: r.unit, quantity: r.qty, markup_pct: r.markup, sort_order: i,
     })),
-    material_rows: materialRows
+    material_rows: [...materialRows, ...nonHomeDepotMaterialRows]
       .filter((r) => r.desc.trim().length > 0)
       .map((r, i) => ({ description: r.desc, quantity: r.qty, unit_cost: r.unitCost, sort_order: i })),
     scaffolding_rows: scaffoldingRows.map((r, i) => ({
@@ -521,6 +549,22 @@ export function EstimateCalculator({
               {redsealHours}h tagged Red Seal
             </span>
           )}
+        </div>
+        <div className="grid grid-cols-12 gap-2 items-center mt-2">
+          <label className="col-span-3 text-xs text-gray-500">Heavy equip. rate ($/hr)</label>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            className={`${inputClass} col-span-2`}
+            value={heavyEquipmentRate}
+            onChange={(e) => setHeavyEquipmentRate(parseFloat(e.target.value) || 0)}
+          />
+          <span className="col-span-2" />
+          <span className="col-span-5 text-xs text-right font-medium">
+            Heavy equip. (tasks) {formatCurrency(heavyTaskAmount)}
+            {heavyTaskHours > 0 && <span className="text-gray-400"> ({heavyTaskHours}h)</span>}
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <label className="text-xs text-gray-500">Round-trip km:</label>
@@ -739,6 +783,53 @@ export function EstimateCalculator({
         </div>
         <button type="button" onClick={addMaterialRow} className="text-xs text-obatek mt-1 hover:underline">
           + Add material line
+        </button>
+      </div>
+
+      {/* Materials - Non Home Depot */}
+      <div>
+        <p className="text-xs font-medium text-gray-600 mb-1">Materials — Non Home Depot</p>
+        <div className="space-y-2">
+          {nonHomeDepotMaterialRows.map((row) => (
+            <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
+              <input
+                placeholder="Item not on Home Depot's site / inventory item"
+                className={`${inputClass} col-span-6`}
+                value={row.desc}
+                onChange={(e) => updateNonHomeDepotMaterialRow(row.id, { desc: e.target.value })}
+              />
+              <input
+                type="number"
+                min={0}
+                className={`${inputClass} col-span-2`}
+                value={row.qty}
+                onChange={(e) => updateNonHomeDepotMaterialRow(row.id, { qty: parseFloat(e.target.value) || 0 })}
+                title="Qty"
+              />
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className={`${inputClass} col-span-2`}
+                value={row.unitCost}
+                onChange={(e) => updateNonHomeDepotMaterialRow(row.id, { unitCost: parseFloat(e.target.value) || 0 })}
+                title="Unit cost"
+              />
+              <span className="col-span-1 text-xs text-right font-medium">
+                {formatCurrency(materialLineTotal(row))}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeNonHomeDepotMaterialRow(row.id)}
+                className="text-red-500 text-xs justify-self-end"
+              >
+                &times;
+              </button>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={addNonHomeDepotMaterialRow} className="text-xs text-obatek mt-1 hover:underline">
+          + Add non-Home-Depot material line
         </button>
       </div>
 

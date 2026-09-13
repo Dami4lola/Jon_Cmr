@@ -3,7 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { cn } from '../../lib/utils';
 
 export function Navbar() {
-  const { user, isManager, isAdmin, logout } = useAuthStore();
+  const { user, isManager, isAdmin, isEstimator, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -26,10 +26,15 @@ export function Navbar() {
     navItems.push({ href: '/clients', label: 'Clients' });
   }
 
+  // Estimate Calculator: managers/admins (already included below via isManager)
+  // and the estimator role
+  if (isEstimator()) {
+    navItems.push({ href: '/admin/estimate', label: 'Estimate Calculator' });
+  }
+
   // Add admin-only items
   if (isAdmin()) {
     navItems.push({ href: '/admin', label: 'Admin' });
-    navItems.push({ href: '/admin/estimate', label: 'Estimate Calculator' });
   }
 
   return (

@@ -73,6 +73,12 @@ class Estimate(SQLModel, table=True):
     permits_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     engineering_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
     admin_fee: Decimal = Field(default=Decimal("0"), max_digits=10, decimal_places=2)
+
+    # Heavy equipment premium: computed from tasks tagged uses_heavy_equipment,
+    # at heavy_equipment_rate per hour (no per-tech multiplier - equipment is
+    # billed for its own hours of use, not scaled by crew size). Added on top
+    # of any manually-added Equipment & Fuel rows in the "heavy" category.
+    heavy_equipment_rate: Decimal = Field(default=Decimal("120.00"), max_digits=10, decimal_places=2)
     include_admin_fee: bool = Field(default=True)
     include_hst: bool = Field(default=True)
 

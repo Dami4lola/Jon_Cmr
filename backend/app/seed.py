@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 # Initial roles to seed
 ROLES = [
     {"name": "worker", "description": "Can submit timesheets, view assigned jobs"},
+    {"name": "estimator", "description": "Worker with access to the Estimate Calculator; cannot create or manage jobs"},
     {"name": "manager", "description": "Can view all timesheets, create invoices, manage jobs"},
     {"name": "admin", "description": "Full system access"},
 ]
