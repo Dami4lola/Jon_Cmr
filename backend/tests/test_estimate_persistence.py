@@ -238,11 +238,14 @@ def client():
         with Session(engine) as s:
             yield s
 
+    # Mirrors the role predicates on models.User; keep in sync when new ones are
+    # added, or every estimator-gated route 500s here instead of returning 403.
     class FakeManager:
         id = 1
         is_active = True
         is_manager = True
         is_admin = True
+        can_use_estimator = True
 
     def override_get_current_user():
         return FakeManager()
