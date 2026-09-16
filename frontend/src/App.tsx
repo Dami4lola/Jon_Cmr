@@ -23,6 +23,7 @@ import { Clients } from './pages/Clients';
 import { ViewTimesheet } from './pages/ViewTimesheet';
 import { CompletedJobs } from './pages/CompletedJobs';
 import { PaidTimesheets } from './pages/PaidTimesheets';
+import { JobFinancials } from './pages/JobFinancials';
 
 function App() {
   return (
@@ -64,6 +65,14 @@ function App() {
           element={
             <ProtectedRoute requireManager>
               <CompletedJobs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/financials"
+          element={
+            <ProtectedRoute requireManager>
+              <JobFinancials />
             </ProtectedRoute>
           }
         />

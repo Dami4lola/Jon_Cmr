@@ -62,6 +62,7 @@ export function ViewTimesheet() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       setIsEditing(false);
     },
   });
@@ -98,6 +99,7 @@ export function ViewTimesheet() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', id, 'receipts'] });
       queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       setPendingFile(null);
       setReceiptMeta({ description: '', amountBeforeTax: '', amountAfterTax: '' });
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -121,6 +123,7 @@ export function ViewTimesheet() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', id, 'receipts'] });
       queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 

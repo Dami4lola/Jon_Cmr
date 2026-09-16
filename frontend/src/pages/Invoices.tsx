@@ -130,6 +130,7 @@ export function Invoices() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       handleCloseModal();
     },
   });
@@ -141,6 +142,7 @@ export function Invoices() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets-by-job', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-preview', selectedJobId] });
     },
   });
@@ -150,6 +152,7 @@ export function Invoices() {
       invoicesApi.updateStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -157,6 +160,7 @@ export function Invoices() {
     mutationFn: invoicesApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -165,6 +169,7 @@ export function Invoices() {
       invoicesApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       handleCloseEditModal();
     },
   });

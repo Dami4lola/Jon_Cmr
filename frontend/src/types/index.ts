@@ -691,3 +691,115 @@ export interface EstimateListItem {
   client_name: string | null;
   total: string;
 }
+
+// Job Financials
+// All money and hours arrive from the API as decimal strings, not numbers.
+export interface JobCostLineDetail {
+  timesheet_id: number;
+  date: string;
+  worker_id: number | null;
+  worker_name: string;
+  hours_worked: string;
+  break_duration: string;
+  billable_hours: string;
+  labour_rate: string;
+  labour_cost: string;
+  km_distance: string;
+  km_rate: string;
+  km_cost: string;
+  personal_materials: string;
+  company_materials: string;
+  subtotal_cost: string;
+  worked_at_hq: boolean;
+  used_company_truck: boolean;
+  is_paid: boolean;
+  minimum_hours_override: string | null;
+}
+
+export interface JobWorkerCostSummary {
+  worker_id: number | null;
+  worker_name: string;
+  charges_hst: boolean;
+  hourly_rate: string;
+  timesheet_count: number;
+  entries: JobCostLineDetail[];
+  total_hours: string;
+  total_labour: string;
+  total_km: string;
+  total_km_cost: string;
+  total_personal_materials: string;
+  total_company_materials: string;
+  labour_hst: string;
+  km_hst: string;
+  materials_hst: string;
+  total_hst: string;
+  subtotal_cost: string;
+  total_cost: string;
+}
+
+export type BudgetSource = 'invoice' | 'estimate' | 'job_estimate_amount' | 'none';
+
+export interface JobFinancialsSummary {
+  job_id: number;
+  job_title: string;
+  client_id: number | null;
+  client_name: string;
+  start_date: string | null;
+  end_date: string | null;
+  is_completed: boolean;
+  timesheet_count: number;
+  worker_count: number;
+  total_hours: string;
+  labour_cost: string;
+  travel_cost: string;
+  personal_materials_cost: string;
+  company_materials_cost: string;
+  subtotal_cost: string;
+  hst_cost: string;
+  total_cost: string;
+  unpaid_cost: string;
+  budget_amount: string | null;
+  budget_total_with_hst: string | null;
+  budget_source: BudgetSource;
+  estimate_amount: string | null;
+  invoice_total: string | null;
+  invoice_status: string | null;
+  margin_amount: string | null;
+  margin_percent: string | null;
+  is_over_budget: boolean;
+}
+
+export interface JobFinancialsDetail extends JobFinancialsSummary {
+  job_address: string;
+  calculated_distance_km: string | null;
+  estimate_id: number | null;
+  estimate_number: string | null;
+  estimate_status: string | null;
+  invoice_id: number | null;
+  invoice_number: string | null;
+  invoice_subtotal: string | null;
+  workers: JobWorkerCostSummary[];
+}
+
+export interface FinancialsTotals {
+  job_count: number;
+  total_hours: string;
+  labour_cost: string;
+  travel_cost: string;
+  personal_materials_cost: string;
+  company_materials_cost: string;
+  subtotal_cost: string;
+  hst_cost: string;
+  total_cost: string;
+  unpaid_cost: string;
+  total_budget: string;
+  total_margin: string;
+  total_margin_percent: string | null;
+  jobs_over_budget: number;
+  jobs_without_budget: number;
+}
+
+export interface JobFinancialsListResponse {
+  jobs: JobFinancialsSummary[];
+  totals: FinancialsTotals;
+}

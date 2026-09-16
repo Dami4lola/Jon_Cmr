@@ -31,7 +31,7 @@ export function Dashboard() {
   // Fetch assigned jobs
   const { data: jobs = [], isLoading: loadingJobs } = useQuery({
     queryKey: ['jobs', 'assigned'],
-    queryFn: () => jobsApi.list({ is_completed: false }),
+    queryFn: () => jobsApi.list({ completed: false }),
   });
 
   const coworkerScheduleByJobId = useMemo(() => {
@@ -94,6 +94,7 @@ export function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       setShowForm(false);
       resetForm();
     },
@@ -104,6 +105,7 @@ export function Dashboard() {
     mutationFn: timesheetsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 

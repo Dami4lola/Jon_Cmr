@@ -265,6 +265,7 @@ export function ManagerDashboard() {
     mutationFn: timesheetsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -385,6 +386,7 @@ export function ManagerDashboard() {
       setPayrollStep('done');
       // Refetch timesheets so archived ones disappear
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     } catch (err: unknown) {
       const error = err as { response?: { data?: Blob } };
       if (error.response?.data instanceof Blob) {

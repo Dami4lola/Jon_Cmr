@@ -6,7 +6,10 @@ export const jobsApi = {
     skip?: number;
     limit?: number;
     worker_id?: number;
-    is_completed?: boolean;
+    // The query param is `completed`, unlike the `is_completed` body field on
+    // update. FastAPI drops unknown query params silently, so a mismatch here
+    // returns every job rather than erroring.
+    completed?: boolean;
   }): Promise<Job[]> => {
     const response = await api.get('/jobs/', { params });
     return response.data;
