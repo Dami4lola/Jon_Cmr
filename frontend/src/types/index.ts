@@ -803,3 +803,25 @@ export interface JobFinancialsListResponse {
   jobs: JobFinancialsSummary[];
   totals: FinancialsTotals;
 }
+
+export interface ConvertClientPayload {
+  name: string;
+  address: string;
+  phone_number?: string;
+  email?: string;
+}
+
+export interface ConvertEstimatePayload {
+  title: string;
+  details?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  scheduled_time?: string | null;
+  estimated_duration?: number | null;
+  address_override?: string | null;
+  is_redseal_trade?: boolean | null;
+  client_id?: number | null;
+  new_client?: ConvertClientPayload | null;
+  assigned_worker_ids?: number[];
+  worker_schedule?: { worker_id: number; date: string }[];
+}

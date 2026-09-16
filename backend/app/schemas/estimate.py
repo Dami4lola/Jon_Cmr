@@ -5,9 +5,9 @@ full cost breakdown).
 """
 from pydantic import BaseModel, Field
 from decimal import Decimal
-from datetime import date
+from datetime import date, time
 
-from .job import JobBrief
+from .job import JobBrief, WorkerScheduleEntry
 from .client import ClientBrief
 
 
@@ -304,3 +304,32 @@ class EstimateListItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ConvertClientCreate(BaseModel):
+    """Client details supplied inline when converting a legacy estimate that has
+    no Client row and no address to auto-create one from."""
+    name: str = Field(..., min_length=1, max_length=100)
+    address: str = Field(..., min_length=1)
+    phone_number: str | None = Field(default=None, max_length=20)
+    email: str | None = Field(default=None, max_length=255)
+
+
+class EstimateConvertRequest(BaseModel):
+    """Manager-supplied job details for turning an estimate into a job.
+
+    estimate_amount is deliberately absent: it is always the estimate's total,
+    resolved server-side, so the job cannot drift from what was quoted.
+    """
+    title: str = Field(..., min_length=1, max_length=100)
+    details: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    scheduled_time: time | None = None
+    estimated_duration: Decimal | None = Field(default=None, ge=0, le=Decimal("99.99"))
+    address_override: str | None = None
+    is_redseal_trade: bool | None = None
+    client_id: int | None = None
+    new_client: ConvertClientCreate | None = None
+    assigned_worker_ids: list[int] = []
+    worker_schedule: list[WorkerScheduleEntry] = []

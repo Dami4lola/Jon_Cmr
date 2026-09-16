@@ -4,6 +4,7 @@ manager tools for previewing travel distance, tuning the quick quote's
 per-job-type area heuristics before a job exists, and building/persisting a
 full estimate (scope of work, phased task hours, full cost breakdown).
 """
+import logging
 import math
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
@@ -11,6 +12,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
 from sqlmodel import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
 from ..models.settings import AppSettings
@@ -22,12 +24,16 @@ from ..models import (
     EstimateScaffoldingRow,
     EstimateToolingRow,
     Job,
+    JobWorkerLink,
+    JobWorkerSchedule,
     Client,
+    Worker,
 )
+from ..models.estimate import EstimateStatus
 from ..services.distance import calculate_distance
 from ..services.material_pricing import search_materials
 from ..services.estimate_pdf import generate_estimate_pdf
-from ..schemas.job import JobBrief
+from ..schemas.job import JobBrief, JobResponse
 from ..schemas.client import ClientBrief
 from ..schemas.estimate import (
     JobTypeOption,
@@ -50,11 +56,19 @@ from ..schemas.estimate import (
     EstimateToolingRowResponse,
     EstimateAmounts,
     EstimateListItem,
+    EstimateConvertRequest,
 )
 from .invoices import LABOUR_RATE, REDSEAL_RATE, MINIMUM_HOURS, DEFAULT_KM_RATE, HST_RATE
+from .jobs import job_to_response
 from .deps import DBSession, ManagerUser, EstimatorUser
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# Job.estimated_duration is Numeric(4,2) while Estimate.total_hours is Numeric(8,2),
+# so a long estimate does not fit in the job's duration column.
+JOB_DURATION_MAX = Decimal("99.99")
 
 # Rough starter defaults for each area-based job type on the quick quote form.
 # Tunable per type by managers via PUT /quick-quote-rates/{job_type} without a
@@ -793,6 +807,232 @@ def delete_estimate(estimate_id: int, session: DBSession, current_user: Estimato
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estimate not found")
     session.delete(estimate)
     session.commit()
+
+
+# ============================================================
+# Convert an estimate into a job
+# ============================================================
+
+def _duration_for_job(total_hours: Decimal | None) -> Decimal | None:
+    """
+    Estimate hours as a job's estimated_duration, or None when they do not fit.
+
+    Job.estimated_duration is Numeric(4,2) but Estimate.total_hours is Numeric(8,2),
+    so a long estimate overflows the column. Returning None rather than clamping is
+    deliberate: a job reading "99.99 hrs" for a 208-hour build is a number nothing
+    downstream can tell apart from a real one, and the true figure is still on the
+    linked estimate.
+    """
+    if total_hours is None or total_hours <= 0:
+        return None
+    if total_hours > JOB_DURATION_MAX:
+        logger.info(
+            "Estimate total_hours %s exceeds Job.estimated_duration precision; leaving it unset",
+            total_hours,
+        )
+        return None
+    return total_hours.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _is_redseal_estimate(estimate: Estimate) -> bool:
+    """
+    Whether the estimate priced Red Seal work.
+
+    OR rather than AND, and not keyed off redseal_amount: that amount is only
+    non-zero when both the tech count and a tagged task are present, so an estimate
+    tagged before the tech count was set would lose the flag - and Job.is_redseal_trade
+    drives the invoice labour rate, so a false negative under-bills the customer.
+    """
+    return estimate.redseal_techs > 0 or any(task.uses_redseal for task in estimate.tasks)
+
+
+def _resolve_convert_client(session, estimate: Estimate, data: EstimateConvertRequest) -> Client:
+    """
+    The client the new job belongs to, creating one for a legacy prospect if needed.
+
+    Any branch that resolves a different client also writes it back to the estimate,
+    so the estimate and its job never disagree about who the customer is.
+    """
+    if data.client_id is not None:
+        client = session.get(Client, data.client_id)
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found",
+            )
+        estimate.client_id = client.id
+        estimate.client_name_override = None
+        return client
+
+    if data.new_client is not None:
+        client = Client(**data.new_client.model_dump())
+        session.add(client)
+        session.flush()
+        estimate.client_id = client.id
+        estimate.client_name_override = None
+        if not estimate.address_override:
+            estimate.address_override = client.address
+        return client
+
+    if estimate.client_id is not None:
+        client = session.get(Client, estimate.client_id)
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found",
+            )
+        return client
+
+    name = (estimate.client_name_override or "").strip()
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This estimate has no client. Open the estimate and choose a client before converting it to a job.",
+        )
+
+    # Client.address is required because it is the site work happens at: an empty
+    # one renders blank to crews, and makes calculate_distance return None, which
+    # silently bills zero travel on the eventual invoice.
+    address = (estimate.address_override or "").strip()
+    if not address:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Cannot create a client for "{name}" without an address. Add a job address to the estimate first.',
+        )
+
+    client = Client(name=name, address=address)
+    session.add(client)
+    session.flush()
+    estimate.client_id = client.id
+    estimate.client_name_override = None
+    return client
+
+
+@router.post("/{estimate_id}/convert-to-job", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+def convert_estimate_to_job(
+    estimate_id: int,
+    data: EstimateConvertRequest,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """
+    Create a job from an estimate, link the two, and mark the estimate accepted.
+
+    Manager-only rather than estimator-level like the rest of this module: it creates
+    a Job, and POST /api/jobs/ is manager-only, so allowing estimators here would be a
+    side door around that boundary.
+    """
+    estimate = _load_estimate(session, estimate_id)
+    if not estimate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Estimate not found",
+        )
+
+    # The unique index on Estimate.job_id stops two estimates sharing one job, but
+    # not one estimate being converted twice - that would just repoint this row at a
+    # second job and orphan the first one, which keeps its estimate_amount and shows
+    # up as a real job. This guard is the only thing preventing it, so it runs before
+    # any write.
+    if estimate.job_id is not None:
+        existing = f"job #{estimate.job_id}"
+        if estimate.job:
+            existing = f"job #{estimate.job_id} ({estimate.job.title})"
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Estimate {estimate.estimate_number} has already been converted to {existing}",
+        )
+
+    if data.client_id is not None and data.new_client is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide either client_id or new_client, not both",
+        )
+
+    if data.start_date and data.end_date and data.end_date < data.start_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End date cannot be before start date",
+        )
+
+    client = _resolve_convert_client(session, estimate, data)
+
+    address_override = data.address_override or estimate.address_override
+    job_address = address_override or client.address
+    # The estimate's distance wins: it is manager-tuned for staging yards and ferries,
+    # and reusing it keeps the invoice's travel line matching what was quoted.
+    distance = estimate.distance_km or calculate_distance(job_address)
+
+    job = Job(
+        client_id=client.id,
+        title=data.title,
+        # scope_of_work, never notes - notes are internal margin commentary and
+        # Job.details is shown to workers.
+        details=data.details if data.details is not None else estimate.scope_of_work,
+        start_date=data.start_date,
+        end_date=data.end_date,
+        scheduled_time=data.scheduled_time,
+        estimated_duration=(
+            data.estimated_duration
+            if data.estimated_duration is not None
+            else _duration_for_job(estimate.total_hours)
+        ),
+        # HST-inclusive on purpose. /financials measures margin from the linked
+        # estimate's pre-tax subtotal, so this does not distort it - it is the
+        # headline job value a manager wants on the job itself.
+        estimate_amount=estimate.total,
+        address_override=address_override,
+        is_redseal_trade=(
+            data.is_redseal_trade
+            if data.is_redseal_trade is not None
+            else _is_redseal_estimate(estimate)
+        ),
+        calculated_distance_km=distance,
+    )
+    session.add(job)
+    session.flush()
+
+    scheduled_worker_ids = {entry.worker_id for entry in data.worker_schedule}
+    for worker_id in sorted(scheduled_worker_ids | set(data.assigned_worker_ids)):
+        # create_job silently skips unknown worker ids; here we reject them, because
+        # a manager believing a crew is booked when it is not is worse than an error.
+        if not session.get(Worker, worker_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Worker {worker_id} not found",
+            )
+        session.add(JobWorkerLink(job_id=job.id, worker_id=worker_id))
+
+    for entry in data.worker_schedule:
+        session.add(JobWorkerSchedule(job_id=job.id, worker_id=entry.worker_id, date=entry.date))
+
+    estimate.job_id = job.id
+    estimate.status = EstimateStatus.ACCEPTED.value
+    session.add(estimate)
+
+    # One commit for the whole conversion: a partial apply would leave either a job
+    # with no estimate or an estimate pointing at nothing, and there is no UI to repair
+    # that.
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Estimate was converted by another request",
+        )
+
+    statement = (
+        select(Job)
+        .where(Job.id == job.id)
+        .options(
+            selectinload(Job.client),
+            selectinload(Job.assigned_workers),
+            selectinload(Job.photos),
+            selectinload(Job.worker_schedule),
+        )
+    )
+    return job_to_response(session.exec(statement).first())
 
 
 @router.get("/{estimate_id}/pdf")
