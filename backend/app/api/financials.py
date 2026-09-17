@@ -375,6 +375,7 @@ def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
         "billable_km": billing.total_distance_km,
         "billable_trip_count": billing.billable_trip_count,
         "labour_billable_rate": rates.labour_rate,
+        "redseal_billable_rate": rates.redseal_rate,
         "redseal_hours": billing.redseal_hours,
         "redseal_labour_billable": billing.redseal_labour_billable,
         "billable_km_rate": rates.km_rate,

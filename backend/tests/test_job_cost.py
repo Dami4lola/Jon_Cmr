@@ -246,13 +246,15 @@ class TestComputeJobBilling:
 
         assert cheap.subtotal == pricey.subtotal
 
-    def test_redseal_job_bills_every_hour_at_the_redseal_rate(self):
+    def test_job_redseal_flag_does_not_price_anything(self):
+        """Changed 2026-09-17: only the timesheet's own Red Seal tick sets the rate."""
         job = make_job(distance_km="0.00")
         job.is_redseal_trade = True
 
         billing = compute_job_billing(job, [make_timesheet(make_worker(), job, hours_worked="8.00")])
 
-        assert billing.labour_amount == Decimal("800.00")
+        assert billing.labour_amount == Decimal("640.00")
+        assert billing.redseal_hours == Decimal("0")
 
     def test_custom_rates_are_honoured(self):
         job = make_job(distance_km="100.00")

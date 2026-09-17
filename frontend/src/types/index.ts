@@ -793,6 +793,7 @@ export interface JobFinancialsSummary {
   billable_km: string;
   billable_trip_count: number;
   labour_billable_rate: string;
+  redseal_billable_rate: string;
   redseal_hours: string;
   redseal_labour_billable: string;
   billable_km_rate: string;

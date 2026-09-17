@@ -392,3 +392,59 @@ class TestBillableAlongsideCost:
         assert fields["subtotal_billable"] == Decimal("0.00")
         assert fields["gross_profit_amount"] == Decimal("0.00")
         assert fields["gross_profit_percent"] is None
+
+
+class TestRedSealFollowsTheTimesheet:
+    """
+    The rate is read from each timesheet's own flag. A job marked Red Seal no longer
+    forces it - that used to produce rows displaying "not Red Seal" while billing $100.
+    """
+
+    def _job(self, job_flag, flags):
+        job = make_job(distance_km="0.00")
+        job.is_redseal_trade = job_flag
+        job.timesheets = [
+            make_timesheet(
+                make_worker(hourly_rate="40.00", worker_id=i + 1, name=f"W{i + 1}"),
+                job, hours_worked="8.00", is_redseal=f, timesheet_id=i + 1,
+            )
+            for i, f in enumerate(flags)
+        ]
+        return _build_job_financials(job)
+
+    def _rates(self, workers):
+        return {e.timesheet_id: (e.is_redseal, e.labour_billable_rate)
+                for w in workers for e in w.entries}
+
+    def test_flagged_job_with_no_ticks_bills_the_standard_rate(self):
+        fields, workers = self._job(True, [False, False])
+
+        assert self._rates(workers) == {
+            1: (False, Decimal("80.00")),
+            2: (False, Decimal("80.00")),
+        }
+        assert fields["labour_billable"] == Decimal("1280.00")
+        assert fields["redseal_hours"] == Decimal("0")
+
+    def test_ticking_one_entry_moves_only_that_entry(self):
+        fields, workers = self._job(False, [True, False])
+
+        assert self._rates(workers) == {
+            1: (True, Decimal("100.00")),
+            2: (False, Decimal("80.00")),
+        }
+        assert fields["labour_billable"] == Decimal("1440.00")
+        assert fields["redseal_hours"] == Decimal("8.0")
+
+    def test_every_row_rate_matches_its_own_flag(self):
+        for job_flag in (True, False):
+            _, workers = self._job(job_flag, [True, False, True])
+            for is_redseal, rate in self._rates(workers).values():
+                expected = Decimal("100.00") if is_redseal else Decimal("80.00")
+                assert rate == expected
+
+    def test_both_rates_are_shipped_so_the_tile_can_name_the_right_one(self):
+        fields, _ = self._job(False, [True, False])
+
+        assert fields["labour_billable_rate"] == Decimal("80.00")
+        assert fields["redseal_billable_rate"] == Decimal("100.00")

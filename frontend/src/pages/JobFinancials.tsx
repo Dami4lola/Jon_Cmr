@@ -23,6 +23,19 @@ function completedParam(filter: CompletionFilter): boolean | undefined {
   return undefined;
 }
 
+// The tile must name the rate the money was actually computed at. A single scalar
+// cannot do that on a job carrying both, so derive the label from the Red Seal hours.
+function labourRateLabel(financials: JobFinancialsDetail): string {
+  const redsealHours = parseFloat(financials.redseal_hours);
+  const totalHours = parseFloat(financials.total_hours);
+  const standard = formatCurrency(financials.labour_billable_rate);
+  const redseal = formatCurrency(financials.redseal_billable_rate);
+
+  if (redsealHours <= 0) return `Labour @ ${standard}/hr`;
+  if (redsealHours >= totalHours) return `Labour @ ${redseal}/hr (Red Seal)`;
+  return `Labour — ${standard}/hr and ${redseal}/hr`;
+}
+
 function marginToneClass(marginAmount: string | null): string {
   if (marginAmount === null) return 'text-gray-400';
   return parseFloat(marginAmount) < 0 ? 'text-red-600' : 'text-green-600';
@@ -181,9 +194,7 @@ function JobCostBreakdown({ financials }: { financials: JobFinancialsDetail }) {
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="border border-gray-200 rounded-lg p-3 bg-white">
-          <p className="text-xs text-gray-500">
-            Labour @ {formatCurrency(financials.labour_billable_rate)}/hr
-          </p>
+          <p className="text-xs text-gray-500">{labourRateLabel(financials)}</p>
           <p className="text-lg font-semibold text-gray-900">
             {formatCurrency(financials.labour_billable)}
           </p>
@@ -281,6 +292,14 @@ function JobCostBreakdown({ financials }: { financials: JobFinancialsDetail }) {
           </span>
         )}
       </div>
+
+      {financials.is_redseal_trade && parseFloat(financials.redseal_hours) === 0 && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          This job is marked a Red Seal trade but no timesheet has Red Seal ticked, so
+          every hour is billing at the standard rate. Tick Red Seal on the entries that
+          were certified work, or untick the job.
+        </p>
+      )}
 
       {financials.workers.length === 0 ? (
         <p className="text-sm text-gray-500">No timesheets have been filed against this job yet.</p>

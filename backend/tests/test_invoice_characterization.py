@@ -89,14 +89,19 @@ class TestLabour:
 
         assert amounts["labour_amount"] == Decimal("640.00")
 
-    def test_redseal_job_bills_the_redseal_rate_for_every_hour(self):
+    def test_job_redseal_flag_does_not_price_anything(self):
+        """
+        Changed 2026-09-17 on request: the job flag used to force every hour to the Red
+        Seal rate, which made the per-timesheet checkbox inert and showed rows reading
+        "not Red Seal" billing $100/hr. The timesheet's own flag is now the only signal.
+        """
         worker = make_worker(hourly_rate="50.00")
         job = make_job(distance_km="0.00")
         job.is_redseal_trade = True
 
         amounts = amounts_for([make_timesheet(worker, job, hours_worked="8.00")], job)
 
-        assert amounts["labour_amount"] == Decimal("800.00")
+        assert amounts["labour_amount"] == Decimal("640.00")
 
     def test_minimum_hours_floor_applied(self):
         worker = make_worker(hourly_rate="50.00")
@@ -325,8 +330,7 @@ class TestGoldenCase:
 
 class TestRedSealPerTimesheet:
     """
-    Either flag triggers the Red Seal rate. The timesheet flag is purely additive: it
-    can raise a standard job's hours but can never lower a Red Seal job's.
+    The timesheet's own flag is the only thing that sets the Red Seal rate.
     """
 
     def test_ticked_timesheet_on_a_standard_job_bills_the_redseal_rate(self):
@@ -338,8 +342,8 @@ class TestRedSealPerTimesheet:
 
         assert amounts["labour_amount"] == Decimal("800.00")
 
-    def test_unticked_timesheet_on_a_redseal_job_still_bills_the_redseal_rate(self):
-        """The per-timesheet flag cannot subtract."""
+    def test_unticked_timesheet_bills_the_standard_rate_even_on_a_flagged_job(self):
+        """An unticked entry bills $80/hr, so the row and the rate finally agree."""
         job = make_job(distance_km="0.00")
         job.is_redseal_trade = True
 
@@ -347,7 +351,22 @@ class TestRedSealPerTimesheet:
             [make_timesheet(make_worker(), job, hours_worked="8.00", is_redseal=False)], job
         )
 
-        assert amounts["labour_amount"] == Decimal("800.00")
+        assert amounts["labour_amount"] == Decimal("640.00")
+
+    def test_ticking_one_entry_on_a_mixed_job_moves_only_that_entry(self):
+        job = make_job(distance_km="0.00")
+
+        amounts = amounts_for(
+            [
+                make_timesheet(make_worker(worker_id=1, name="A"), job,
+                               hours_worked="8.00", is_redseal=True, timesheet_id=1),
+                make_timesheet(make_worker(worker_id=2, name="B"), job,
+                               hours_worked="8.00", is_redseal=False, timesheet_id=2),
+            ],
+            job,
+        )
+
+        assert amounts["labour_amount"] == Decimal("1440.00")
 
     def test_mixed_redseal_and_standard_on_one_job(self):
         job = make_job(distance_km="0.00")

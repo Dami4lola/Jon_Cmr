@@ -113,6 +113,7 @@ class JobFinancialsSummary(BaseModel):
     billable_km: Decimal
     billable_trip_count: int
     labour_billable_rate: Decimal
+    redseal_billable_rate: Decimal
     redseal_hours: Decimal
     redseal_labour_billable: Decimal
     billable_km_rate: Decimal

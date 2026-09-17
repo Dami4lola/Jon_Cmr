@@ -10,8 +10,8 @@ any figure.
 The two sides differ in exactly three places:
 
   labour   cost bills worker.hourly_rate; billing uses the billed-out rate - the Red
-           Seal rate when the job is a Red Seal trade OR the worker ticked Red Seal on
-           that entry, otherwise LABOUR_RATE
+           Seal rate when the worker ticked Red Seal on that entry, otherwise
+           LABOUR_RATE. job.is_redseal_trade does not price anything
   travel   both sides are per timesheet and both skip HQ days; only the rate differs
            (the own-vehicle cost rate, zero on a company truck, vs the billed km rate).
            Every timesheet is its own round trip
@@ -312,18 +312,16 @@ class BillingRates:
             source="default",
         )
 
-    def labour_rate_for(self, job: Job, timesheet: Timesheet) -> Decimal:
+    def labour_rate_for(self, timesheet: Timesheet) -> Decimal:
         """
-        The rate this entry's hours bill at.
+        The rate this entry's hours bill at, decided solely by the worker's Red Seal tick.
 
-        Either flag triggers the Red Seal rate: a Red Seal job bills every one of its
-        hours at it regardless, and on a standard job a worker can tick Red Seal on the
-        individual entry. The per-timesheet flag is purely additive - it can never take
-        the Red Seal rate away from a Red Seal job.
+        job.is_redseal_trade deliberately does NOT count. It used to force every hour on
+        a flagged job to the Red Seal rate, which made the per-timesheet checkbox inert
+        and produced rows displaying "not Red Seal" while billing $100/hr. The job flag
+        is now metadata and an audit signal only.
         """
-        if job.is_redseal_trade or timesheet.is_redseal:
-            return self.redseal_rate
-        return self.labour_rate
+        return self.redseal_rate if timesheet.is_redseal else self.labour_rate
 
 
 @dataclass(frozen=True)
@@ -432,7 +430,7 @@ def compute_job_billing(
         )
         billable_hours = _round_hours(timesheet.hours_worked, timesheet.break_duration, effective_minimum)
         # Resolved per line: a standard job can carry individually ticked Red Seal entries.
-        labour_rate = rates.labour_rate_for(job, timesheet)
+        labour_rate = rates.labour_rate_for(timesheet)
         line_labour_raw = billable_hours * labour_rate
 
         if labour_rate == rates.redseal_rate:
