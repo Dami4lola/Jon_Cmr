@@ -161,9 +161,10 @@ export interface Timesheet {
   break_duration: string;
   used_company_truck: boolean;
   worked_at_hq: boolean;
+  is_redseal: boolean;
   company_materials: string;
   personal_materials: string;
-  calculated_pay?: string;
+  calculated_pay: string;
   minimum_hours_override?: string | null;
   notes?: string | null;
   is_paid: boolean;
@@ -180,6 +181,7 @@ export interface TimesheetCreate {
   break_duration?: number;
   used_company_truck?: boolean;
   worked_at_hq?: boolean;
+  is_redseal?: boolean;
   company_materials?: number;
   personal_materials?: number;
   notes?: string;
@@ -712,8 +714,16 @@ export interface JobCostLineDetail {
   subtotal_cost: string;
   worked_at_hq: boolean;
   used_company_truck: boolean;
+  is_redseal: boolean;
   is_paid: boolean;
   minimum_hours_override: string | null;
+  labour_billable_rate: string;
+  labour_billable: string;
+  is_billable_trip: boolean;
+  billable_km: string;
+  billable_km_rate: string;
+  travel_billable: string;
+  subtotal_billable: string;
 }
 
 export interface JobWorkerCostSummary {
@@ -735,6 +745,12 @@ export interface JobWorkerCostSummary {
   total_hst: string;
   subtotal_cost: string;
   total_cost: string;
+  total_labour_billable: string;
+  billable_trip_count: number;
+  total_billable_km: string;
+  total_travel_billable: string;
+  subtotal_billable: string;
+  gross_profit: string;
 }
 
 export type BudgetSource = 'invoice' | 'estimate' | 'job_estimate_amount' | 'none';
@@ -767,6 +783,27 @@ export interface JobFinancialsSummary {
   margin_amount: string | null;
   margin_percent: string | null;
   is_over_budget: boolean;
+  labour_billable: string;
+  travel_billable: string;
+  materials_billable: string;
+  inventory_materials_billable: string;
+  subtotal_billable: string;
+  hst_billable: string;
+  total_billable: string;
+  billable_km: string;
+  billable_trip_count: number;
+  labour_billable_rate: string;
+  redseal_hours: string;
+  redseal_labour_billable: string;
+  billable_km_rate: string;
+  rate_source: 'invoice' | 'estimate' | 'default';
+  is_redseal_trade: boolean;
+  estimate_subtotal: string | null;
+  variance_amount: string | null;
+  variance_percent: string | null;
+  is_over_quote: boolean;
+  gross_profit_amount: string;
+  gross_profit_percent: string | null;
 }
 
 export interface JobFinancialsDetail extends JobFinancialsSummary {
@@ -778,6 +815,8 @@ export interface JobFinancialsDetail extends JobFinancialsSummary {
   invoice_id: number | null;
   invoice_number: string | null;
   invoice_subtotal: string | null;
+  invoice_extra_fees: string | null;
+  invoice_variance_amount: string | null;
   workers: JobWorkerCostSummary[];
 }
 
@@ -797,6 +836,18 @@ export interface FinancialsTotals {
   total_margin_percent: string | null;
   jobs_over_budget: number;
   jobs_without_budget: number;
+  labour_billable: string;
+  travel_billable: string;
+  materials_billable: string;
+  inventory_materials_billable: string;
+  subtotal_billable: string;
+  hst_billable: string;
+  total_billable: string;
+  total_gross_profit: string;
+  total_gross_profit_percent: string | null;
+  total_variance: string;
+  total_variance_percent: string | null;
+  jobs_over_quote: number;
 }
 
 export interface JobFinancialsListResponse {
@@ -824,4 +875,26 @@ export interface ConvertEstimatePayload {
   new_client?: ConvertClientPayload | null;
   assigned_worker_ids?: number[];
   worker_schedule?: { worker_id: number; date: string }[];
+}
+
+export interface PayoutPreview {
+  hours_worked: string;
+  break_duration: string;
+  rounded_hours: string;
+  billable_hours: string;
+  minimum_applied: boolean;
+  hourly_rate: string;
+  labour_cost: string;
+  km_distance: string;
+  km_rate: string;
+  km_cost: string;
+  used_company_truck: boolean;
+  worked_at_hq: boolean;
+  personal_materials: string;
+  company_materials: string;
+  hst_applied: boolean;
+  labour_hst: string;
+  km_hst: string;
+  materials_hst: string;
+  calculated_pay: string;
 }

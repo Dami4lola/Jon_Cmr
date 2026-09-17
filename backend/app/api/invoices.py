@@ -26,15 +26,23 @@ from ..schemas.invoice import (
 from ..schemas.job import JobBrief
 from ..schemas.client import ClientBrief
 from ..services.invoice_pdf import generate_invoice_pdf
+from ..services.job_cost import (  # noqa: F401
+    BillingRates,
+    compute_job_billing,
+    invoice_amounts,
+    LABOUR_RATE,
+    REDSEAL_RATE,
+    HST_RATE,
+)
+from ..services.job_cost import BILLABLE_KM_RATE as DEFAULT_KM_RATE  # noqa: F401
 from .deps import DBSession, ManagerUser, AdminUser
 
 router = APIRouter()
 
-DEFAULT_KM_RATE = Decimal("1.50")
+# Deliberately NOT job_cost.MINIMUM_HOURS, which is Decimal("4"). The two are equal,
+# but the quick quote returns max(rounded_hours, MINIMUM_HOURS) as estimated_hours and
+# the public /quote page renders it raw, so "4.0 hrs" would silently become "4 hrs".
 MINIMUM_HOURS = Decimal("4.0")
-LABOUR_RATE = Decimal("80.00")  # $80/hr per tech for invoicing
-REDSEAL_RATE = Decimal("100.00")  # $100/hr for Red Seal trades (plumbing, etc.)
-HST_RATE = Decimal("0.13")
 
 
 def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
@@ -64,9 +72,14 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     """
     Auto-calculate all invoice line items from job timesheet data.
     - Labour hours: sum of hours_worked from timesheets (rounded, 4hr min per timesheet)
-    - Labour amount: billable hours × worker hourly rate
+    - Labour amount: billable hours x LABOUR_RATE, or REDSEAL_RATE when the job is a
+      Red Seal trade. NOT the worker's hourly rate - that is a payout figure.
+    - Travel: one round trip per unique (date, worker) pair x the job's distance
     - Materials: sum of personal_materials from timesheets
     - Inventory materials: sum of company_materials from timesheets
+
+    The arithmetic lives in services/job_cost.py so the invoice, the payout run and the
+    Job Financials page cannot drift apart. The query and the audit logging stay here.
     """
     timesheets = session.exec(
         select(Timesheet)
@@ -82,56 +95,23 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
             f"personal_materials={ts.personal_materials}, company_materials={ts.company_materials}"
         )
 
-    total_labour_hours = Decimal("0")
-    labour_amount = Decimal("0")
-    materials_amount = Decimal("0")
-    inventory_materials = Decimal("0")
-    for ts in timesheets:
-        effective_min = ts.minimum_hours_override if ts.minimum_hours_override is not None else MINIMUM_HOURS
-        billable = _round_hours(ts.hours_worked, ts.break_duration, effective_min)
-        total_labour_hours += billable
-        rate = REDSEAL_RATE if job.is_redseal_trade else LABOUR_RATE
-        labour_amount += billable * rate
-        materials_amount += ts.personal_materials or Decimal("0")
-        inventory_materials += ts.company_materials or Decimal("0")
-
-    labour_amount = labour_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    materials_amount = materials_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    inventory_materials = inventory_materials.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    # Calculate km billed per tech per day:
-    # each unique worker on a given date counts as one trip (round-trip to the job site)
-    per_tech_km = job.calculated_distance_km or Decimal("0")
-    daily_workers: dict = defaultdict(set)
-    for ts in timesheets:
-        daily_workers[ts.date].add(ts.worker_id)
-    total_tech_trips = sum(len(w) for w in daily_workers.values())
-    distance_km = per_tech_km * total_tech_trips
-    km_rate = data.km_rate if data else DEFAULT_KM_RATE
-    travel_amount = (distance_km * km_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    dump_fee = data.dump_fee if data else Decimal("0")
-    admin_fee = data.admin_fee if data else Decimal("0")
-
-    subtotal = labour_amount + travel_amount + materials_amount + inventory_materials + dump_fee + admin_fee
-    include_hst = data.include_hst if data else True
-    hst_amount = (subtotal * HST_RATE).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if include_hst else Decimal("0")
-    total = subtotal + hst_amount
-
-    return {
-        "total_labour_hours": total_labour_hours,
-        "labour_amount": labour_amount,
-        "total_distance_km": distance_km,
-        "km_rate": km_rate,
-        "travel_amount": travel_amount,
-        "materials_amount": materials_amount,
-        "inventory_materials": inventory_materials,
-        "dump_fee": dump_fee,
-        "admin_fee": admin_fee,
-        "subtotal": subtotal,
-        "hst_amount": hst_amount,
-        "total": total,
-    }
+    billing = compute_job_billing(
+        job,
+        timesheets,
+        rates=BillingRates(
+            labour_rate=LABOUR_RATE,
+            redseal_rate=REDSEAL_RATE,
+            km_rate=data.km_rate if data else DEFAULT_KM_RATE,
+            source="default",
+        ),
+        dump_fee=data.dump_fee if data else Decimal("0"),
+        admin_fee=data.admin_fee if data else Decimal("0"),
+        include_hst=data.include_hst if data else True,
+        # Passed explicitly: invoices' Decimal("4.0") and job_cost's Decimal("4") are
+        # equal but serialize differently, and this value reaches the public quote page.
+        minimum_hours=MINIMUM_HOURS,
+    )
+    return invoice_amounts(billing)
 
 
 def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceResponse:

@@ -25,7 +25,16 @@ class JobCostLineDetail(BaseModel):
     worked_at_hq: bool
     used_company_truck: bool
     is_paid: bool
+    is_redseal: bool
     minimum_hours_override: Decimal | None
+
+    labour_billable_rate: Decimal
+    labour_billable: Decimal
+    is_billable_trip: bool
+    billable_km: Decimal
+    billable_km_rate: Decimal
+    travel_billable: Decimal
+    subtotal_billable: Decimal
 
 
 class JobWorkerCostSummary(BaseModel):
@@ -47,6 +56,13 @@ class JobWorkerCostSummary(BaseModel):
     total_hst: Decimal
     subtotal_cost: Decimal
     total_cost: Decimal
+
+    total_labour_billable: Decimal
+    billable_trip_count: int
+    total_billable_km: Decimal
+    total_travel_billable: Decimal
+    subtotal_billable: Decimal
+    gross_profit: Decimal
 
 
 class JobFinancialsSummary(BaseModel):
@@ -85,6 +101,32 @@ class JobFinancialsSummary(BaseModel):
     margin_percent: Decimal | None
     is_over_budget: bool
 
+    # Billed-out figures: what these timesheets are worth at the rates the job was
+    # quoted at. worker.hourly_rate never contributes to any of these.
+    labour_billable: Decimal
+    travel_billable: Decimal
+    materials_billable: Decimal
+    inventory_materials_billable: Decimal
+    subtotal_billable: Decimal
+    hst_billable: Decimal
+    total_billable: Decimal
+    billable_km: Decimal
+    billable_trip_count: int
+    labour_billable_rate: Decimal
+    redseal_hours: Decimal
+    redseal_labour_billable: Decimal
+    billable_km_rate: Decimal
+    rate_source: str
+    is_redseal_trade: bool
+    estimate_subtotal: Decimal | None
+
+    # Quote variance is budget - billable. It is NOT profit; profit is billable - cost.
+    variance_amount: Decimal | None
+    variance_percent: Decimal | None
+    is_over_quote: bool
+    gross_profit_amount: Decimal
+    gross_profit_percent: Decimal | None
+
 
 class JobFinancialsDetail(JobFinancialsSummary):
     job_address: str
@@ -95,6 +137,10 @@ class JobFinancialsDetail(JobFinancialsSummary):
     invoice_id: int | None
     invoice_number: str | None
     invoice_subtotal: Decimal | None
+    # How far the issued invoice sits above the timesheet total - catches dump/admin
+    # fees and any manual override applied at invoicing time.
+    invoice_extra_fees: Decimal | None
+    invoice_variance_amount: Decimal | None
     workers: list[JobWorkerCostSummary]
 
 
@@ -117,6 +163,19 @@ class FinancialsTotals(BaseModel):
     total_margin_percent: Decimal | None
     jobs_over_budget: int
     jobs_without_budget: int
+
+    labour_billable: Decimal
+    travel_billable: Decimal
+    materials_billable: Decimal
+    inventory_materials_billable: Decimal
+    subtotal_billable: Decimal
+    hst_billable: Decimal
+    total_billable: Decimal
+    total_gross_profit: Decimal
+    total_gross_profit_percent: Decimal | None
+    total_variance: Decimal
+    total_variance_percent: Decimal | None
+    jobs_over_quote: int
 
 
 class JobFinancialsListResponse(BaseModel):

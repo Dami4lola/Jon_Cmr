@@ -17,6 +17,7 @@ class TimesheetCreate(BaseModel):
     break_duration: Decimal = Field(default=Decimal("0"), ge=0, le=24)
     used_company_truck: bool = False
     worked_at_hq: bool = False
+    is_redseal: bool = False
     company_materials: Decimal = Field(default=Decimal("0"), ge=0, le=99999.99)
     personal_materials: Decimal = Field(default=Decimal("0"), ge=0, le=99999.99)
     notes: str | None = None
@@ -30,6 +31,7 @@ class TimesheetUpdate(BaseModel):
     break_duration: Decimal | None = Field(default=None, ge=0, le=24)
     used_company_truck: bool | None = None
     worked_at_hq: bool | None = None
+    is_redseal: bool | None = None
     company_materials: Decimal | None = Field(default=None, ge=0, le=99999.99)
     personal_materials: Decimal | None = Field(default=None, ge=0, le=99999.99)
     minimum_hours_override: Decimal | None = Field(default=None, ge=0, le=24)
@@ -44,6 +46,7 @@ class TimesheetResponse(BaseModel):
     break_duration: Decimal
     used_company_truck: bool
     worked_at_hq: bool
+    is_redseal: bool
     company_materials: Decimal
     personal_materials: Decimal
     calculated_pay: Decimal | None
@@ -61,11 +64,6 @@ class TimesheetResponse(BaseModel):
         from_attributes = True
 
 
-class TimesheetSummary(BaseModel):
-    """Summary of timesheets for payroll"""
-    total_pay: Decimal
-    timesheet_count: int
-    total_hours: Decimal
 
 
 class ReceiptResponse(BaseModel):
@@ -101,13 +99,28 @@ class InventoryItemResponse(BaseModel):
 
 
 class PayoutPreview(BaseModel):
-    """Preview payout calculation result"""
+    """
+    What a timesheet entry will pay, from the same engine the payroll run uses.
+
+    calculated_pay keeps its name because the frontend reads it; it is now the real
+    payout including travel and the minimum-hours floor.
+    """
     hours_worked: Decimal
+    break_duration: Decimal
     rounded_hours: Decimal
     billable_hours: Decimal
     minimum_applied: bool
-    labor_cost: Decimal
-    hst_applied: bool
-    break_duration: Decimal
+    hourly_rate: Decimal
+    labour_cost: Decimal
+    km_distance: Decimal
+    km_rate: Decimal
+    km_cost: Decimal
+    used_company_truck: bool
+    worked_at_hq: bool
     personal_materials: Decimal
+    company_materials: Decimal
+    hst_applied: bool
+    labour_hst: Decimal
+    km_hst: Decimal
+    materials_hst: Decimal
     calculated_pay: Decimal

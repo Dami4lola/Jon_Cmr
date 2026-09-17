@@ -24,12 +24,12 @@ from ..services.payroll_pdf import generate_payroll_pdf
 # module keeps working now that the cost math lives in services/job_cost.py.
 from ..services.job_cost import (  # noqa: F401
     KM_RATE_OWN_VEHICLE,
-    KM_RATE_COMPANY_TRUCK,
     HST_RATE,
     MINIMUM_HOURS,
     _round_hours,
     compute_timesheet_cost,
     compute_worker_hst,
+    compute_worker_payout,
 )
 from .deps import DBSession, ManagerUser
 
@@ -80,8 +80,12 @@ def _build_payroll_summaries(
     worker_summaries: list[PayrollWorkerSummary] = []
 
     for worker_id, worker_timesheets in grouped.items():
-        worker = worker_timesheets[0].worker
         entries: list[PayrollEntryDetail] = []
+        # Identity comes from the resolved cost lines, not worker_timesheets[0].worker:
+        # migration 0018 orphans timesheets, so a single unpaid entry from a deleted
+        # worker used to AttributeError the entire payroll run.
+        worker_name = "Unknown worker"
+        charges_hst = False
 
         total_hours = Decimal("0")
         total_labour = Decimal("0")
@@ -91,6 +95,8 @@ def _build_payroll_summaries(
 
         for ts in worker_timesheets:
             cost = compute_timesheet_cost(ts)
+            worker_name = cost.worker_name
+            charges_hst = cost.charges_hst
             client_name = ts.job.client.name if ts.job and ts.job.client else "Unknown"
 
             entry = PayrollEntryDetail(
@@ -117,31 +123,26 @@ def _build_payroll_summaries(
             total_km_cost += cost.km_cost
             total_personal_materials += cost.personal_materials
 
-        # company_materials is deliberately excluded: the company already paid for
-        # that stock, so it is a job cost but never part of the worker's payout.
-        labour_hst, km_hst, materials_hst = compute_worker_hst(
-            total_labour, total_km_cost, total_personal_materials, worker.charges_hst
+        # Shared with the worker-facing preview so shown pay equals paid pay by
+        # construction. company_materials is excluded: the company already paid for it.
+        payout = compute_worker_payout(
+            total_labour, total_km_cost, total_personal_materials, charges_hst
         )
-
-        grand_total = (
-            total_labour + total_km_cost + total_personal_materials
-            + labour_hst + km_hst + materials_hst
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
         summary = PayrollWorkerSummary(
             worker_id=worker_id,
-            worker_name=worker.name,
+            worker_name=worker_name,
             entries=entries,
             total_hours=total_hours,
             total_labour=total_labour,
             total_km=total_km,
             total_km_cost=total_km_cost,
             total_personal_materials=total_personal_materials,
-            labour_hst=labour_hst,
-            km_hst=km_hst,
-            materials_hst=materials_hst,
-            grand_total=grand_total,
-            charges_hst=worker.charges_hst,
+            labour_hst=payout.labour_hst,
+            km_hst=payout.km_hst,
+            materials_hst=payout.materials_hst,
+            grand_total=payout.grand_total,
+            charges_hst=charges_hst,
         )
         worker_summaries.append(summary)
 

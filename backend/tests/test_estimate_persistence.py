@@ -140,21 +140,21 @@ class TestCalculateEstimateAmounts:
         )
         assert amounts["subtotal"] == Decimal("125.00")
 
-    def test_redseal_premium_is_additive_on_top_of_standard_labour(self):
-        # A 10-hour task tagged Red Seal: labour still bills all 10 hours at
-        # the standard rate, PLUS a separate Red Seal premium for those same
-        # hours at the (higher) Red Seal rate - not netted against labour.
+    def test_redseal_hours_bill_at_the_redseal_rate_instead_of_standard(self):
+        # Changed 2026-09-17 by request: Red Seal hours used to bill at BOTH rates
+        # ($80 + $100 = $180/hr). They now bill $100/hr instead of $80 - the Red Seal
+        # tech-hours are netted out of standard labour.
         amounts = _calculate_estimate_amounts(
             tasks=[_task("build", 10, redseal=True)], equipment_rows=[], material_rows=[],
             crew_size=2, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
             dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
             redseal_techs=1, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
         )
-        # labour: 10 hrs x 2 crew x $80/hr standard rate
-        assert amounts["labour_amount"] == Decimal("1600.00")
-        # redseal premium: 10 hrs x 1 redseal tech x $100/hr, on top
+        # 20 tech-hours total (10 hrs x crew of 2). The Red Seal tech's 10 move to
+        # $100/hr; the other tech's 10 stay at $80/hr. Was 1600 + 1000 = 2600.
+        assert amounts["labour_amount"] == Decimal("800.00")
         assert amounts["redseal_amount"] == Decimal("1000.00")
-        assert amounts["subtotal"] == Decimal("2600.00")
+        assert amounts["subtotal"] == Decimal("1800.00")
 
     def test_redseal_premium_only_counts_tagged_task_hours(self):
         amounts = _calculate_estimate_amounts(
@@ -166,6 +166,8 @@ class TestCalculateEstimateAmounts:
         )
         assert amounts["total_hours"] == Decimal("15.00")
         assert amounts["redseal_amount"] == Decimal("1000.00")  # only the 10 tagged hours
+        # The 10 tagged hours left standard labour; only the 5 untagged remain.
+        assert amounts["labour_amount"] == Decimal("400.00")
 
     def test_redseal_amount_is_zero_with_no_redseal_techs(self):
         # Tasks tagged Red Seal but no Red Seal techs assigned -> no premium
@@ -360,3 +362,36 @@ class TestEstimateApi:
     def _make_client(client):
         resp = client.post("/api/clients/", json={"name": "Test Client", "address": "1 Test St"})
         return resp.json()["id"]
+
+
+class TestRedSealTechClamping:
+    """Red Seal techs are a subset of the crew, so they cannot exceed it."""
+
+    def test_redseal_techs_are_clamped_to_crew_size(self):
+        over = _calculate_estimate_amounts(
+            tasks=[_task("build", 10, redseal=True)], equipment_rows=[], material_rows=[],
+            crew_size=2, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
+            redseal_techs=5, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
+        )
+        exact = _calculate_estimate_amounts(
+            tasks=[_task("build", 10, redseal=True)], equipment_rows=[], material_rows=[],
+            crew_size=2, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
+            redseal_techs=2, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
+        )
+
+        assert over["subtotal"] == exact["subtotal"]
+        assert over["labour_amount"] == Decimal("0.00")
+        assert over["redseal_amount"] == Decimal("2000.00")
+
+    def test_labour_never_goes_negative(self):
+        amounts = _calculate_estimate_amounts(
+            tasks=[_task("build", 10, redseal=True)], equipment_rows=[], material_rows=[],
+            crew_size=1, techs_traveling=1, distance_km=None, km_rate=Decimal("1.50"),
+            dump_fee=Decimal("0"), permits_fee=Decimal("0"), admin_fee=Decimal("0"),
+            redseal_techs=1, redseal_rate=Decimal("100"), include_admin_fee=True, include_hst=False,
+        )
+
+        assert amounts["labour_amount"] == Decimal("0.00")
+        assert amounts["redseal_amount"] == Decimal("1000.00")

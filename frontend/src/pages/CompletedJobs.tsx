@@ -29,8 +29,9 @@ export function CompletedJobs() {
     enabled: !!expandedJobId,
   });
 
-  // Cost per timesheet, keyed by id. Timesheet.calculated_pay is a stale cache of
-  // superseded math and must not be displayed as a cost.
+  // Cost per timesheet, keyed by id. This column is deliberately cost, not billable -
+  // it sits beside the Mark Unpaid action, which is a payroll concern. Timesheet
+  // .calculated_pay is a stale cache of superseded math and must not be used here.
   const costByTimesheetId = new Map(
     (financials?.workers ?? []).flatMap((worker) =>
       worker.entries.map((entry) => [entry.timesheet_id, entry.subtotal_cost] as const)
@@ -173,15 +174,33 @@ export function CompletedJobs() {
                 <div className="bg-gray-50 border-t px-4 py-3">
                   {financials && (
                     <div className="mb-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div className="border border-gray-200 rounded-lg p-3 bg-white">
-                          <p className="text-xs text-gray-500">Spend</p>
+                          <p className="text-xs text-gray-500">Billable</p>
                           <p className="text-xl font-bold text-gray-900">
-                            {formatCurrency(financials.total_cost)}
+                            {formatCurrency(financials.subtotal_billable)}
                           </p>
                         </div>
                         <div className="border border-gray-200 rounded-lg p-3 bg-white">
-                          <p className="text-xs text-gray-500">Budget</p>
+                          <p className="text-xs text-gray-500">Cost</p>
+                          <p className="text-xl font-bold text-gray-900">
+                            {formatCurrency(financials.subtotal_cost)}
+                          </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <p className="text-xs text-gray-500">Gross Profit</p>
+                          <p
+                            className={`text-xl font-bold ${
+                              parseFloat(financials.gross_profit_amount) < 0
+                                ? 'text-red-600'
+                                : 'text-green-600'
+                            }`}
+                          >
+                            {formatCurrency(financials.gross_profit_amount)}
+                          </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <p className="text-xs text-gray-500">Quoted</p>
                           <p className="text-xl font-bold text-gray-900">
                             {financials.budget_amount
                               ? formatCurrency(financials.budget_amount)
@@ -189,30 +208,14 @@ export function CompletedJobs() {
                           </p>
                         </div>
                         <div className="border border-gray-200 rounded-lg p-3 bg-white">
-                          <p className="text-xs text-gray-500">Margin</p>
-                          <p
-                            className={`text-xl font-bold ${
-                              financials.margin_amount === null
-                                ? 'text-gray-400'
-                                : parseFloat(financials.margin_amount) < 0
-                                ? 'text-red-600'
-                                : 'text-green-600'
-                            }`}
-                          >
-                            {financials.margin_amount === null
-                              ? '—'
-                              : formatCurrency(financials.margin_amount)}
-                          </p>
-                        </div>
-                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
-                          <p className="text-xs text-gray-500">Billable Hours</p>
+                          <p className="text-xs text-gray-500">Hours</p>
                           <p className="text-xl font-bold text-gray-900">
                             {parseFloat(financials.total_hours).toFixed(1)}h
                           </p>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-gray-500">
-                        <span>Labour {formatCurrency(financials.labour_cost)}</span>
+                        <span>Cost: Labour {formatCurrency(financials.labour_cost)}</span>
                         <span>· Travel {formatCurrency(financials.travel_cost)}</span>
                         <span>
                           · Worker materials {formatCurrency(financials.personal_materials_cost)}

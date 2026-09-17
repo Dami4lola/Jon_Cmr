@@ -18,7 +18,6 @@ from app.api.payroll import (
     _round_hours,
     _build_payroll_summaries,
     KM_RATE_OWN_VEHICLE,
-    KM_RATE_COMPANY_TRUCK,
     HST_RATE,
     MINIMUM_HOURS,
 )
@@ -59,6 +58,7 @@ def make_timesheet(
     personal_materials="0.00",
     company_materials="0.00",
     minimum_hours_override=None,
+    is_redseal=False,
     timesheet_id=1,
 ):
     timesheet = Timesheet(
@@ -70,6 +70,7 @@ def make_timesheet(
         break_duration=Decimal(break_duration),
         used_company_truck=used_company_truck,
         worked_at_hq=worked_at_hq,
+        is_redseal=is_redseal,
         personal_materials=Decimal(personal_materials),
         company_materials=Decimal(company_materials),
         minimum_hours_override=(
@@ -108,9 +109,6 @@ class TestRateConstants:
 
     def test_own_vehicle_rate(self):
         assert KM_RATE_OWN_VEHICLE == Decimal("0.85")
-
-    def test_company_truck_rate(self):
-        assert KM_RATE_COMPANY_TRUCK == Decimal("0.50")
 
     def test_hst_rate(self):
         assert HST_RATE == Decimal("0.13")
@@ -170,13 +168,21 @@ class TestTravelCost:
         assert summary.entries[0].km_rate == Decimal("0.85")
         assert summary.entries[0].km_cost == Decimal("85.00")
 
-    def test_company_truck_charged_at_50_cents(self):
+    def test_company_truck_pays_no_travel(self):
+        """
+        Changed 2026-09-17 by request: a company-truck day reimburses no travel,
+        because the company paid for the vehicle and the fuel. The distance is kept
+        so the payslip can show the drive was recorded, and the client is still
+        billed for it.
+        """
         worker = make_worker()
         job = make_job(distance_km="100.00")
         summary = build_summary([make_timesheet(worker, job, used_company_truck=True)])
 
-        assert summary.entries[0].km_rate == Decimal("0.50")
-        assert summary.entries[0].km_cost == Decimal("50.00")
+        assert summary.entries[0].km_distance == Decimal("100.00")
+        assert summary.entries[0].km_rate == Decimal("0")
+        assert summary.entries[0].km_cost == Decimal("0")
+        assert summary.grand_total == Decimal("400.00")
 
     def test_worked_at_hq_has_no_travel_cost(self):
         worker = make_worker()

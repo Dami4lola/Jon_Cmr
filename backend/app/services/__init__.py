@@ -8,7 +8,6 @@ from .auth import (
     create_refresh_token,
     decode_token,
 )
-from .payout import calculate_payout
 from .distance import calculate_distance
 from .invoice_pdf import generate_invoice_pdf
 
@@ -18,7 +17,6 @@ __all__ = [
     "create_access_token",
     "create_refresh_token",
     "decode_token",
-    "calculate_payout",
     "calculate_distance",
     "generate_invoice_pdf",
 ]

@@ -283,7 +283,7 @@ def generate_estimate_pdf(estimate: Estimate, customer_copy: bool = False) -> by
         ("Scaffolding", scaffolding_total),
         ("Tooling / Supplies", estimate.tooling_amount),
         ("Heavy Equipment", estimate.heavy_equipment_amount),
-        ("Red Seal Trades", estimate.redseal_amount),
+        ("Red Seal Labour", estimate.redseal_amount),
         ("Rental", estimate.rental_amount),
         ("Fuel", estimate.fuel_amount),
         ("Dump Fee", estimate.dump_fee),

@@ -334,18 +334,28 @@ def _calculate_estimate_amounts(
     divided by a 7-hour day, rounded up - multi-day jobs mean multiple round
     trips.
 
-    Tasks tagged uses_redseal contribute a Red Seal premium (their hours x
-    redseal_techs x redseal_rate) *in addition to* standard labour - those
-    hours are still counted in total_hours/labour_amount at the standard
-    rate, not moved out of it.
+    Tasks tagged uses_redseal bill at redseal_rate *instead of* the standard
+    rate: their tech-hours (hours x redseal_techs, capped at the crew) are
+    moved out of labour_amount into redseal_amount, so a Red Seal hour bills
+    $100 rather than $80 + $100. total_hours still counts every hour once.
     """
     total_hours = sum((t.hours for t in tasks), Decimal("0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     travel_days = math.ceil(total_hours / 7) if total_hours > 0 else 0
 
-    labour_amount = (total_hours * crew_size * labour_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    # Red Seal tech-hours move OUT of standard labour rather than being added on top,
+    # so a Red Seal hour bills the Red Seal rate, not that rate plus the standard one.
+    # Techs are clamped to the crew: Red Seal techs are a subset of the people on site.
+    effective_redseal_techs = min(redseal_techs, crew_size)
+    redseal_hours = sum((t.hours for t in tasks if t.uses_redseal), Decimal("0")).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
-    redseal_hours = sum((t.hours for t in tasks if t.uses_redseal), Decimal("0"))
-    redseal_amount = (redseal_hours * redseal_techs * redseal_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    total_tech_hours = total_hours * crew_size
+    redseal_tech_hours = min(redseal_hours * effective_redseal_techs, total_tech_hours)
+    standard_tech_hours = total_tech_hours - redseal_tech_hours
+
+    labour_amount = (standard_tech_hours * labour_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    redseal_amount = (redseal_tech_hours * redseal_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     if distance_km is not None:
         travel_amount = (techs_traveling * distance_km * km_rate * travel_days).quantize(

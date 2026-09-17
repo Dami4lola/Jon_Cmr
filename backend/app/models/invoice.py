@@ -45,7 +45,8 @@ class Invoice(SQLModel, table=True):
 
     # Display detail fields
     total_labour_hours: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
-    total_distance_km: Decimal = Field(default=Decimal("0"), max_digits=6, decimal_places=2)
+    # 8 digits, not 6: one trip per timesheet makes >9999.99 km reachable on long jobs.
+    total_distance_km: Decimal = Field(default=Decimal("0"), max_digits=8, decimal_places=2)
     km_rate: Decimal = Field(default=Decimal("1.50"), max_digits=5, decimal_places=2)
 
     # Scope of work (narrative description for PDF)

@@ -30,6 +30,10 @@ class Timesheet(SQLModel, table=True):
     # Flags
     used_company_truck: bool = Field(default=False)
     worked_at_hq: bool = Field(default=False)
+    # Billing only: this entry's labour bills at the Red Seal rate. The worker's
+    # payout is unaffected - that always uses worker.hourly_rate. Purely additive:
+    # a Red Seal job already bills every hour at the Red Seal rate regardless.
+    is_redseal: bool = Field(default=False)
 
     # Notes
     notes: str | None = Field(default=None)

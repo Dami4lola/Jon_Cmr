@@ -22,7 +22,16 @@ from ..schemas.financials import (
     FinancialsTotals,
     JobFinancialsListResponse,
 )
-from ..services.job_cost import compute_timesheet_cost, compute_worker_hst, q
+from ..services.job_cost import (
+    BillingRates,
+    compute_job_billing,
+    compute_timesheet_cost,
+    compute_worker_hst,
+    q,
+    BILLABLE_KM_RATE,
+    LABOUR_RATE,
+    REDSEAL_RATE,
+)
 from .deps import DBSession, ManagerUser
 
 router = APIRouter()
@@ -105,6 +114,78 @@ def _resolve_budget(job: Job) -> dict:
     }
 
 
+def _resolve_billing_rates(job: Job) -> BillingRates:
+    """
+    The billed-out rates this job is priced at.
+
+    A job quoted at a non-default rate is tracked at the rate it was quoted, so the
+    page reconciles with what the client was actually told. Precedence mirrors
+    _resolve_budget: an issued invoice is what was really billed, then the estimate,
+    then the global defaults. Labour has no per-estimate override, so it is always
+    LABOUR_RATE.
+    """
+    estimate = job.estimate
+    invoice = job.invoice
+
+    km_rate = BILLABLE_KM_RATE
+    source = "default"
+    if estimate is not None and estimate.km_rate is not None:
+        km_rate = estimate.km_rate
+        source = "estimate"
+    if invoice is not None and invoice.km_rate is not None:
+        km_rate = invoice.km_rate
+        source = "invoice"
+
+    return BillingRates(
+        labour_rate=LABOUR_RATE,
+        redseal_rate=estimate.redseal_rate if estimate is not None else REDSEAL_RATE,
+        km_rate=km_rate,
+        source=source,
+    )
+
+
+def _calculate_variance(budget_amount: Decimal | None, subtotal_billable: Decimal) -> dict:
+    """
+    How far the work billed so far sits from what was quoted.
+
+    This is NOT profit - profit compares billable against cost, not against the quote.
+    Negative means we are billing above what we quoted.
+    """
+    if budget_amount is None:
+        return {"variance_amount": None, "variance_percent": None, "is_over_quote": False}
+
+    variance_amount = q(budget_amount - subtotal_billable)
+    variance_percent = (
+        None
+        if budget_amount == 0
+        else (variance_amount / budget_amount * Decimal("100")).quantize(
+            TENTHS, rounding=ROUND_HALF_UP
+        )
+    )
+
+    return {
+        "variance_amount": variance_amount,
+        "variance_percent": variance_percent,
+        "is_over_quote": subtotal_billable > budget_amount,
+    }
+
+
+def _calculate_gross_profit(subtotal_billable: Decimal, subtotal_cost: Decimal) -> dict:
+    """Real profit: what we charge minus what we pay, both pre-tax."""
+    gross_profit_amount = q(subtotal_billable - subtotal_cost)
+    gross_profit_percent = (
+        None
+        if subtotal_billable == 0
+        else (gross_profit_amount / subtotal_billable * Decimal("100")).quantize(
+            TENTHS, rounding=ROUND_HALF_UP
+        )
+    )
+    return {
+        "gross_profit_amount": gross_profit_amount,
+        "gross_profit_percent": gross_profit_percent,
+    }
+
+
 def _calculate_margin(budget_amount: Decimal | None, subtotal_cost: Decimal) -> dict:
     """Margin of a pre-tax budget over pre-tax cost, tolerating an absent or zero budget."""
     if budget_amount is None:
@@ -126,14 +207,17 @@ def _calculate_margin(budget_amount: Decimal | None, subtotal_cost: Decimal) -> 
     }
 
 
-def _build_worker_summaries(job: Job) -> list[JobWorkerCostSummary]:
+def _build_worker_summaries(job: Job, billing) -> list[JobWorkerCostSummary]:
     """
-    Per-worker cost breakdown for a job.
+    Per-worker cost and billable breakdown for a job.
 
     Grouped on (worker_id, worker_name) rather than worker_id alone: deleted workers
     all share a null worker_id, and collapsing two of them into one row would
-    misattribute cost.
+    misattribute cost. Billing now charges a trip per timesheet, so the grouping here
+    and the trip assignment in compute_job_billing finally agree.
     """
+    billing_by_timesheet = {line.timesheet_id: line for line in billing.lines}
+
     grouped: dict[tuple[int | None, str], list] = defaultdict(list)
     for timesheet in job.timesheets:
         cost = compute_timesheet_cost(timesheet)
@@ -142,6 +226,7 @@ def _build_worker_summaries(job: Job) -> list[JobWorkerCostSummary]:
     summaries: list[JobWorkerCostSummary] = []
 
     for (worker_id, worker_name), costs in grouped.items():
+        bills = [billing_by_timesheet[cost.timesheet_id] for cost in costs]
         entries = [
             JobCostLineDetail(
                 timesheet_id=cost.timesheet_id,
@@ -162,9 +247,17 @@ def _build_worker_summaries(job: Job) -> list[JobWorkerCostSummary]:
                 worked_at_hq=cost.worked_at_hq,
                 used_company_truck=cost.used_company_truck,
                 is_paid=cost.is_paid,
+                is_redseal=cost.is_redseal,
                 minimum_hours_override=cost.minimum_hours_override,
+                labour_billable_rate=bill.labour_rate,
+                labour_billable=bill.labour_billable,
+                is_billable_trip=bill.is_billable_trip,
+                billable_km=bill.billable_km,
+                billable_km_rate=bill.billable_km_rate,
+                travel_billable=bill.travel_billable,
+                subtotal_billable=bill.subtotal_billable,
             )
-            for cost in costs
+            for cost, bill in zip(costs, bills)
         ]
 
         total_hours = sum((c.billable_hours for c in costs), Decimal("0"))
@@ -182,6 +275,15 @@ def _build_worker_summaries(job: Job) -> list[JobWorkerCostSummary]:
 
         subtotal_cost = q(
             total_labour + total_km_cost + total_personal_materials + total_company_materials
+        )
+
+        total_labour_billable = sum((b.labour_billable for b in bills), Decimal("0"))
+        total_travel_billable = sum((b.travel_billable for b in bills), Decimal("0"))
+        subtotal_billable = q(
+            total_labour_billable
+            + total_travel_billable
+            + total_personal_materials
+            + total_company_materials
         )
 
         summaries.append(
@@ -204,10 +306,16 @@ def _build_worker_summaries(job: Job) -> list[JobWorkerCostSummary]:
                 total_hst=total_hst,
                 subtotal_cost=subtotal_cost,
                 total_cost=q(subtotal_cost + total_hst),
+                total_labour_billable=total_labour_billable,
+                billable_trip_count=sum(1 for b in bills if b.is_billable_trip),
+                total_billable_km=sum((b.billable_km for b in bills), Decimal("0")),
+                total_travel_billable=total_travel_billable,
+                subtotal_billable=subtotal_billable,
+                gross_profit=q(subtotal_billable - subtotal_cost),
             )
         )
 
-    return sorted(summaries, key=lambda s: s.total_cost, reverse=True)
+    return sorted(summaries, key=lambda s: s.subtotal_billable, reverse=True)
 
 
 def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
@@ -215,7 +323,9 @@ def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
     Roll a job's timesheets up into the fields shared by the list row and the detail
     view, so the two can never disagree. A job with no timesheets is a valid zero.
     """
-    workers = _build_worker_summaries(job)
+    rates = _resolve_billing_rates(job)
+    billing = compute_job_billing(job, job.timesheets, rates=rates)
+    workers = _build_worker_summaries(job, billing)
 
     labour_cost = q(sum((w.total_labour for w in workers), Decimal("0")))
     travel_cost = q(sum((w.total_km_cost for w in workers), Decimal("0")))
@@ -234,6 +344,7 @@ def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
     )
 
     budget = _resolve_budget(job)
+    subtotal_billable = billing.subtotal
 
     fields = {
         "job_id": job.id,
@@ -254,8 +365,26 @@ def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
         "hst_cost": hst_cost,
         "total_cost": q(subtotal_cost + hst_cost),
         "unpaid_cost": unpaid_cost,
+        "labour_billable": billing.labour_amount,
+        "travel_billable": billing.travel_amount,
+        "materials_billable": billing.materials_amount,
+        "inventory_materials_billable": billing.inventory_materials,
+        "subtotal_billable": subtotal_billable,
+        "hst_billable": billing.hst_amount,
+        "total_billable": billing.total,
+        "billable_km": billing.total_distance_km,
+        "billable_trip_count": billing.billable_trip_count,
+        "labour_billable_rate": rates.labour_rate,
+        "redseal_hours": billing.redseal_hours,
+        "redseal_labour_billable": billing.redseal_labour_billable,
+        "billable_km_rate": rates.km_rate,
+        "rate_source": rates.source,
+        "is_redseal_trade": job.is_redseal_trade,
+        "estimate_subtotal": job.estimate.subtotal if job.estimate else None,
         **budget,
         **_calculate_margin(budget["budget_amount"], subtotal_cost),
+        **_calculate_variance(budget["budget_amount"], subtotal_billable),
+        **_calculate_gross_profit(subtotal_billable, subtotal_cost),
     }
 
     return fields, workers
@@ -270,6 +399,12 @@ def _build_totals(summaries: list[JobFinancialsSummary]) -> FinancialsTotals:
 
     subtotal_cost = q(sum((s.subtotal_cost for s in summaries), Decimal("0")))
     hst_cost = q(sum((s.hst_cost for s in summaries), Decimal("0")))
+
+    subtotal_billable = q(sum((s.subtotal_billable for s in summaries), Decimal("0")))
+    hst_billable = q(sum((s.hst_billable for s in summaries), Decimal("0")))
+    budgeted_billable = sum((s.subtotal_billable for s in budgeted), Decimal("0"))
+    total_variance = q(total_budget - budgeted_billable)
+    total_gross_profit = q(subtotal_billable - subtotal_cost)
 
     return FinancialsTotals(
         job_count=len(summaries),
@@ -297,6 +432,32 @@ def _build_totals(summaries: list[JobFinancialsSummary]) -> FinancialsTotals:
         ),
         jobs_over_budget=sum(1 for s in summaries if s.is_over_budget),
         jobs_without_budget=len(summaries) - len(budgeted),
+        labour_billable=q(sum((s.labour_billable for s in summaries), Decimal("0"))),
+        travel_billable=q(sum((s.travel_billable for s in summaries), Decimal("0"))),
+        materials_billable=q(sum((s.materials_billable for s in summaries), Decimal("0"))),
+        inventory_materials_billable=q(
+            sum((s.inventory_materials_billable for s in summaries), Decimal("0"))
+        ),
+        subtotal_billable=subtotal_billable,
+        hst_billable=hst_billable,
+        total_billable=q(subtotal_billable + hst_billable),
+        total_gross_profit=total_gross_profit,
+        total_gross_profit_percent=(
+            None
+            if subtotal_billable == 0
+            else (total_gross_profit / subtotal_billable * Decimal("100")).quantize(
+                TENTHS, rounding=ROUND_HALF_UP
+            )
+        ),
+        total_variance=total_variance,
+        total_variance_percent=(
+            None
+            if total_budget == 0
+            else (total_variance / total_budget * Decimal("100")).quantize(
+                TENTHS, rounding=ROUND_HALF_UP
+            )
+        ),
+        jobs_over_quote=sum(1 for s in summaries if s.is_over_quote),
     )
 
 
@@ -372,5 +533,9 @@ def get_job_financials(
         invoice_id=invoice.id if invoice else None,
         invoice_number=invoice.invoice_number if invoice else None,
         invoice_subtotal=invoice.subtotal if invoice else None,
+        invoice_extra_fees=(invoice.dump_fee + invoice.admin_fee) if invoice else None,
+        invoice_variance_amount=(
+            q(invoice.subtotal - fields["subtotal_billable"]) if invoice else None
+        ),
         workers=workers,
     )

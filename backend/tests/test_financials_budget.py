@@ -7,6 +7,9 @@ import datetime as dt
 from decimal import Decimal
 
 from app.api.financials import (
+    _resolve_billing_rates,
+    _calculate_variance,
+    _calculate_gross_profit,
     _resolve_budget,
     _calculate_margin,
     _build_job_financials,
@@ -228,3 +231,164 @@ class TestJobRollup:
 
         assert fields["margin_amount"] == Decimal("600.00")
         assert fields["is_over_budget"] is False
+
+
+class TestBillingRateResolution:
+    def test_defaults_when_no_estimate_or_invoice(self):
+        rates = _resolve_billing_rates(make_job())
+
+        assert rates.labour_rate == Decimal("80.00")
+        assert rates.redseal_rate == Decimal("100.00")
+        assert rates.km_rate == Decimal("1.50")
+        assert rates.source == "default"
+
+    def test_estimate_rates_win_over_defaults(self):
+        job = make_job()
+        estimate = attach_estimate(job)
+        estimate.km_rate = Decimal("2.00")
+        estimate.redseal_rate = Decimal("125.00")
+
+        rates = _resolve_billing_rates(job)
+
+        assert rates.km_rate == Decimal("2.00")
+        assert rates.redseal_rate == Decimal("125.00")
+        assert rates.source == "estimate"
+
+    def test_invoice_km_rate_wins_over_the_estimate(self):
+        job = make_job()
+        estimate = attach_estimate(job)
+        estimate.km_rate = Decimal("2.00")
+        invoice = attach_invoice(job)
+        invoice.km_rate = Decimal("1.75")
+
+        rates = _resolve_billing_rates(job)
+
+        assert rates.km_rate == Decimal("1.75")
+        assert rates.source == "invoice"
+
+    def test_labour_rate_is_always_the_global_rate(self):
+        """The estimator has no per-estimate labour override."""
+        job = make_job()
+        estimate = attach_estimate(job)
+        estimate.km_rate = Decimal("2.00")
+
+        assert _resolve_billing_rates(job).labour_rate == Decimal("80.00")
+
+
+class TestVariance:
+    def test_under_quote_is_positive(self):
+        variance = _calculate_variance(Decimal("10000.00"), Decimal("7500.00"))
+
+        assert variance["variance_amount"] == Decimal("2500.00")
+        assert variance["variance_percent"] == Decimal("25.0")
+        assert variance["is_over_quote"] is False
+
+    def test_over_quote_is_negative(self):
+        variance = _calculate_variance(Decimal("10000.00"), Decimal("12000.00"))
+
+        assert variance["variance_amount"] == Decimal("-2000.00")
+        assert variance["is_over_quote"] is True
+
+    def test_absent_quote_yields_nulls(self):
+        variance = _calculate_variance(None, Decimal("7500.00"))
+
+        assert variance["variance_amount"] is None
+        assert variance["variance_percent"] is None
+        assert variance["is_over_quote"] is False
+
+    def test_zero_quote_does_not_divide_by_zero(self):
+        variance = _calculate_variance(Decimal("0.00"), Decimal("7500.00"))
+
+        assert variance["variance_percent"] is None
+        assert variance["is_over_quote"] is True
+
+
+class TestGrossProfit:
+    def test_profit_and_percent(self):
+        profit = _calculate_gross_profit(Decimal("1000.00"), Decimal("600.00"))
+
+        assert profit["gross_profit_amount"] == Decimal("400.00")
+        assert profit["gross_profit_percent"] == Decimal("40.0")
+
+    def test_negative_when_cost_exceeds_billable(self):
+        profit = _calculate_gross_profit(Decimal("500.00"), Decimal("800.00"))
+
+        assert profit["gross_profit_amount"] == Decimal("-300.00")
+
+    def test_zero_billable_does_not_divide_by_zero(self):
+        profit = _calculate_gross_profit(Decimal("0.00"), Decimal("0.00"))
+
+        assert profit["gross_profit_amount"] == Decimal("0.00")
+        assert profit["gross_profit_percent"] is None
+
+
+class TestBillableAlongsideCost:
+    def test_both_sides_computed_and_cost_is_unchanged(self):
+        job = make_job(distance_km="100.00")
+        worker = make_worker(hourly_rate="50.00")
+        job.timesheets = [make_timesheet(worker, job, hours_worked="8.00")]
+
+        fields, workers = _build_job_financials(job)
+
+        # Cost side, byte-identical to what it was before billing was added
+        assert fields["labour_cost"] == Decimal("400.00")
+        assert fields["travel_cost"] == Decimal("85.00")
+        assert fields["subtotal_cost"] == Decimal("485.00")
+
+        # Billable side, at the billed-out rates
+        assert fields["labour_billable"] == Decimal("640.00")
+        assert fields["travel_billable"] == Decimal("150.00")
+        assert fields["subtotal_billable"] == Decimal("790.00")
+        assert fields["gross_profit_amount"] == Decimal("305.00")
+        assert workers[0].gross_profit == Decimal("305.00")
+
+    def test_estimate_km_rate_prices_the_travel(self):
+        job = make_job(distance_km="100.00")
+        estimate = attach_estimate(job)
+        estimate.km_rate = Decimal("2.00")
+        job.timesheets = [make_timesheet(make_worker(), job, hours_worked="8.00")]
+
+        fields, _ = _build_job_financials(job)
+
+        assert fields["travel_billable"] == Decimal("200.00")
+        assert fields["rate_source"] == "estimate"
+
+    def test_hq_job_bills_no_travel_on_either_side(self):
+        """Billing used to charge a trip for a day with no drive; the two sides agree now."""
+        job = make_job(distance_km="100.00")
+        job.timesheets = [make_timesheet(make_worker(), job, worked_at_hq=True)]
+
+        fields, _ = _build_job_financials(job)
+
+        assert fields["travel_cost"] == Decimal("0.00")
+        assert fields["travel_billable"] == Decimal("0.00")
+
+    def test_worker_travel_billable_sums_to_the_job_total(self):
+        job = make_job(distance_km="10.01")
+        a = make_worker(worker_id=1, name="Alice")
+        b = make_worker(worker_id=2, name="Bob")
+        orphan = make_timesheet(make_worker(), job, timesheet_id=3)
+        orphan.worker = None
+        orphan.worker_id = None
+        orphan.worker_name_snapshot = "Departed"
+        job.timesheets = [
+            make_timesheet(a, job, timesheet_id=1),
+            make_timesheet(b, job, timesheet_id=2),
+            orphan,
+        ]
+
+        fields, workers = _build_job_financials(job)
+
+        assert sum(w.total_travel_billable for w in workers) == fields["travel_billable"]
+        assert sum(w.billable_trip_count for w in workers) == fields["billable_trip_count"]
+
+    def test_job_with_no_timesheets_is_zero_on_both_sides(self):
+        job = make_job()
+        job.timesheets = []
+
+        fields, _ = _build_job_financials(job)
+
+        assert fields["subtotal_cost"] == Decimal("0.00")
+        assert fields["subtotal_billable"] == Decimal("0.00")
+        assert fields["gross_profit_amount"] == Decimal("0.00")
+        assert fields["gross_profit_percent"] is None
