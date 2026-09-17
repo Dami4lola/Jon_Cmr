@@ -44,6 +44,7 @@ export function ViewTimesheet() {
     break_duration: '',
     used_company_truck: false,
     worked_at_hq: false,
+    is_redseal: false,
     personal_materials: '',
     company_materials: '',
     notes: '',
@@ -56,12 +57,14 @@ export function ViewTimesheet() {
         break_duration: data.break_duration ? Number(data.break_duration) : undefined,
         used_company_truck: data.used_company_truck,
         worked_at_hq: data.worked_at_hq,
+        is_redseal: data.is_redseal,
         personal_materials: data.personal_materials ? Number(data.personal_materials) : undefined,
         company_materials: data.company_materials ? Number(data.company_materials) : undefined,
         notes: data.notes || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       setIsEditing(false);
     },
   });
@@ -72,6 +75,7 @@ export function ViewTimesheet() {
       break_duration: String(timesheet!.break_duration),
       used_company_truck: timesheet!.used_company_truck,
       worked_at_hq: timesheet!.worked_at_hq,
+      is_redseal: timesheet!.is_redseal,
       personal_materials: String(timesheet!.personal_materials),
       company_materials: String(timesheet!.company_materials),
       notes: timesheet!.notes ?? '',
@@ -98,6 +102,7 @@ export function ViewTimesheet() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', id, 'receipts'] });
       queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       setPendingFile(null);
       setReceiptMeta({ description: '', amountBeforeTax: '', amountAfterTax: '' });
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -121,6 +126,7 @@ export function ViewTimesheet() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', id, 'receipts'] });
       queryClient.invalidateQueries({ queryKey: ['timesheets', id] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -257,7 +263,7 @@ export function ViewTimesheet() {
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Hours</h3>
             {isEditing ? (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Hours Worked</label>
                   <input type="number" step="0.01" min="0" max="24"
@@ -301,7 +307,7 @@ export function ViewTimesheet() {
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Work Details</h3>
             {isEditing ? (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <label className="flex items-center gap-3 border border-gray-200 rounded-lg p-3 cursor-pointer">
                   <input type="checkbox" checked={editData.used_company_truck}
                     onChange={(e) => setEditData((d) => ({ ...d, used_company_truck: e.target.checked }))}
@@ -316,9 +322,16 @@ export function ViewTimesheet() {
                   />
                   <span className="text-sm font-medium text-gray-900">Worked at HQ</span>
                 </label>
+                <label className="flex items-center gap-3 border border-gray-200 rounded-lg p-3 cursor-pointer">
+                  <input type="checkbox" checked={editData.is_redseal}
+                    onChange={(e) => setEditData((d) => ({ ...d, is_redseal: e.target.checked }))}
+                    className="w-4 h-4 accent-obatek"
+                  />
+                  <span className="text-sm font-medium text-gray-900">Red Seal work</span>
+                </label>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="flex items-center gap-3 border border-gray-200 rounded-lg p-3">
                   <div className={`w-3 h-3 rounded-full ${timesheet.used_company_truck ? 'bg-green-500' : 'bg-gray-300'}`} />
                   <div>
@@ -331,6 +344,13 @@ export function ViewTimesheet() {
                   <div>
                     <p className="text-sm font-medium text-gray-900">Worked at HQ</p>
                     <p className="text-xs text-gray-500">{timesheet.worked_at_hq ? 'Yes' : 'No'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 border border-gray-200 rounded-lg p-3">
+                  <div className={`w-3 h-3 rounded-full ${timesheet.is_redseal ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Red Seal work</p>
+                    <p className="text-xs text-gray-500">{timesheet.is_redseal ? 'Yes' : 'No'}</p>
                   </div>
                 </div>
               </div>

@@ -12,6 +12,8 @@ import type {
   EstimateListItem,
   EstimatePayload,
   EstimateAmounts,
+  ConvertEstimatePayload,
+  Job,
 } from '../types';
 
 // Round-trips a saved Estimate back into an update payload - used when a
@@ -116,6 +118,11 @@ export const estimatesApi = {
 
   get: async (id: number): Promise<Estimate> => {
     const response = await api.get(`/estimates/${id}`);
+    return response.data;
+  },
+
+  convertToJob: async (id: number, data: ConvertEstimatePayload): Promise<Job> => {
+    const response = await api.post(`/estimates/${id}/convert-to-job`, data);
     return response.data;
   },
 

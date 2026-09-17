@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { estimatesApi } from '../api/estimates';
 import { clientsApi, type ClientCreate } from '../api/clients';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, nextAutoFilledAddress } from '../lib/utils';
 import type { Estimate, EstimatePayload, EstimatePhaseKey, MaterialSearchResult, ScaffoldingComponentKey } from '../types';
 
 interface EstimateCalculatorProps {
@@ -208,6 +208,17 @@ export function EstimateCalculator({
   const [linkTravelToCrew, setLinkTravelToCrew] = useState(!initialEstimate);
 
   const [address, setAddress] = useState(initialEstimate?.address_override || initialAddress || '');
+  // initialAddress arrives after mount on the Estimates page, where the calculator
+  // renders beside the client picker - so the field has to follow the prop, not just
+  // seed from it. The ref remembers what was auto-filled so a typed address survives.
+  const autoFilledAddress = useRef(initialEstimate?.address_override || initialAddress || '');
+
+  useEffect(() => {
+    const incoming = initialAddress || '';
+    if (!incoming) return;
+    setAddress((current) => nextAutoFilledAddress(current, incoming, autoFilledAddress.current));
+    autoFilledAddress.current = incoming;
+  }, [initialAddress]);
   const [distanceKm, setDistanceKm] = useState<number | null>(
     initialEstimate?.distance_km != null ? parseFloat(initialEstimate.distance_km) : null
   );
@@ -262,14 +273,20 @@ export function EstimateCalculator({
   const totalHours = tasks.reduce((s, t) => s + t.hours, 0);
   const travelDays = totalHours > 0 ? Math.ceil(totalHours / 7) : 0;
 
-  const labourTotal = totalHours * crewSize * labourRate;
   const travelTotal = techsTraveling * (distanceKm || 0) * kmRate * travelDays;
 
-  // Red Seal premium: tagged task hours x redseal techs x redseal rate,
-  // added on top of standard labour (those hours are still billed at the
-  // standard rate above too, not moved out of it).
+  // Mirrors _calculate_estimate_amounts in backend/app/api/estimates.py - keep the
+  // two in lockstep or this preview will disagree with the saved estimate.
+  // Red Seal tech-hours bill at the Red Seal rate INSTEAD OF the standard one, so
+  // they are netted out of labour rather than added on top.
+  const effectiveRedsealTechs = Math.min(redsealTechs, crewSize);
   const redsealHours = tasks.filter((t) => t.usesRedseal).reduce((s, t) => s + t.hours, 0);
-  const redsealTotal = redsealHours * redsealTechs * redsealRate;
+  const totalTechHours = totalHours * crewSize;
+  const redsealTechHours = Math.min(redsealHours * effectiveRedsealTechs, totalTechHours);
+  const standardTechHours = totalTechHours - redsealTechHours;
+
+  const labourTotal = standardTechHours * labourRate;
+  const redsealTotal = redsealTechHours * redsealRate;
 
   const equipLineTotal = (row: EquipmentRow) => row.rate * row.qty * (1 + row.markup / 100);
   // Tasks tagged "Heavy equip." add their hours x heavyEquipmentRate on top
@@ -513,13 +530,15 @@ export function EstimateCalculator({
           <input
             type="number"
             min={0}
+            max={crewSize}
             className={`${inputClass} col-span-1`}
             value={redsealTechs}
             onChange={(e) => {
               setLinkRedsealToCrew(false);
-              setRedsealTechs(parseInt(e.target.value) || 0);
+              // Red Seal techs are a subset of the crew; the backend clamps too.
+              setRedsealTechs(Math.min(parseInt(e.target.value) || 0, crewSize));
             }}
-            title="Number of Red Seal certified techs"
+            title="Number of Red Seal certified techs (cannot exceed crew size)"
           />
           <label className="col-span-2 text-xs text-gray-500 text-right">Rate $/hr</label>
           <input
@@ -530,7 +549,7 @@ export function EstimateCalculator({
             value={redsealRate}
             onChange={(e) => setRedsealRate(parseFloat(e.target.value) || 0)}
           />
-          <span className="col-span-5 text-xs text-right font-medium">Red Seal {formatCurrency(redsealTotal)}</span>
+          <span className="col-span-5 text-xs text-right font-medium">Red Seal labour {formatCurrency(redsealTotal)}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <label className="flex items-center gap-1 text-xs text-gray-500">
@@ -544,7 +563,13 @@ export function EstimateCalculator({
             />
             Red Seal techs = crew size
           </label>
-          {redsealHours > 0 && (
+          {redsealHours > 0 && redsealTechs === 0 && (
+            <span className="text-xs text-amber-700">
+              {redsealHours}h tagged Red Seal but 0 Red Seal techs - those hours bill at
+              the standard rate
+            </span>
+          )}
+          {redsealHours > 0 && redsealTechs > 0 && (
             <span className="text-xs text-gray-500">
               {redsealHours}h tagged Red Seal
             </span>

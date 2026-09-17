@@ -113,3 +113,24 @@ export function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
+
+/**
+ * The job address to show after a client selection changes.
+ *
+ * Replaces the field only while it is untouched - empty, or still exactly what was
+ * auto-filled last time - so switching clients follows along but a manually typed
+ * address is never clobbered. A job often happens somewhere other than the client's
+ * registered address, which is what address_override exists for.
+ *
+ * A blank incoming address leaves the field alone, so clearing a client selection
+ * cannot wipe what is already there.
+ */
+export function nextAutoFilledAddress(
+  current: string,
+  incoming: string,
+  lastAutoFilled: string
+): string {
+  if (!incoming) return current;
+  const untouched = current === '' || current === lastAutoFilled;
+  return untouched ? incoming : current;
+}

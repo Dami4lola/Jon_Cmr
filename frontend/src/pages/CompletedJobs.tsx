@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { jobsApi } from '../api/jobs';
 import { timesheetsApi } from '../api/timesheets';
+import { financialsApi } from '../api/financials';
 import { formatCurrency, formatDate } from '../lib/utils';
-import type { Job, Timesheet } from '../types';
+import type { Job, JobFinancialsDetail, Timesheet } from '../types';
 
 export function CompletedJobs() {
   const navigate = useNavigate();
@@ -13,7 +14,7 @@ export function CompletedJobs() {
 
   const { data: jobs = [], isLoading } = useQuery<Job[]>({
     queryKey: ['jobs', { completed: true }],
-    queryFn: () => jobsApi.list({ is_completed: true }),
+    queryFn: () => jobsApi.list({ completed: true }),
   });
 
   const { data: timesheets = [], isLoading: loadingTimesheets } = useQuery<Timesheet[]>({
@@ -22,10 +23,26 @@ export function CompletedJobs() {
     enabled: !!expandedJobId,
   });
 
+  const { data: financials } = useQuery<JobFinancialsDetail>({
+    queryKey: ['financials', 'job', expandedJobId],
+    queryFn: () => financialsApi.getJob(expandedJobId!),
+    enabled: !!expandedJobId,
+  });
+
+  // Cost per timesheet, keyed by id. This column is deliberately cost, not billable -
+  // it sits beside the Mark Unpaid action, which is a payroll concern. Timesheet
+  // .calculated_pay is a stale cache of superseded math and must not be used here.
+  const costByTimesheetId = new Map(
+    (financials?.workers ?? []).flatMap((worker) =>
+      worker.entries.map((entry) => [entry.timesheet_id, entry.subtotal_cost] as const)
+    )
+  );
+
   const reactivateMutation = useMutation({
     mutationFn: jobsApi.markActive,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -33,6 +50,7 @@ export function CompletedJobs() {
     mutationFn: jobsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       if (expandedJobId) setExpandedJobId(null);
     },
     onError: (error: any) => {
@@ -45,6 +63,7 @@ export function CompletedJobs() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets-by-job', expandedJobId] });
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -153,6 +172,65 @@ export function CompletedJobs() {
               {/* Expanded Timesheets */}
               {expandedJobId === job.id && (
                 <div className="bg-gray-50 border-t px-4 py-3">
+                  {financials && (
+                    <div className="mb-4">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <p className="text-xs text-gray-500">Billable</p>
+                          <p className="text-xl font-bold text-gray-900">
+                            {formatCurrency(financials.subtotal_billable)}
+                          </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <p className="text-xs text-gray-500">Cost</p>
+                          <p className="text-xl font-bold text-gray-900">
+                            {formatCurrency(financials.subtotal_cost)}
+                          </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <p className="text-xs text-gray-500">Gross Profit</p>
+                          <p
+                            className={`text-xl font-bold ${
+                              parseFloat(financials.gross_profit_amount) < 0
+                                ? 'text-red-600'
+                                : 'text-green-600'
+                            }`}
+                          >
+                            {formatCurrency(financials.gross_profit_amount)}
+                          </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <p className="text-xs text-gray-500">Quoted</p>
+                          <p className="text-xl font-bold text-gray-900">
+                            {financials.budget_amount
+                              ? formatCurrency(financials.budget_amount)
+                              : '—'}
+                          </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <p className="text-xs text-gray-500">Hours</p>
+                          <p className="text-xl font-bold text-gray-900">
+                            {parseFloat(financials.total_hours).toFixed(1)}h
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-gray-500">
+                        <span>Cost: Labour {formatCurrency(financials.labour_cost)}</span>
+                        <span>· Travel {formatCurrency(financials.travel_cost)}</span>
+                        <span>
+                          · Worker materials {formatCurrency(financials.personal_materials_cost)}
+                        </span>
+                        <span>
+                          · Company materials {formatCurrency(financials.company_materials_cost)}
+                        </span>
+                        <span>· HST {formatCurrency(financials.hst_cost)}</span>
+                        <Link to="/financials" className="text-obatek hover:underline">
+                          Full breakdown →
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+
                   <h3 className="text-sm font-semibold text-gray-700 mb-2">Timesheets</h3>
                   {loadingTimesheets ? (
                     <p className="text-sm text-gray-500">Loading timesheets...</p>
@@ -166,7 +244,7 @@ export function CompletedJobs() {
                             <th className="pb-2 font-medium">Worker</th>
                             <th className="pb-2 font-medium">Date</th>
                             <th className="pb-2 font-medium">Hours</th>
-                            <th className="pb-2 font-medium text-right">Pay</th>
+                            <th className="pb-2 font-medium text-right">Cost</th>
                             <th className="pb-2 font-medium text-center">Status</th>
                             <th className="pb-2 font-medium text-right">Actions</th>
                           </tr>
@@ -178,7 +256,9 @@ export function CompletedJobs() {
                               <td className="py-2">{formatDate(ts.date)}</td>
                               <td className="py-2">{parseFloat(ts.hours_worked).toFixed(1)}h</td>
                               <td className="py-2 text-right">
-                                {ts.calculated_pay ? formatCurrency(ts.calculated_pay) : '—'}
+                                {costByTimesheetId.has(ts.id)
+                                  ? formatCurrency(costByTimesheetId.get(ts.id)!)
+                                  : '—'}
                               </td>
                               <td className="py-2 text-center">
                                 <span

@@ -87,6 +87,20 @@ def _draw_header_footer(canvas, doc):
     canvas.restoreState()
 
 
+def km_rate_label(entries) -> str:
+    """
+    The KM column header, derived from the rates actually charged.
+
+    Not from entry zero: a period mixing a company-truck day (no reimbursement) with
+    an own-vehicle day would otherwise label the whole column at whichever rate
+    happened to come first. Falls back to a bare "$" when the period is mixed.
+    """
+    charged_rates = {e.km_rate for e in entries if e.km_distance > 0}
+    if len(charged_rates) == 1:
+        return f"${charged_rates.pop():,.2f}/km"
+    return "$"
+
+
 def generate_payroll_pdf(
     summary: PayrollWorkerSummary,
     start_date: date,
@@ -153,7 +167,7 @@ def generate_payroll_pdf(
     # Determine the worker's hourly rate from first entry
     rate = summary.entries[0].labour_rate if summary.entries else Decimal("0")
     rate_str = f"${rate:,.2f}/hr"
-    km_rate_str = f"${summary.entries[0].km_rate:,.2f}/km" if summary.entries else "$0.50/km"
+    km_rate_str = km_rate_label(summary.entries)
 
     table_header = [
         "Date / Customer",
@@ -223,16 +237,24 @@ def generate_payroll_pdf(
     t_entries.setStyle(TableStyle(entry_style))
     elements.append(t_entries)
 
-    # Minimum hours note
-    has_minimum = any(e.billable_hours > e.hours_worked for e in summary.entries)
-    if has_minimum:
+    note_style = ParagraphStyle(
+        "Note", parent=styles["Normal"],
+        fontName="Helvetica-Oblique", fontSize=7,
+        textColor=colors.HexColor("#666666"),
+    )
+
+    notes = []
+    if any(e.billable_hours > e.hours_worked for e in summary.entries):
+        notes.append("* 4-hour minimum applied")
+    # A truck day records the drive but reimburses nothing, so the zero needs
+    # explaining on a document the worker may well query.
+    if any(e.km_distance > 0 and e.km_cost == 0 for e in summary.entries):
+        notes.append("Company truck days show the distance driven but are not reimbursed.")
+
+    if notes:
         elements.append(Spacer(1, 4))
-        note_style = ParagraphStyle(
-            "Note", parent=styles["Normal"],
-            fontName="Helvetica-Oblique", fontSize=7,
-            textColor=colors.HexColor("#666666"),
-        )
-        elements.append(Paragraph("* 4-hour minimum applied", note_style))
+        for note in notes:
+            elements.append(Paragraph(note, note_style))
 
     elements.append(Spacer(1, 0.3 * inch))
 

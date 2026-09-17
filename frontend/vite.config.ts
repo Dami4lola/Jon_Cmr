@@ -73,7 +73,9 @@ export default defineConfig({
             urlPattern: /^https:\/\/api\..*\/api\//,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'api-cache',
+              // Bumped when worker-facing pay figures changed: the old cache could serve a
+              // pre-change payout for up to 24h offline.
+              cacheName: 'api-cache-v2',
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24, // 24 hours

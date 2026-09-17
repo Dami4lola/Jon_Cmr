@@ -11,7 +11,7 @@ import { timeOffApi } from '../api/timeOff';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
 import { formatCurrency, formatDate, getCoworkerSchedule, formatShortDate } from '../lib/utils';
-import type { TimesheetCreate, Timesheet, TimeOffRequest } from '../types';
+import type { TimesheetCreate, Timesheet, TimeOffRequest, PayoutPreview } from '../types';
 
 export function Dashboard() {
   const { user } = useAuthStore();
@@ -31,7 +31,7 @@ export function Dashboard() {
   // Fetch assigned jobs
   const { data: jobs = [], isLoading: loadingJobs } = useQuery({
     queryKey: ['jobs', 'assigned'],
-    queryFn: () => jobsApi.list({ is_completed: false }),
+    queryFn: () => jobsApi.list({ completed: false }),
   });
 
   const coworkerScheduleByJobId = useMemo(() => {
@@ -56,6 +56,7 @@ export function Dashboard() {
     break_duration: 0,
     used_company_truck: false,
     worked_at_hq: false,
+    is_redseal: false,
     company_materials: 0,
     personal_materials: 0,
     notes: '',
@@ -68,7 +69,7 @@ export function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Payout preview state
-  const [payoutPreview, setPayoutPreview] = useState<{ calculated_pay: number } | null>(null);
+  const [payoutPreview, setPayoutPreview] = useState<PayoutPreview | null>(null);
 
   // Create timesheet mutation
   const createMutation = useMutation({
@@ -94,6 +95,7 @@ export function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
       setShowForm(false);
       resetForm();
     },
@@ -104,6 +106,7 @@ export function Dashboard() {
     mutationFn: timesheetsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -157,6 +160,7 @@ export function Dashboard() {
       break_duration: 0,
       used_company_truck: false,
       worked_at_hq: false,
+      is_redseal: false,
       company_materials: 0,
       personal_materials: 0,
       notes: '',
@@ -446,7 +450,23 @@ export function Dashboard() {
                 />
                 <span className="text-sm text-gray-700">Worked at HQ</span>
               </label>
+              {/* Deliberately not pre-ticked from the job's Red Seal flag: billing at
+                  the Red Seal rate should be a positive assertion by whoever did the
+                  work. A Red Seal job already bills that rate without this. */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="is_redseal"
+                  checked={formData.is_redseal}
+                  onChange={handleChange}
+                  className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
+                />
+                <span className="text-sm text-gray-700">Red Seal work</span>
+              </label>
             </div>
+            <p className="text-xs text-gray-400 -mt-4">
+              Only tick Red Seal if you performed Red Seal certified work on this entry.
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -556,6 +576,40 @@ export function Dashboard() {
                   <p className="text-sm font-semibold text-green-800">
                     Estimated Pay: {formatCurrency(payoutPreview.calculated_pay)}
                   </p>
+                  <div className="text-xs text-green-700 mt-2 space-y-0.5">
+                    <p>
+                      Labour: {parseFloat(payoutPreview.billable_hours).toFixed(2)}h @{' '}
+                      {formatCurrency(payoutPreview.hourly_rate)}/hr ={' '}
+                      {formatCurrency(payoutPreview.labour_cost)}
+                      {payoutPreview.minimum_applied && ' (minimum hours applied)'}
+                    </p>
+                    {parseFloat(payoutPreview.km_distance) > 0 && (
+                      <p>
+                        Travel: {parseFloat(payoutPreview.km_distance).toFixed(0)}km @{' '}
+                        {formatCurrency(payoutPreview.km_rate)}/km ={' '}
+                        {formatCurrency(payoutPreview.km_cost)}
+                        {payoutPreview.used_company_truck && ' — company truck, not reimbursed'}
+                      </p>
+                    )}
+                    {parseFloat(payoutPreview.personal_materials) > 0 && (
+                      <p>
+                        Materials you paid for:{' '}
+                        {formatCurrency(payoutPreview.personal_materials)}
+                      </p>
+                    )}
+                    {payoutPreview.hst_applied && (
+                      <p>
+                        HST:{' '}
+                        {formatCurrency(
+                          (
+                            parseFloat(payoutPreview.labour_hst) +
+                            parseFloat(payoutPreview.km_hst) +
+                            parseFloat(payoutPreview.materials_hst)
+                          ).toFixed(2)
+                        )}
+                      </p>
+                    )}
+                  </div>
                   <p className="text-xs text-green-600 mt-1">
                     Company materials are not included in your pay.
                   </p>

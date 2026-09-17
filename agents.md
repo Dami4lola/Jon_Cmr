@@ -35,6 +35,8 @@ The OBATEK Worker Portal is a fullstack workforce management web application. It
 * State Management: Use React Query Devtools to debug stale timesheet or job data.
 * Permissions: If image uploads fail, verify AWS S3 bucket CORS and IAM policies.
 * Alembic Migrations: `start.sh` runs `SQLModel.metadata.create_all()` BEFORE `alembic upgrade head`. This means new model tables/columns are already created by `create_all` when the migration runs. Every migration `upgrade()` MUST use `inspector.get_table_names()` / `inspector.get_columns()` existence checks before calling `op.create_table()` or `op.add_column()`, or it will fail with DuplicateTable/DuplicateColumn on deployment.
+* Local DB Setup: run `backend/scripts/dev-db.sh`, never `alembic upgrade head` on an empty database. Migrations 0002-0013 and 0016 predate the guard rule above and will fail with "duplicate column" once `create_all` has run. The script mirrors what `start.sh` already does on a fresh database - create the tables, then `alembic stamp head` - which is why production never hits that path.
+* SQLite vs Postgres in migrations: production is Postgres but local dev and the test suite are SQLite, which has no `ALTER COLUMN ... TYPE` and does not enforce numeric precision at all. Guard any `op.alter_column(type_=...)` with `conn.dialect.name != "sqlite"` (see 0025).
 
 ## Business Logic & Cornerstones
 * `backend/api/routes/payouts.py`: Payout calculations strictly enforce: Hourly rate × hours (4-hour minimum rule), plus distance allowances and material expenses.

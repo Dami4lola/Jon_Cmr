@@ -62,9 +62,10 @@ class Estimate(SQLModel, table=True):
     distance_km: Decimal | None = Field(default=None, max_digits=6, decimal_places=2)
     km_rate: Decimal = Field(default=Decimal("1.50"), max_digits=5, decimal_places=2)
 
-    # Red Seal trade premium: computed from tasks tagged uses_redseal, at
-    # redseal_techs x redseal_rate, added on top of standard labour (not
-    # netted out of it - those hours are billed both ways).
+    # Red Seal labour: computed from tasks tagged uses_redseal, at
+    # redseal_techs x redseal_rate. Those tech-hours are netted OUT of
+    # labour_amount - a Red Seal hour bills this rate instead of the
+    # standard one, never both.
     redseal_techs: int = Field(default=0)
     redseal_rate: Decimal = Field(default=Decimal("100.00"), max_digits=6, decimal_places=2)
 

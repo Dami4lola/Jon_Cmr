@@ -24,7 +24,11 @@ from ..schemas.timesheet import (
 )
 from ..schemas.worker import WorkerBrief
 from ..schemas.job import JobBrief
-from ..services.payout import calculate_payout, calculate_payout_breakdown
+from ..services.job_cost import (
+    compute_entry_payout,
+    compute_timesheet_cost,
+    rounded_hours_before_minimum,
+)
 from ..services.s3 import upload_file_to_s3, delete_file_from_s3
 from .deps import DBSession, CurrentUser, CurrentWorker, ManagerUser
 
@@ -40,9 +44,10 @@ def timesheet_to_response(timesheet: Timesheet) -> TimesheetResponse:
         break_duration=timesheet.break_duration,
         used_company_truck=timesheet.used_company_truck,
         worked_at_hq=timesheet.worked_at_hq,
+        is_redseal=timesheet.is_redseal,
         company_materials=timesheet.company_materials,
         personal_materials=timesheet.personal_materials,
-        calculated_pay=timesheet.calculated_pay,
+        calculated_pay=compute_entry_payout(compute_timesheet_cost(timesheet)).grand_total,
         minimum_hours_override=timesheet.minimum_hours_override,
         notes=timesheet.notes,
         is_paid=timesheet.is_paid,
@@ -186,25 +191,6 @@ def mark_timesheet_unpaid(
     return timesheet_to_response(timesheet)
 
 
-@router.get("/summary")
-def get_timesheet_summary(
-    session: DBSession,
-    current_user: ManagerUser,
-):
-    """Get payroll summary (manager only)"""
-    statement = select(Timesheet)
-    timesheets = session.exec(statement).all()
-
-    total_pay = sum(ts.calculated_pay or Decimal("0") for ts in timesheets)
-    total_hours = sum(ts.hours_worked for ts in timesheets)
-
-    return {
-        "total_pay": float(total_pay),
-        "timesheet_count": len(timesheets),
-        "total_hours": float(total_hours),
-    }
-
-
 @router.post("/", response_model=TimesheetResponse, status_code=status.HTTP_201_CREATED)
 def create_timesheet(
     data: TimesheetCreate,
@@ -254,13 +240,13 @@ def create_timesheet(
         break_duration=data.break_duration,
         used_company_truck=data.used_company_truck,
         worked_at_hq=data.worked_at_hq,
+        is_redseal=data.is_redseal,
         company_materials=data.company_materials,
         personal_materials=data.personal_materials,
         notes=data.notes,
     )
 
     # Calculate pay
-    timesheet.calculated_pay = calculate_payout(timesheet, worker)
 
     session.add(timesheet)
     session.commit()
@@ -339,11 +325,18 @@ def update_timesheet(
             detail="Timesheet not found",
         )
 
+    update_data = data.model_dump(exclude_unset=True)
+
+    # A paid timesheet is locked so a payout can never be changed after the fact.
+    # is_redseal is the one exception: it only affects what the CLIENT is billed and
+    # cannot move a payout, and without this a forgotten tick is uncorrectable.
     if timesheet.is_paid:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot edit a paid timesheet",
-        )
+        redseal_only = set(update_data) <= {"is_redseal"}
+        if not (redseal_only and current_user.is_manager):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot edit a paid timesheet",
+            )
 
     # Authorization: own timesheet or manager
     if not current_user.is_manager:
@@ -357,14 +350,12 @@ def update_timesheet(
             )
 
     # Update fields
-    update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(timesheet, key, value)
 
     timesheet.updated_at = datetime.utcnow()
 
     # Recalculate pay
-    timesheet.calculated_pay = calculate_payout(timesheet, timesheet.worker)
 
     session.add(timesheet)
     session.commit()
@@ -657,6 +648,42 @@ def delete_inventory_item(
     session.commit()
 
 
+def _build_payout_preview(timesheet: Timesheet, worker: Worker, job: Job | None) -> PayoutPreview:
+    """
+    What this entry will pay, from the same engine the payroll run uses.
+
+    worker and job are passed explicitly rather than assigned onto the timesheet:
+    Job.timesheets cascades all, delete-orphan, so assigning a persistent Job to a
+    transient row would push it into that collection and a later flush would insert a
+    timesheet nobody submitted.
+    """
+    cost = compute_timesheet_cost(timesheet, worker=worker, job=job)
+    payout = compute_entry_payout(cost)
+    rounded = rounded_hours_before_minimum(cost.hours_worked, cost.break_duration)
+
+    return PayoutPreview(
+        hours_worked=cost.hours_worked,
+        break_duration=cost.break_duration,
+        rounded_hours=rounded,
+        billable_hours=cost.billable_hours,
+        minimum_applied=cost.billable_hours > rounded,
+        hourly_rate=cost.hourly_rate,
+        labour_cost=cost.labour_cost,
+        km_distance=cost.km_distance,
+        km_rate=cost.km_rate,
+        km_cost=cost.km_cost,
+        used_company_truck=cost.used_company_truck,
+        worked_at_hq=cost.worked_at_hq,
+        personal_materials=cost.personal_materials,
+        company_materials=cost.company_materials,
+        hst_applied=cost.charges_hst,
+        labour_hst=payout.labour_hst,
+        km_hst=payout.km_hst,
+        materials_hst=payout.materials_hst,
+        calculated_pay=payout.grand_total,
+    )
+
+
 @router.post("/calculate", response_model=PayoutPreview)
 def calculate_payout_preview(
     data: TimesheetCreate,
@@ -675,7 +702,14 @@ def calculate_payout_preview(
             detail="Worker profile not found",
         )
 
-    # Create temporary timesheet object for calculation
+    job = session.get(Job, data.job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+
+    # Transient: deliberately never given .job or .worker, see _build_payout_preview.
     temp_timesheet = Timesheet(
         worker_id=worker.id,
         job_id=data.job_id,
@@ -684,11 +718,9 @@ def calculate_payout_preview(
         break_duration=data.break_duration,
         used_company_truck=data.used_company_truck,
         worked_at_hq=data.worked_at_hq,
+        is_redseal=data.is_redseal,
         company_materials=data.company_materials,
         personal_materials=data.personal_materials,
     )
 
-    # Get detailed breakdown
-    breakdown = calculate_payout_breakdown(temp_timesheet, worker)
-
-    return PayoutPreview(**breakdown)
+    return _build_payout_preview(temp_timesheet, worker, job)

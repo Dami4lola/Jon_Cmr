@@ -20,40 +20,22 @@ from ..schemas.payroll import (
     PayrollWorkerSummary,
 )
 from ..services.payroll_pdf import generate_payroll_pdf
+# Rates and _round_hours are re-exported so that anything importing them from this
+# module keeps working now that the cost math lives in services/job_cost.py.
+from ..services.job_cost import (  # noqa: F401
+    KM_RATE_OWN_VEHICLE,
+    HST_RATE,
+    MINIMUM_HOURS,
+    _round_hours,
+    compute_timesheet_cost,
+    compute_worker_hst,
+    compute_worker_payout,
+)
 from .deps import DBSession, ManagerUser
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Constants
-KM_RATE_OWN_VEHICLE = Decimal("0.85")
-KM_RATE_COMPANY_TRUCK = Decimal("0.50")
-HST_RATE = Decimal("0.13")
-MINIMUM_HOURS = Decimal("4")
-
-
-def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), minimum_hours: Decimal = MINIMUM_HOURS) -> Decimal:
-    """
-    Round raw hours worked to the nearest quarter-hour, subtract break time,
-    and enforce a minimum billable floor.
-
-    Rounding uses float round() at 0.25-hour granularity (scale × 4, round, ÷ 4).
-    Break is subtracted after rounding. Result is floored at minimum_hours.
-
-    Args:
-        hours_worked: Raw hours from the timesheet entry.
-        break_duration: Unpaid break time in hours to subtract after rounding.
-        minimum_hours: Minimum billable floor (default 4.0 hours).
-
-    Returns:
-        Billable hours as a Decimal, >= 0 and >= minimum_hours.
-    """
-    hours_float = float(hours_worked)
-    break_float = float(break_duration)
-    rounded = (round(hours_float * 4) / 4) - break_float
-    billable = Decimal(str(max(rounded, 0)))
-    return max(billable, minimum_hours)
 
 
 def _build_payroll_summaries(
@@ -98,8 +80,12 @@ def _build_payroll_summaries(
     worker_summaries: list[PayrollWorkerSummary] = []
 
     for worker_id, worker_timesheets in grouped.items():
-        worker = worker_timesheets[0].worker
         entries: list[PayrollEntryDetail] = []
+        # Identity comes from the resolved cost lines, not worker_timesheets[0].worker:
+        # migration 0018 orphans timesheets, so a single unpaid entry from a deleted
+        # worker used to AttributeError the entire payroll run.
+        worker_name = "Unknown worker"
+        charges_hst = False
 
         total_hours = Decimal("0")
         total_labour = Decimal("0")
@@ -108,90 +94,55 @@ def _build_payroll_summaries(
         total_personal_materials = Decimal("0")
 
         for ts in worker_timesheets:
-            effective_min = ts.minimum_hours_override if ts.minimum_hours_override is not None else MINIMUM_HOURS
-            billable_hours = _round_hours(ts.hours_worked, ts.break_duration, effective_min)
-            labour_cost = (billable_hours * worker.hourly_rate).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-
-            if ts.worked_at_hq:
-                km_distance = Decimal("0")
-                km_cost = Decimal("0")
-                km_rate_used = Decimal("0")
-            elif ts.used_company_truck:
-                km_distance = ts.job.calculated_distance_km or Decimal("0")
-                km_rate_used = KM_RATE_COMPANY_TRUCK
-                km_cost = (km_distance * km_rate_used).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
-            else:
-                km_distance = ts.job.calculated_distance_km or Decimal("0")
-                km_rate_used = KM_RATE_OWN_VEHICLE
-                km_cost = (km_distance * km_rate_used).quantize(
-                    Decimal("0.01"), rounding=ROUND_HALF_UP
-                )
-
+            cost = compute_timesheet_cost(ts)
+            worker_name = cost.worker_name
+            charges_hst = cost.charges_hst
             client_name = ts.job.client.name if ts.job and ts.job.client else "Unknown"
 
             entry = PayrollEntryDetail(
-                timesheet_id=ts.id,
-                date=ts.date,
+                timesheet_id=cost.timesheet_id,
+                date=cost.date,
                 customer_name=client_name,
                 job_description=ts.job.title if ts.job else "",
-                hours_worked=ts.hours_worked,
-                break_duration=ts.break_duration,
-                billable_hours=billable_hours,
-                labour_rate=worker.hourly_rate,
-                labour_cost=labour_cost,
-                km_distance=km_distance,
-                km_rate=km_rate_used,
-                km_cost=km_cost,
-                personal_materials=ts.personal_materials,
-                minimum_hours_override=ts.minimum_hours_override,
+                hours_worked=cost.hours_worked,
+                break_duration=cost.break_duration,
+                billable_hours=cost.billable_hours,
+                labour_rate=cost.hourly_rate,
+                labour_cost=cost.labour_cost,
+                km_distance=cost.km_distance,
+                km_rate=cost.km_rate,
+                km_cost=cost.km_cost,
+                personal_materials=cost.personal_materials,
+                minimum_hours_override=cost.minimum_hours_override,
             )
             entries.append(entry)
 
-            total_hours += billable_hours
-            total_labour += labour_cost
-            total_km += km_distance
-            total_km_cost += km_cost
-            total_personal_materials += ts.personal_materials
+            total_hours += cost.billable_hours
+            total_labour += cost.labour_cost
+            total_km += cost.km_distance
+            total_km_cost += cost.km_cost
+            total_personal_materials += cost.personal_materials
 
-        # HST calculations
-        if worker.charges_hst:
-            labour_hst = (total_labour * HST_RATE).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            km_hst = (total_km_cost * HST_RATE).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            materials_hst = (total_personal_materials * HST_RATE).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-        else:
-            labour_hst = Decimal("0")
-            km_hst = Decimal("0")
-            materials_hst = Decimal("0")
-
-        grand_total = (
-            total_labour + total_km_cost + total_personal_materials
-            + labour_hst + km_hst + materials_hst
-        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        # Shared with the worker-facing preview so shown pay equals paid pay by
+        # construction. company_materials is excluded: the company already paid for it.
+        payout = compute_worker_payout(
+            total_labour, total_km_cost, total_personal_materials, charges_hst
+        )
 
         summary = PayrollWorkerSummary(
             worker_id=worker_id,
-            worker_name=worker.name,
+            worker_name=worker_name,
             entries=entries,
             total_hours=total_hours,
             total_labour=total_labour,
             total_km=total_km,
             total_km_cost=total_km_cost,
             total_personal_materials=total_personal_materials,
-            labour_hst=labour_hst,
-            km_hst=km_hst,
-            materials_hst=materials_hst,
-            grand_total=grand_total,
-            charges_hst=worker.charges_hst,
+            labour_hst=payout.labour_hst,
+            km_hst=payout.km_hst,
+            materials_hst=payout.materials_hst,
+            grand_total=payout.grand_total,
+            charges_hst=charges_hst,
         )
         worker_summaries.append(summary)
 

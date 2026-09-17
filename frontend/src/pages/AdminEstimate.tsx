@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { EstimateCalculator } from '../components/EstimateCalculator';
+import { ConvertEstimateDialog } from '../components/ConvertEstimateDialog';
 import { estimatesApi } from '../api/estimates';
 import { clientsApi, type ClientCreate } from '../api/clients';
+import { useAuthStore } from '../store/authStore';
 import { formatCurrency, formatDate } from '../lib/utils';
 import type { Estimate } from '../types';
 
@@ -22,10 +25,16 @@ export function AdminEstimate() {
   const [clientMode, setClientMode] = useState<'existing' | 'prospect'>('existing');
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [prospectDraft, setProspectDraft] = useState<ClientCreate>(EMPTY_PROSPECT);
+  const [showConverted, setShowConverted] = useState(false);
+  const [convertingId, setConvertingId] = useState<number | null>(null);
+  const [convertedBanner, setConvertedBanner] = useState<{ jobId: number; estimateNumber: string } | null>(null);
+  const { isManager } = useAuthStore();
 
+  // Converted estimates have a job_id, so the standalone filter hides them. The
+  // toggle keeps them reachable - this is the only estimates list in the app.
   const { data: estimates = [], isLoading } = useQuery({
-    queryKey: ['estimates', 'standalone'],
-    queryFn: () => estimatesApi.list({ standalone: true }),
+    queryKey: ['estimates', 'list', showConverted],
+    queryFn: () => estimatesApi.list(showConverted ? {} : { standalone: true }),
   });
 
   const { data: clients = [] } = useQuery({
@@ -35,7 +44,7 @@ export function AdminEstimate() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => estimatesApi.remove(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['estimates', 'standalone'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['estimates'] }),
   });
 
   const handleDownload = async (estimate: { id: number; estimate_number: string }, customer: boolean) => {
@@ -66,7 +75,7 @@ export function AdminEstimate() {
   };
 
   const handleSaved = () => {
-    queryClient.invalidateQueries({ queryKey: ['estimates', 'standalone'] });
+    queryClient.invalidateQueries({ queryKey: ['estimates'] });
   };
 
   if (view === 'builder') {
@@ -156,6 +165,9 @@ export function AdminEstimate() {
           <EstimateCalculator
             key={openEstimate?.id ?? 'new'}
             initialEstimate={openEstimate || undefined}
+            // Without this the calculator saves job_id: null and silently unlinks
+            // an estimate that has already been converted to a job.
+            jobId={openEstimate?.job?.id ?? null}
             clientId={clientId}
             pendingProspect={pendingProspect}
             initialAddress={
@@ -189,6 +201,42 @@ export function AdminEstimate() {
         >
           New Estimate
         </button>
+      </div>
+
+      {convertedBanner && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between gap-4">
+          <p className="text-sm text-green-800">
+            Job #{convertedBanner.jobId} created from {convertedBanner.estimateNumber}.{' '}
+            <Link to="/manager" className="font-medium underline">
+              View jobs
+            </Link>
+          </p>
+          <button
+            onClick={() => setConvertedBanner(null)}
+            className="text-green-700 hover:text-green-900 text-sm"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        {([
+          { value: false, label: 'Open' },
+          { value: true, label: 'All' },
+        ] as const).map((option) => (
+          <button
+            key={option.label}
+            onClick={() => setShowConverted(option.value)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              showConverted === option.value
+                ? 'bg-obatek text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-300'
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-lg shadow">
@@ -234,6 +282,19 @@ export function AdminEstimate() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {e.job_id == null ? (
+                          isManager() && (
+                            <button
+                              onClick={() => setConvertingId(e.id)}
+                              className="text-obatek hover:text-obatek-dark transition-colors text-xs font-medium"
+                              title="Create a job from this estimate"
+                            >
+                              Convert
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-xs text-gray-500">Job #{e.job_id}</span>
+                        )}
                         <button
                           onClick={() => handleDownload(e, false)}
                           className="text-obatek hover:text-obatek-dark transition-colors text-xs font-medium"
@@ -279,6 +340,22 @@ export function AdminEstimate() {
           </div>
         )}
       </div>
+
+      {convertingId != null && (
+        <ConvertEstimateDialog
+          estimateId={convertingId}
+          onClose={() => setConvertingId(null)}
+          onConverted={(job, estimateNumber) => {
+            setConvertingId(null);
+            setConvertedBanner({ jobId: job.id, estimateNumber });
+            queryClient.invalidateQueries({ queryKey: ['estimates'] });
+            queryClient.invalidateQueries({ queryKey: ['estimate'] });
+            queryClient.invalidateQueries({ queryKey: ['jobs'] });
+            queryClient.invalidateQueries({ queryKey: ['clients'] });
+            queryClient.invalidateQueries({ queryKey: ['financials'] });
+          }}
+        />
+      )}
     </div>
   );
 }

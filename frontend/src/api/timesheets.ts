@@ -1,5 +1,6 @@
 import api from './client';
-import type { Timesheet, TimesheetCreate, Receipt, InventoryItem, InventoryItemCreate } from '../types';
+import type {
+  PayoutPreview, Timesheet, TimesheetCreate, Receipt, InventoryItem, InventoryItemCreate } from '../types';
 
 export const timesheetsApi = {
   list: async (params?: {
@@ -84,7 +85,7 @@ export const timesheetsApi = {
     await api.delete(`/timesheets/inventory-items/${itemId}`);
   },
 
-  calculatePayout: async (data: TimesheetCreate): Promise<{ calculated_pay: number }> => {
+  calculatePayout: async (data: TimesheetCreate): Promise<PayoutPreview> => {
     const response = await api.post('/timesheets/calculate', data);
     return response.data;
   },

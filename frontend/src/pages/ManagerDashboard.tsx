@@ -265,6 +265,7 @@ export function ManagerDashboard() {
     mutationFn: timesheetsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -385,6 +386,7 @@ export function ManagerDashboard() {
       setPayrollStep('done');
       // Refetch timesheets so archived ones disappear
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     } catch (err: unknown) {
       const error = err as { response?: { data?: Blob } };
       if (error.response?.data instanceof Blob) {
@@ -656,7 +658,7 @@ export function ManagerDashboard() {
                   />
                 </button>
                 <span className="text-sm font-medium text-gray-700">
-                  Red Seal Trade {formData.is_redseal_trade && <span className="text-red-600">(Billed at $100/hr)</span>}
+                  Red Seal Trade {formData.is_redseal_trade && <span className="text-gray-500">(techs tick Red Seal per timesheet to bill $100/hr)</span>}
                 </span>
               </label>
             </div>
@@ -1110,7 +1112,7 @@ export function ManagerDashboard() {
                     />
                   </button>
                   <span className="text-sm font-medium text-gray-700">
-                    Red Seal Trade {editFormData.is_redseal_trade && <span className="text-red-600">(Billed at $100/hr)</span>}
+                    Red Seal Trade {editFormData.is_redseal_trade && <span className="text-gray-500">(techs tick Red Seal per timesheet to bill $100/hr)</span>}
                   </span>
                 </label>
               </div>

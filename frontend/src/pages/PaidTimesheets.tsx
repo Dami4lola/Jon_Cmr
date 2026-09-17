@@ -18,6 +18,7 @@ export function PaidTimesheets() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timesheets', 'paid'] });
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
