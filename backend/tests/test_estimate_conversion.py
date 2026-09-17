@@ -40,13 +40,18 @@ class TestDurationForJob:
 
 
 class TestIsRedsealEstimate:
-    def test_true_from_redseal_techs(self):
+    def test_tech_count_alone_does_not_flag_the_job(self):
+        """
+        Changed 2026-09-17: this used to assert True, which was the bug. The calculator
+        auto-fills redseal_techs from crew size, so it is non-zero on nearly every
+        estimate. Flagging on it billed ordinary jobs $100/hr against an $80/hr quote.
+        """
         estimate = Estimate(estimate_number="EST-1", redseal_techs=2)
         estimate.tasks = []
-        assert _is_redseal_estimate(estimate) is True
+        assert _is_redseal_estimate(estimate) is False
 
     def test_true_from_tagged_task(self):
-        """Tagging a task before setting the tech count must still flag the job."""
+        """A tagged task is the only signal, and it works with no tech count set."""
         estimate = Estimate(estimate_number="EST-1", redseal_techs=0)
         estimate.tasks = [
             EstimateTask(phase="build", description="Weld", hours=Decimal("4"), uses_redseal=True)
@@ -366,3 +371,50 @@ class TestConvertEstimateToJob:
         assert [e["id"] for e in standalone] == []
         assert estimate["id"] in [e["id"] for e in everything]
         assert [e for e in everything if e["id"] == estimate["id"]][0]["job_id"] is not None
+
+
+class TestRedSealFlagOnConversion:
+    """
+    A converted job is a Red Seal trade only when the estimate tagged Red Seal work.
+
+    redseal_techs must not count: the calculator auto-fills it from crew size, so it is
+    non-zero on almost every estimate. Keying off it flagged ordinary jobs as Red Seal
+    and billed them $100/hr against an $80/hr quote.
+    """
+
+    def test_untagged_estimate_does_not_make_a_redseal_job(self, client):
+        customer = make_client(client)
+        estimate = make_estimate(
+            client,
+            client_id=customer["id"],
+            crew_size=2,
+            redseal_techs=2,  # what the calculator auto-fills
+            tasks=[{"phase": "build", "description": "Paint", "hours": 10, "sort_order": 0}],
+        )
+        assert Decimal(estimate["redseal_amount"]) == Decimal("0"), "estimate quoted no Red Seal"
+
+        job = convert(client, estimate["id"]).json()
+
+        assert job["is_redseal_trade"] is False
+
+    def test_tagged_estimate_does_make_a_redseal_job(self):
+        from app.api.estimates import _is_redseal_estimate
+        from app.models import Estimate, EstimateTask
+
+        estimate = Estimate(estimate_number="EST-1", redseal_techs=0)
+        estimate.tasks = [
+            EstimateTask(phase="build", description="Weld", hours=Decimal("6"), uses_redseal=True)
+        ]
+
+        assert _is_redseal_estimate(estimate) is True
+
+    def test_tech_count_alone_is_not_a_signal(self):
+        from app.api.estimates import _is_redseal_estimate
+        from app.models import Estimate, EstimateTask
+
+        estimate = Estimate(estimate_number="EST-1", redseal_techs=5)
+        estimate.tasks = [
+            EstimateTask(phase="build", description="Paint", hours=Decimal("6"), uses_redseal=False)
+        ]
+
+        assert _is_redseal_estimate(estimate) is False

@@ -846,14 +846,16 @@ def _duration_for_job(total_hours: Decimal | None) -> Decimal | None:
 
 def _is_redseal_estimate(estimate: Estimate) -> bool:
     """
-    Whether the estimate priced Red Seal work.
+    Whether the estimate actually scoped Red Seal work.
 
-    OR rather than AND, and not keyed off redseal_amount: that amount is only
-    non-zero when both the tech count and a tagged task are present, so an estimate
-    tagged before the tech count was set would lose the flag - and Job.is_redseal_trade
-    drives the invoice labour rate, so a false negative under-bills the customer.
+    Tagged tasks are the only signal. redseal_techs deliberately does NOT count: the
+    calculator auto-fills it from crew size unless the manager unlinks it, so it is
+    non-zero on virtually every estimate and says nothing about the work. Including it
+    flagged ordinary jobs as Red Seal, which billed the client $100/hr on a job quoted
+    at $80/hr - silently, because the estimate itself charges no Red Seal when no task
+    is tagged.
     """
-    return estimate.redseal_techs > 0 or any(task.uses_redseal for task in estimate.tasks)
+    return any(task.uses_redseal for task in estimate.tasks)
 
 
 def _resolve_convert_client(session, estimate: Estimate, data: EstimateConvertRequest) -> Client:
