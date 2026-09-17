@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { estimatesApi } from '../api/estimates';
 import { clientsApi, type ClientCreate } from '../api/clients';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, nextAutoFilledAddress } from '../lib/utils';
 import type { Estimate, EstimatePayload, EstimatePhaseKey, MaterialSearchResult, ScaffoldingComponentKey } from '../types';
 
 interface EstimateCalculatorProps {
@@ -208,6 +208,17 @@ export function EstimateCalculator({
   const [linkTravelToCrew, setLinkTravelToCrew] = useState(!initialEstimate);
 
   const [address, setAddress] = useState(initialEstimate?.address_override || initialAddress || '');
+  // initialAddress arrives after mount on the Estimates page, where the calculator
+  // renders beside the client picker - so the field has to follow the prop, not just
+  // seed from it. The ref remembers what was auto-filled so a typed address survives.
+  const autoFilledAddress = useRef(initialEstimate?.address_override || initialAddress || '');
+
+  useEffect(() => {
+    const incoming = initialAddress || '';
+    if (!incoming) return;
+    setAddress((current) => nextAutoFilledAddress(current, incoming, autoFilledAddress.current));
+    autoFilledAddress.current = incoming;
+  }, [initialAddress]);
   const [distanceKm, setDistanceKm] = useState<number | null>(
     initialEstimate?.distance_km != null ? parseFloat(initialEstimate.distance_km) : null
   );
