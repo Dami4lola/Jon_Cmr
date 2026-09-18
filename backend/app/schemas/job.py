@@ -40,6 +40,10 @@ class JobCreate(BaseModel):
     estimate_amount: Decimal | None = Field(default=None, ge=0)
     address_override: str | None = None
     is_redseal_trade: bool = False
+    # Null means inherit the rate from the estimate, else the global constant.
+    billable_labour_rate: Decimal | None = Field(default=None, ge=0)
+    billable_redseal_rate: Decimal | None = Field(default=None, ge=0)
+    billable_km_rate: Decimal | None = Field(default=None, ge=0)
     assigned_worker_ids: List[int] = []
     worker_schedule: List[WorkerScheduleEntry] = []
 
@@ -57,6 +61,9 @@ class JobUpdate(BaseModel):
     estimate_amount: Decimal | None = None
     address_override: str | None = None
     is_redseal_trade: bool | None = None
+    billable_labour_rate: Decimal | None = None
+    billable_redseal_rate: Decimal | None = None
+    billable_km_rate: Decimal | None = None
     assigned_worker_ids: List[int] | None = None
     worker_schedule: List[WorkerScheduleEntry] | None = None
 
@@ -72,6 +79,9 @@ class JobResponse(BaseModel):
     estimated_duration: Decimal | None
     is_completed: bool
     is_redseal_trade: bool
+    billable_labour_rate: Decimal | None
+    billable_redseal_rate: Decimal | None
+    billable_km_rate: Decimal | None
     estimate_amount: Decimal | None
     calculated_distance_km: Decimal | None
     address_override: str | None

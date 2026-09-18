@@ -56,6 +56,13 @@ class Job(SQLModel, table=True):
     # Trade type
     is_redseal_trade: bool = Field(default=False)
 
+    # Billable rate overrides. Null means inherit - from the estimate where it has the
+    # rate, otherwise from the global constant - and the inheritance is resolved at read
+    # time so a later estimate edit still reaches the job.
+    billable_labour_rate: Decimal | None = Field(default=None, max_digits=6, decimal_places=2)
+    billable_redseal_rate: Decimal | None = Field(default=None, max_digits=6, decimal_places=2)
+    billable_km_rate: Decimal | None = Field(default=None, max_digits=5, decimal_places=2)
+
     # Distance calculation
     calculated_distance_km: Decimal | None = Field(default=None, max_digits=6, decimal_places=2)
 
@@ -72,9 +79,12 @@ class Job(SQLModel, table=True):
         back_populates="job",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
-    invoice: Optional["Invoice"] = Relationship(
+    invoices: List["Invoice"] = Relationship(
         back_populates="job",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "order_by": "Invoice.id",
+        },
     )
     estimate: Optional["Estimate"] = Relationship(
         back_populates="job",

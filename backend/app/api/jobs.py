@@ -38,6 +38,9 @@ def job_to_response(job: Job, current_worker_id: int | None = None) -> JobRespon
         estimated_duration=job.estimated_duration,
         is_completed=job.is_completed,
         is_redseal_trade=job.is_redseal_trade,
+        billable_labour_rate=job.billable_labour_rate,
+        billable_redseal_rate=job.billable_redseal_rate,
+        billable_km_rate=job.billable_km_rate,
         estimate_amount=job.estimate_amount,
         calculated_distance_km=job.calculated_distance_km,
         address_override=job.address_override,
@@ -137,6 +140,9 @@ def create_job(
         estimate_amount=data.estimate_amount,
         address_override=data.address_override,
         is_redseal_trade=data.is_redseal_trade,
+        billable_labour_rate=data.billable_labour_rate,
+        billable_redseal_rate=data.billable_redseal_rate,
+        billable_km_rate=data.billable_km_rate,
     )
 
     # Calculate distance
@@ -535,7 +541,7 @@ def delete_job(
         .where(Job.id == job_id)
         .options(
             selectinload(Job.timesheets),
-            selectinload(Job.invoice),
+            selectinload(Job.invoices),
             selectinload(Job.inspections),
             selectinload(Job.photos),
         )

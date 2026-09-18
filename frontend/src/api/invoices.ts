@@ -16,8 +16,16 @@ export const invoicesApi = {
     return response.data;
   },
 
-  previewForJob: async (jobId: number): Promise<InvoicePreview> => {
-    const response = await api.get(`/invoices/preview/job/${jobId}`);
+  listForJob: async (jobId: number): Promise<Invoice[]> => {
+    const response = await api.get(`/invoices/job/${jobId}`);
+    return response.data;
+  },
+
+  previewForJob: async (
+    jobId: number,
+    params?: { period_start?: string; period_end?: string }
+  ): Promise<InvoicePreview> => {
+    const response = await api.get(`/invoices/preview/job/${jobId}`, { params });
     return response.data;
   },
 

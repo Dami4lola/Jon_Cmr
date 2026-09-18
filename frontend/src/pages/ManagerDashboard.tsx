@@ -28,6 +28,35 @@ function formatShortDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+// An empty field means inherit, so it maps to null rather than 0 - a zero rate would
+// bill the client nothing and read as a deliberate choice.
+function BillableRateInput({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  value: number | null | undefined;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-500 mb-1">{label}</label>
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        value={value ?? ''}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value === '' ? null : parseFloat(e.target.value))}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+      />
+    </div>
+  );
+}
+
 export function ManagerDashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -246,6 +275,7 @@ export function ManagerDashboard() {
     mutationFn: jobsApi.markCompleted,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['financials'] });
     },
   });
 
@@ -419,6 +449,9 @@ export function ManagerDashboard() {
       estimate_amount: job.estimate_amount ? parseFloat(job.estimate_amount) : undefined,
       address_override: job.address_override || '',
       is_redseal_trade: job.is_redseal_trade || false,
+      billable_labour_rate: job.billable_labour_rate ? parseFloat(job.billable_labour_rate) : null,
+      billable_redseal_rate: job.billable_redseal_rate ? parseFloat(job.billable_redseal_rate) : null,
+      billable_km_rate: job.billable_km_rate ? parseFloat(job.billable_km_rate) : null,
       assigned_worker_ids: job.assigned_workers?.map((w) => w.id) || job.workers?.map((w) => w.id) || [],
       worker_schedule: job.worker_schedule || [],
     });
@@ -1115,6 +1148,42 @@ export function ManagerDashboard() {
                     Red Seal Trade {editFormData.is_redseal_trade && <span className="text-gray-500">(techs tick Red Seal per timesheet to bill $100/hr)</span>}
                   </span>
                 </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Billable Rates
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  <BillableRateInput
+                    label="Labour $/hr"
+                    placeholder="80.00"
+                    value={editFormData.billable_labour_rate}
+                    onChange={(value) =>
+                      setEditFormData({ ...editFormData, billable_labour_rate: value })
+                    }
+                  />
+                  <BillableRateInput
+                    label="Red Seal $/hr"
+                    placeholder="100.00"
+                    value={editFormData.billable_redseal_rate}
+                    onChange={(value) =>
+                      setEditFormData({ ...editFormData, billable_redseal_rate: value })
+                    }
+                  />
+                  <BillableRateInput
+                    label="Travel $/km"
+                    placeholder="1.50"
+                    value={editFormData.billable_km_rate}
+                    onChange={(value) =>
+                      setEditFormData({ ...editFormData, billable_km_rate: value })
+                    }
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave blank to use the estimate's rate, or the standard rate. Every invoice
+                  on this job bills at these rates.
+                </p>
               </div>
 
               {workers.length > 0 && (
@@ -1854,6 +1923,12 @@ export function ManagerDashboard() {
                         className="text-sm text-obatek hover:underline"
                       >
                         Edit
+                      </button>
+                      <button
+                        onClick={() => navigate('/invoices')}
+                        className="text-sm text-obatek hover:underline"
+                      >
+                        Invoice
                       </button>
                       <button
                         onClick={() => markCompleteMutation.mutate(job.id)}

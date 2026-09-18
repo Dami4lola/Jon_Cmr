@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from ..models import Job, Timesheet
 from ..schemas.financials import (
     JobCostLineDetail,
+    JobInvoiceBrief,
     JobWorkerCostSummary,
     JobFinancialsSummary,
     JobFinancialsDetail,
@@ -23,14 +24,12 @@ from ..schemas.financials import (
     JobFinancialsListResponse,
 )
 from ..services.job_cost import (
-    BillingRates,
     compute_job_billing,
     compute_timesheet_cost,
     compute_worker_hst,
+    date_in_period,
     q,
-    BILLABLE_KM_RATE,
-    LABOUR_RATE,
-    REDSEAL_RATE,
+    resolve_billing_rates,
 )
 from .deps import DBSession, ManagerUser
 
@@ -54,27 +53,70 @@ def _job_query():
     """
     return select(Job).options(
         selectinload(Job.client),
-        selectinload(Job.invoice),
+        selectinload(Job.invoices),
         selectinload(Job.estimate),
         selectinload(Job.timesheets).selectinload(Timesheet.worker),
     )
+
+
+def _uninvoiced_timesheets(job: Job) -> list[Timesheet]:
+    """
+    Timesheets that fall inside no invoice's billing period.
+
+    The signal for work that has been done but not billed. It is coverage by date, so it
+    does NOT catch a timesheet filed after an invoice went out but dated inside the
+    period that invoice covered - that one surfaces as invoice_variance_amount going
+    negative, the invoice having billed less than its own period is now worth.
+
+    Pure Python over relationships _job_query already eager-loads, so no extra query.
+    """
+    return [
+        timesheet
+        for timesheet in job.timesheets
+        if not any(
+            date_in_period(timesheet.date, invoice.period_start, invoice.period_end)
+            for invoice in job.invoices
+        )
+    ]
+
+
+def _rollup_invoice_status(invoices: list) -> str | None:
+    """
+    One status across several progress invoices, worst state first.
+
+    Anything overdue makes the job overdue; otherwise a draft still sitting unsent
+    outranks money already sent or collected. The per-invoice truth ships alongside in
+    the detail response.
+    """
+    if not invoices:
+        return None
+    statuses = {invoice.status for invoice in invoices}
+    for state in ("overdue", "draft", "sent"):
+        if state in statuses:
+            return state
+    return "paid"
 
 
 def _resolve_budget(job: Job) -> dict:
     """
     Decide what this job is worth, and by which source.
 
-    Precedence is invoice, then a full Estimate record, then the hand-typed
-    Job.estimate_amount. An issued invoice is what was actually billed, so it beats
-    a forecast; and Estimate.total is recomputed from its child rows on every save
+    Precedence is invoices, then a full Estimate record, then the hand-typed
+    Job.estimate_amount. Issued invoices are what was actually billed, so they beat a
+    forecast; and Estimate.total is recomputed from its child rows on every save
     whereas Job.estimate_amount is typed once and never re-synced.
+
+    Invoices only win once they cover EVERY timesheet. Cost is whole-job and cannot be
+    split by billing period, so measuring it against a job that is only half billed
+    would report a loss on every job mid-progress-billing. Until then the estimate is
+    the honest comparison, and the amounts actually billed are reported separately.
 
     Margin compares the PRE-TAX side of both. HST is a pass-through in both
     directions - remitted on client invoices, reclaimed as an input tax credit on
     subcontractor HST - so mixing tax into either side invents a margin that is not
     real.
     """
-    invoice = job.invoice
+    invoices = job.invoices
     estimate = job.estimate
 
     if estimate is not None:
@@ -87,9 +129,13 @@ def _resolve_budget(job: Job) -> dict:
         estimate_amount = None
         estimate_subtotal = None
 
-    if invoice is not None:
-        budget_amount = invoice.subtotal
-        budget_total_with_hst = invoice.total
+    invoiced_subtotal = sum((invoice.subtotal for invoice in invoices), Decimal("0"))
+    invoiced_total = sum((invoice.total for invoice in invoices), Decimal("0"))
+    fully_invoiced = bool(invoices) and not _uninvoiced_timesheets(job)
+
+    if fully_invoiced:
+        budget_amount = invoiced_subtotal
+        budget_total_with_hst = invoiced_total
         budget_source = BUDGET_SOURCE_INVOICE
     elif estimate is not None:
         budget_amount = estimate_subtotal
@@ -109,39 +155,11 @@ def _resolve_budget(job: Job) -> dict:
         "budget_total_with_hst": budget_total_with_hst,
         "budget_source": budget_source,
         "estimate_amount": estimate_amount,
-        "invoice_total": invoice.total if invoice else None,
-        "invoice_status": invoice.status if invoice else None,
+        "invoice_count": len(invoices),
+        "invoice_subtotal_billed": invoiced_subtotal if invoices else None,
+        "invoice_total": invoiced_total if invoices else None,
+        "invoice_status": _rollup_invoice_status(invoices),
     }
-
-
-def _resolve_billing_rates(job: Job) -> BillingRates:
-    """
-    The billed-out rates this job is priced at.
-
-    A job quoted at a non-default rate is tracked at the rate it was quoted, so the
-    page reconciles with what the client was actually told. Precedence mirrors
-    _resolve_budget: an issued invoice is what was really billed, then the estimate,
-    then the global defaults. Labour has no per-estimate override, so it is always
-    LABOUR_RATE.
-    """
-    estimate = job.estimate
-    invoice = job.invoice
-
-    km_rate = BILLABLE_KM_RATE
-    source = "default"
-    if estimate is not None and estimate.km_rate is not None:
-        km_rate = estimate.km_rate
-        source = "estimate"
-    if invoice is not None and invoice.km_rate is not None:
-        km_rate = invoice.km_rate
-        source = "invoice"
-
-    return BillingRates(
-        labour_rate=LABOUR_RATE,
-        redseal_rate=estimate.redseal_rate if estimate is not None else REDSEAL_RATE,
-        km_rate=km_rate,
-        source=source,
-    )
 
 
 def _calculate_variance(budget_amount: Decimal | None, subtotal_billable: Decimal) -> dict:
@@ -323,7 +341,7 @@ def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
     Roll a job's timesheets up into the fields shared by the list row and the detail
     view, so the two can never disagree. A job with no timesheets is a valid zero.
     """
-    rates = _resolve_billing_rates(job)
+    rates = resolve_billing_rates(job)
     billing = compute_job_billing(job, job.timesheets, rates=rates)
     workers = _build_worker_summaries(job, billing)
 
@@ -343,8 +361,10 @@ def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
         )
     )
 
+    uninvoiced = _uninvoiced_timesheets(job)
     budget = _resolve_budget(job)
     subtotal_billable = billing.subtotal
+    invoiced_subtotal = budget.pop("invoice_subtotal_billed") or Decimal("0")
 
     fields = {
         "job_id": job.id,
@@ -382,6 +402,15 @@ def _build_job_financials(job: Job) -> tuple[dict, list[JobWorkerCostSummary]]:
         "rate_source": rates.source,
         "is_redseal_trade": job.is_redseal_trade,
         "estimate_subtotal": job.estimate.subtotal if job.estimate else None,
+        "invoice_subtotal_billed": invoiced_subtotal if job.invoices else None,
+        # Priced from the uncovered timesheets themselves rather than by subtracting
+        # what was invoiced, so a dump fee or a manual override on one invoice cannot
+        # disguise work that has not been billed.
+        "uninvoiced_billable": (
+            compute_job_billing(job, uninvoiced, rates=rates).subtotal
+            if uninvoiced else Decimal("0")
+        ),
+        "uninvoiced_timesheet_count": len(uninvoiced),
         **budget,
         **_calculate_margin(budget["budget_amount"], subtotal_cost),
         **_calculate_variance(budget["budget_amount"], subtotal_billable),
@@ -522,7 +551,11 @@ def get_job_financials(
 
     fields, workers = _build_job_financials(job)
     estimate = job.estimate
-    invoice = job.invoice
+    invoices = job.invoices
+    # The most recent invoice, so the single-invoice affordances on the page keep
+    # working; the sums beside them cover every progress invoice.
+    latest = max(invoices, key=lambda inv: (inv.created_date, inv.id)) if invoices else None
+    invoiced_subtotal = sum((inv.subtotal for inv in invoices), Decimal("0"))
 
     return JobFinancialsDetail(
         **fields,
@@ -531,12 +564,28 @@ def get_job_financials(
         estimate_id=estimate.id if estimate else None,
         estimate_number=estimate.estimate_number if estimate else None,
         estimate_status=estimate.status if estimate else None,
-        invoice_id=invoice.id if invoice else None,
-        invoice_number=invoice.invoice_number if invoice else None,
-        invoice_subtotal=invoice.subtotal if invoice else None,
-        invoice_extra_fees=(invoice.dump_fee + invoice.admin_fee) if invoice else None,
-        invoice_variance_amount=(
-            q(invoice.subtotal - fields["subtotal_billable"]) if invoice else None
+        invoice_id=latest.id if latest else None,
+        invoice_number=latest.invoice_number if latest else None,
+        invoice_subtotal=invoiced_subtotal if invoices else None,
+        invoice_extra_fees=(
+            sum((inv.dump_fee + inv.admin_fee for inv in invoices), Decimal("0"))
+            if invoices else None
         ),
+        invoice_variance_amount=(
+            q(invoiced_subtotal - fields["subtotal_billable"]) if invoices else None
+        ),
+        invoices=[
+            JobInvoiceBrief(
+                id=inv.id,
+                invoice_number=inv.invoice_number,
+                created_date=inv.created_date,
+                period_start=inv.period_start,
+                period_end=inv.period_end,
+                subtotal=inv.subtotal,
+                total=inv.total,
+                status=inv.status,
+            )
+            for inv in invoices
+        ],
         workers=workers,
     )

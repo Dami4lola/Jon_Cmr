@@ -31,6 +31,23 @@ export function formatDate(date: string | Date): string {
   }).format(d);
 }
 
+/**
+ * The billing period an invoice covers.
+ *
+ * A null bound is unbounded, so an invoice with neither covers the whole job - the shape
+ * every invoice issued before progress billing still carries.
+ */
+export function formatBillingPeriod(period: {
+  period_start?: string | null;
+  period_end?: string | null;
+}): string {
+  const { period_start: start, period_end: end } = period;
+  if (start && end) return `${formatDate(start)} - ${formatDate(end)}`;
+  if (start) return `From ${formatDate(start)}`;
+  if (end) return `Up to ${formatDate(end)}`;
+  return 'Whole job';
+}
+
 export function formatTime(time: string): string {
   const [hours, minutes] = time.split(':');
   const h = parseInt(hours, 10);

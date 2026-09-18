@@ -7,33 +7,52 @@ import datetime as dt
 from decimal import Decimal
 
 from app.api.financials import (
-    _resolve_billing_rates,
     _calculate_variance,
     _calculate_gross_profit,
     _resolve_budget,
     _calculate_margin,
     _build_job_financials,
+    _uninvoiced_timesheets,
+    _rollup_invoice_status,
     BUDGET_SOURCE_INVOICE,
     BUDGET_SOURCE_ESTIMATE,
     BUDGET_SOURCE_JOB_FIELD,
     BUDGET_SOURCE_NONE,
 )
+from app.services.job_cost import resolve_billing_rates
 from app.models import Estimate, Invoice
 
 from .test_payroll_characterization import make_job, make_timesheet, make_worker
 
 
-def attach_invoice(job, subtotal="10000.00", total="11300.00", status="sent"):
+def attach_invoice(
+    job,
+    subtotal="10000.00",
+    total="11300.00",
+    status="sent",
+    invoice_id=1,
+    invoice_number="INV-2026-0001",
+    period_start=None,
+    period_end=None,
+    created_date=dt.date(2026, 1, 1),
+    dump_fee="0",
+    admin_fee="0",
+):
     invoice = Invoice(
-        id=1,
+        id=invoice_id,
         job_id=job.id,
-        invoice_number="INV-2026-0001",
+        invoice_number=invoice_number,
+        created_date=created_date,
+        period_start=period_start,
+        period_end=period_end,
         subtotal=Decimal(subtotal),
         hst_amount=Decimal(total) - Decimal(subtotal),
         total=Decimal(total),
+        dump_fee=Decimal(dump_fee),
+        admin_fee=Decimal(admin_fee),
         status=status,
     )
-    job.invoice = invoice
+    job.invoices.append(invoice)
     return invoice
 
 
@@ -235,7 +254,7 @@ class TestJobRollup:
 
 class TestBillingRateResolution:
     def test_defaults_when_no_estimate_or_invoice(self):
-        rates = _resolve_billing_rates(make_job())
+        rates = resolve_billing_rates(make_job())
 
         assert rates.labour_rate == Decimal("80.00")
         assert rates.redseal_rate == Decimal("100.00")
@@ -248,31 +267,55 @@ class TestBillingRateResolution:
         estimate.km_rate = Decimal("2.00")
         estimate.redseal_rate = Decimal("125.00")
 
-        rates = _resolve_billing_rates(job)
+        rates = resolve_billing_rates(job)
 
         assert rates.km_rate == Decimal("2.00")
         assert rates.redseal_rate == Decimal("125.00")
         assert rates.source == "estimate"
 
-    def test_invoice_km_rate_wins_over_the_estimate(self):
+    def test_job_override_beats_the_estimate(self):
+        job = make_job()
+        estimate = attach_estimate(job)
+        estimate.km_rate = Decimal("2.00")
+        job.billable_km_rate = Decimal("1.75")
+
+        rates = resolve_billing_rates(job)
+
+        assert rates.km_rate == Decimal("1.75")
+        assert rates.source == "job"
+
+    def test_invoice_rates_are_frozen_not_a_live_source(self):
+        """
+        An issued invoice records what was billed, never what to bill next - otherwise a
+        manual tweak on one progress invoice would reprice every invoice after it.
+        """
         job = make_job()
         estimate = attach_estimate(job)
         estimate.km_rate = Decimal("2.00")
         invoice = attach_invoice(job)
         invoice.km_rate = Decimal("1.75")
 
-        rates = _resolve_billing_rates(job)
+        rates = resolve_billing_rates(job)
 
-        assert rates.km_rate == Decimal("1.75")
-        assert rates.source == "invoice"
+        assert rates.km_rate == Decimal("2.00")
+        assert rates.source == "estimate"
 
-    def test_labour_rate_is_always_the_global_rate(self):
+    def test_labour_rate_falls_back_to_the_global_rate_when_the_job_does_not_override_it(self):
         """The estimator has no per-estimate labour override."""
         job = make_job()
         estimate = attach_estimate(job)
         estimate.km_rate = Decimal("2.00")
 
-        assert _resolve_billing_rates(job).labour_rate == Decimal("80.00")
+        assert resolve_billing_rates(job).labour_rate == Decimal("80.00")
+
+    def test_job_labour_override_wins(self):
+        job = make_job()
+        job.billable_labour_rate = Decimal("95.00")
+
+        rates = resolve_billing_rates(job)
+
+        assert rates.labour_rate == Decimal("95.00")
+        assert rates.source == "job"
 
 
 class TestVariance:
@@ -448,3 +491,122 @@ class TestRedSealFollowsTheTimesheet:
 
         assert fields["labour_billable_rate"] == Decimal("80.00")
         assert fields["redseal_billable_rate"] == Decimal("100.00")
+
+
+class TestMultipleInvoices:
+    """
+    Progress billing: a job carries several invoices, each covering a billing period.
+    The page must keep reporting cost and what has been billed while the job is only
+    part-way through being invoiced.
+    """
+
+    def _part_billed_job(self):
+        """One January timesheet billed, one February timesheet not."""
+        job = make_job()
+        worker = make_worker()
+        january = make_timesheet(worker, job, timesheet_id=1)
+        january.date = dt.date(2026, 1, 10)
+        february = make_timesheet(worker, job, timesheet_id=2)
+        february.date = dt.date(2026, 2, 10)
+        job.timesheets = [january, february]
+        attach_invoice(
+            job,
+            period_start=dt.date(2026, 1, 1),
+            period_end=dt.date(2026, 1, 31),
+        )
+        return job
+
+    def test_amounts_are_summed_across_invoices(self):
+        job = make_job()
+        for n in (1, 2, 3):
+            attach_invoice(
+                job,
+                subtotal="1000.00",
+                total="1130.00",
+                invoice_id=n,
+                invoice_number=f"INV-2026-000{n}",
+                dump_fee="50.00",
+                admin_fee="25.00",
+            )
+
+        budget = _resolve_budget(job)
+
+        assert budget["invoice_count"] == 3
+        assert budget["invoice_subtotal_billed"] == Decimal("3000.00")
+        assert budget["invoice_total"] == Decimal("3390.00")
+
+    def test_status_rolls_up_worst_first(self):
+        assert _rollup_invoice_status([]) is None
+
+        def statuses(*values):
+            job = make_job()
+            for n, value in enumerate(values, start=1):
+                attach_invoice(job, status=value, invoice_id=n, invoice_number=f"INV-{n}")
+            return _rollup_invoice_status(job.invoices)
+
+        assert statuses("paid", "overdue", "draft") == "overdue"
+        assert statuses("paid", "draft", "sent") == "draft"
+        assert statuses("paid", "sent") == "sent"
+        assert statuses("paid", "paid") == "paid"
+
+    def test_a_fully_invoiced_job_still_budgets_from_its_invoices(self):
+        job = make_job()
+        job.timesheets = []
+        attach_estimate(job)
+        attach_invoice(job)
+
+        budget = _resolve_budget(job)
+
+        assert budget["budget_source"] == BUDGET_SOURCE_INVOICE
+        assert budget["budget_amount"] == Decimal("10000.00")
+
+    def test_a_part_billed_job_falls_back_to_the_estimate(self):
+        """
+        Cost is whole-job and cannot be split by period, so measuring it against a
+        half-billed job would report a loss on every job mid-progress-billing.
+        """
+        job = self._part_billed_job()
+        attach_estimate(job)
+
+        budget = _resolve_budget(job)
+
+        assert budget["budget_source"] == BUDGET_SOURCE_ESTIMATE
+        assert budget["invoice_total"] == Decimal("11300.00")
+
+    def test_uninvoiced_work_is_reported(self):
+        job = self._part_billed_job()
+
+        fields, _ = _build_job_financials(job)
+
+        assert fields["uninvoiced_timesheet_count"] == 1
+        assert fields["invoice_count"] == 1
+        assert fields["uninvoiced_billable"] > Decimal("0")
+
+    def test_a_late_timesheet_inside_a_billed_window_reads_as_negative_variance(self):
+        """
+        Filed after the January invoice went out but dated inside the period it covered.
+        Coverage is by date, so it does not count as uninvoiced - what surfaces it is the
+        invoice having billed less than its own period is now worth.
+        """
+        job = self._part_billed_job()
+        before = _build_job_financials(job)[0]
+
+        late = make_timesheet(make_worker(worker_id=2), job, timesheet_id=3)
+        late.date = dt.date(2026, 1, 15)
+        job.timesheets.append(late)
+
+        after = _build_job_financials(job)[0]
+
+        assert after["uninvoiced_timesheet_count"] == before["uninvoiced_timesheet_count"]
+        assert after["subtotal_billable"] > before["subtotal_billable"]
+
+    def test_cost_is_reported_regardless_of_billing_state(self):
+        """Financial tracking never disappears because a job is mid-billing."""
+        job = self._part_billed_job()
+
+        fields, _ = _build_job_financials(job)
+
+        assert fields["subtotal_cost"] > Decimal("0")
+        assert fields["total_cost"] > Decimal("0")
+        assert fields["subtotal_billable"] > Decimal("0")
+        assert fields["invoice_subtotal_billed"] == Decimal("10000.00")

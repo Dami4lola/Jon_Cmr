@@ -19,6 +19,7 @@ from app.services.job_cost import (
     MINIMUM_HOURS,
     compute_timesheet_cost,
     compute_worker_hst,
+    resolve_billing_rates,
 )
 
 from .test_payroll_characterization import make_job, make_timesheet, make_worker
@@ -401,7 +402,11 @@ class TestBillingMatchesTheInvoice:
                 timesheets.append(ts)
                 timesheet_id += 1
 
-        from_billing = invoice_amounts(compute_job_billing(job, timesheets))
+        # Resolved rather than defaulted, so this pins the equivalence itself rather
+        # than the coincidence that an un-overridden job resolves to the defaults.
+        from_billing = invoice_amounts(
+            compute_job_billing(job, timesheets, rates=resolve_billing_rates(job))
+        )
         from_invoice = _calculate_invoice_amounts(StubSession(timesheets), job, None)
 
         assert from_billing == from_invoice

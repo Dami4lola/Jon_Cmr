@@ -11,7 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT
 
-from ..models import Invoice, Job, Client
+from ..models import Invoice, Client
 
 # Company info
 COMPANY_NAME = "Just Jon Industries INC."
@@ -104,7 +104,24 @@ def _draw_logo_text(canvas, right_x, top_y):
     canvas.drawRightString(right_x, top_y - 26, "Handyman Services")
 
 
-def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client, timesheets: list | None = None) -> bytes:
+def _format_billing_period(invoice: Invoice) -> str | None:
+    """
+    The period this invoice bills, or None when it covers the whole job.
+
+    Returning None for an unbounded period keeps every invoice issued before progress
+    billing reprinting exactly as it was first sent to the client.
+    """
+    start, end = invoice.period_start, invoice.period_end
+    if start and end:
+        return f"{start.strftime('%B %d')} - {end.strftime('%B %d, %Y')}"
+    if start:
+        return f"From {start.strftime('%B %d, %Y')}"
+    if end:
+        return f"Up to {end.strftime('%B %d, %Y')}"
+    return None
+
+
+def generate_invoice_pdf(invoice: Invoice, client: Client) -> bytes:
     """Generate a PDF invoice and return it as bytes."""
     buffer = BytesIO()
 
@@ -158,6 +175,12 @@ def generate_invoice_pdf(invoice: Invoice, job: Job, client: Client, timesheets:
         [Paragraph("Invoice No.", label_style), Paragraph(str(invoice.invoice_number), value_style)],
         [Paragraph("Date", label_style), Paragraph(invoice.created_date.strftime("%B %d, %Y"), value_style)],
     ]
+
+    billing_period = _format_billing_period(invoice)
+    if billing_period:
+        inv_data.append(
+            [Paragraph("Billing Period", label_style), Paragraph(billing_period, value_style)]
+        )
 
     t_left = Table(inv_data, colWidths=[1.0 * inch, 2.2 * inch])
     t_left.setStyle(TableStyle([

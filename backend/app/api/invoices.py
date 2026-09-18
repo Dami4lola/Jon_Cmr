@@ -6,6 +6,7 @@ import logging
 import zipfile
 import requests as http_requests
 from collections import defaultdict
+from dataclasses import replace
 from fastapi import APIRouter, HTTPException, status
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,9 @@ from ..services.invoice_pdf import generate_invoice_pdf
 from ..services.job_cost import (  # noqa: F401
     BillingRates,
     compute_job_billing,
+    date_in_period,
     invoice_amounts,
+    resolve_billing_rates,
     LABOUR_RATE,
     REDSEAL_RATE,
     HST_RATE,
@@ -68,42 +71,79 @@ def _round_hours(hours_worked: Decimal, break_duration: Decimal = Decimal("0"), 
     return max(billable, minimum_hours)
 
 
-def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
+def _timesheets_in_period(
+    session,
+    job_id: int,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    with_receipts: bool = False,
+) -> list[Timesheet]:
     """
-    Auto-calculate all invoice line items from job timesheet data.
+    The job's timesheets whose date falls in the billing period, both ends inclusive.
+
+    A null bound is unbounded, so a null/null period is the whole job - the shape every
+    invoice issued before progress billing existed still carries.
+
+    This is what makes progress billing safe against double-billing: a timesheet has a
+    single date, so it lands in at most one period, and the 4-hour minimum that
+    compute_job_billing applies per timesheet can never be applied to the same work
+    twice. Travel and materials follow the same partition, because both are derived from
+    the timesheets handed to the billing engine.
+    """
+    statement = select(Timesheet).where(Timesheet.job_id == job_id)
+    if period_start is not None:
+        statement = statement.where(Timesheet.date >= period_start)
+    if period_end is not None:
+        statement = statement.where(Timesheet.date <= period_end)
+
+    loads = [selectinload(Timesheet.worker)]
+    if with_receipts:
+        loads.append(selectinload(Timesheet.receipts))
+
+    return session.exec(statement.options(*loads).order_by(Timesheet.date)).all()
+
+
+def _resolve_invoice_rates(job: Job, data: InvoiceCreate | None) -> BillingRates:
+    """The job's billable rates, with any per-invoice override laid over the top."""
+    rates = resolve_billing_rates(job)
+    if data is None:
+        return rates
+
+    return replace(
+        rates,
+        labour_rate=data.labour_rate if data.labour_rate is not None else rates.labour_rate,
+        redseal_rate=data.redseal_rate if data.redseal_rate is not None else rates.redseal_rate,
+        km_rate=data.km_rate if data.km_rate is not None else rates.km_rate,
+    )
+
+
+def _calculate_invoice_amounts(
+    session,
+    job: Job,
+    data: InvoiceCreate | None,
+    *,
+    period_start: date | None = None,
+    period_end: date | None = None,
+):
+    """
+    Auto-calculate all invoice line items from the job's timesheets in the billing period.
     - Labour hours: sum of hours_worked from timesheets (rounded, 4hr min per timesheet)
-    - Labour amount: billable hours x LABOUR_RATE, or REDSEAL_RATE when the job is a
-      Red Seal trade. NOT the worker's hourly rate - that is a payout figure.
-    - Travel: one round trip per unique (date, worker) pair x the job's distance
+    - Labour amount: billable hours x the job's billable labour rate, or its Red Seal
+      rate when the worker ticked Red Seal. NOT the worker's hourly rate - that is a
+      payout figure.
+    - Travel: one round trip per non-HQ timesheet x the job's distance
     - Materials: sum of personal_materials from timesheets
     - Inventory materials: sum of company_materials from timesheets
 
     The arithmetic lives in services/job_cost.py so the invoice, the payout run and the
-    Job Financials page cannot drift apart. The query and the audit logging stay here.
+    Job Financials page cannot drift apart. The query stays here.
     """
-    timesheets = session.exec(
-        select(Timesheet)
-        .where(Timesheet.job_id == job.id)
-        .options(selectinload(Timesheet.worker))
-    ).all()
-
-    logger.info(f"Invoice calc for job {job.id}: found {len(timesheets)} timesheets")
-    for ts in timesheets:
-        logger.info(
-            f"  Timesheet {ts.id}: worker={ts.worker.name if ts.worker else 'None'}, "
-            f"hours={ts.hours_worked}, rate={ts.worker.hourly_rate if ts.worker else 'N/A'}, "
-            f"personal_materials={ts.personal_materials}, company_materials={ts.company_materials}"
-        )
+    timesheets = _timesheets_in_period(session, job.id, period_start, period_end)
 
     billing = compute_job_billing(
         job,
         timesheets,
-        rates=BillingRates(
-            labour_rate=LABOUR_RATE,
-            redseal_rate=REDSEAL_RATE,
-            km_rate=data.km_rate if data else DEFAULT_KM_RATE,
-            source="default",
-        ),
+        rates=_resolve_invoice_rates(job, data),
         dump_fee=data.dump_fee if data else Decimal("0"),
         admin_fee=data.admin_fee if data else Decimal("0"),
         include_hst=data.include_hst if data else True,
@@ -114,13 +154,83 @@ def _calculate_invoice_amounts(session, job: Job, data: InvoiceCreate | None):
     return invoice_amounts(billing)
 
 
+def _overlapping_invoices(
+    job: Job,
+    period_start: date | None,
+    period_end: date | None,
+) -> list[Invoice]:
+    """
+    Existing invoices whose billing period intersects this one, a null bound being
+    unbounded in that direction.
+
+    A whole-job invoice therefore overlaps everything, which is the point: with the
+    one-invoice-per-job rule gone, a second whole-job invoice would bill every timesheet
+    a second time and nothing else in the system would notice.
+    """
+    def intersects(invoice: Invoice) -> bool:
+        starts_after_their_end = (
+            period_start is not None
+            and invoice.period_end is not None
+            and period_start > invoice.period_end
+        )
+        ends_before_their_start = (
+            period_end is not None
+            and invoice.period_start is not None
+            and period_end < invoice.period_start
+        )
+        return not (starts_after_their_end or ends_before_their_start)
+
+    return [invoice for invoice in job.invoices if intersects(invoice)]
+
+
+def _reject_double_billing(
+    session,
+    job: Job,
+    period_start: date | None,
+    period_end: date | None,
+) -> None:
+    """
+    Refuse a period whose timesheets another invoice has already billed.
+
+    Only an overlap that actually contains timesheets is a double-bill - re-billing a
+    gap where nobody worked is harmless, and blocking it would be a false alarm.
+    """
+    overlapping = _overlapping_invoices(job, period_start, period_end)
+    if not overlapping:
+        return
+
+    already_billed = {
+        timesheet.date
+        for invoice in overlapping
+        for timesheet in _timesheets_in_period(
+            session, job.id, invoice.period_start, invoice.period_end
+        )
+        if date_in_period(timesheet.date, period_start, period_end)
+    }
+    if not already_billed:
+        return
+
+    numbers = ", ".join(invoice.invoice_number for invoice in overlapping)
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=(
+            f"Timesheets on {len(already_billed)} day(s) in this period are already "
+            f"billed on invoice {numbers}. Adjust the period, or resend with "
+            f"allow_overlap to bill them again."
+        ),
+    )
+
+
 def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceResponse:
     """Convert Invoice model to response schema"""
     return InvoiceResponse(
         id=invoice.id,
+        job_id=invoice.job_id,
         invoice_number=invoice.invoice_number,
         created_date=invoice.created_date,
         due_date=invoice.due_date,
+        period_start=invoice.period_start,
+        period_end=invoice.period_end,
         subtotal=invoice.subtotal,
         hst_amount=invoice.hst_amount,
         total=invoice.total,
@@ -136,6 +246,8 @@ def invoice_to_response(invoice: Invoice, job: Job, client: Client) -> InvoiceRe
         total_labour_hours=invoice.total_labour_hours,
         total_distance_km=invoice.total_distance_km,
         km_rate=invoice.km_rate,
+        labour_rate=invoice.labour_rate,
+        redseal_rate=invoice.redseal_rate,
         job=JobBrief(
             id=job.id,
             title=job.title,
@@ -212,11 +324,22 @@ def create_invoice(
     current_user: ManagerUser,
     data: InvoiceCreate | None = None,
 ):
-    """Create an invoice for a job. Auto-calculates from timesheets/receipts, manager can override."""
+    """
+    Create an invoice for a job. Auto-calculates from timesheets/receipts, manager can override.
+
+    A job is billed as many times as it takes, at any point in its life - completing the
+    job is a scheduling decision and has nothing to do with invoicing. Each invoice
+    covers a billing period, and the periods must not overlap unless the manager says so
+    outright.
+    """
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.invoice))
+        .options(
+            selectinload(Job.client),
+            selectinload(Job.invoices),
+            selectinload(Job.estimate),
+        )
     )
     job = session.exec(statement).first()
 
@@ -226,13 +349,15 @@ def create_invoice(
             detail="Job not found",
         )
 
-    if job.invoice:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invoice {job.invoice.invoice_number} already exists for this job",
-        )
+    period_start = data.period_start if data else None
+    period_end = data.period_end if data else None
 
-    amounts = _calculate_invoice_amounts(session, job, data)
+    if not (data and data.allow_overlap):
+        _reject_double_billing(session, job, period_start, period_end)
+
+    amounts = _calculate_invoice_amounts(
+        session, job, data, period_start=period_start, period_end=period_end
+    )
 
     # Apply manager overrides if provided
     if data:
@@ -277,6 +402,8 @@ def create_invoice(
         invoice_number=inv_number,
         scope_of_work=data.scope_of_work if data else None,
         due_date=date.today() + timedelta(days=30),
+        period_start=period_start,
+        period_end=period_end,
         notes=data.notes if data else "Payment due within 30 days.",
         **amounts,
     )
@@ -288,17 +415,48 @@ def create_invoice(
     return invoice_to_response(invoice, job, job.client)
 
 
+@router.get("/job/{job_id}", response_model=list[InvoiceResponse])
+def list_job_invoices(
+    job_id: int,
+    session: DBSession,
+    current_user: ManagerUser,
+):
+    """Every invoice raised against one job, in billing-period order (manager only)"""
+    invoices = session.exec(
+        select(Invoice)
+        .where(Invoice.job_id == job_id)
+        .options(selectinload(Invoice.job).selectinload(Job.client))
+    ).all()
+
+    ordered = sorted(
+        invoices,
+        key=lambda inv: (
+            inv.period_start is not None,
+            inv.period_start or date.min,
+            inv.created_date,
+            inv.id,
+        ),
+    )
+    return [invoice_to_response(inv, inv.job, inv.job.client) for inv in ordered]
+
+
 @router.get("/preview/job/{job_id}", response_model=InvoicePreview)
 def preview_invoice(
     job_id: int,
     session: DBSession,
     current_user: ManagerUser,
+    period_start: date | None = None,
+    period_end: date | None = None,
 ):
-    """Preview auto-calculated invoice amounts for a job before creation"""
+    """Preview auto-calculated invoice amounts for a job's billing period before creation"""
     job = session.exec(
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client))
+        .options(
+            selectinload(Job.client),
+            selectinload(Job.invoices),
+            selectinload(Job.estimate),
+        )
     ).first()
 
     if not job:
@@ -307,10 +465,17 @@ def preview_invoice(
             detail="Job not found",
         )
 
-    amounts = _calculate_invoice_amounts(session, job, None)
+    amounts = _calculate_invoice_amounts(
+        session, job, None, period_start=period_start, period_end=period_end
+    )
+    rates = resolve_billing_rates(job)
+    timesheets = _timesheets_in_period(session, job.id, period_start, period_end)
 
     return InvoicePreview(
         invoice_number=generate_invoice_number(session),
+        period_start=period_start,
+        period_end=period_end,
+        timesheet_count=len(timesheets),
         labour_hours=amounts["total_labour_hours"],
         labour_amount=amounts["labour_amount"],
         travel_km=amounts["total_distance_km"],
@@ -321,6 +486,14 @@ def preview_invoice(
         subtotal=amounts["subtotal"],
         hst_amount=amounts["hst_amount"],
         total=amounts["total"],
+        labour_rate=rates.labour_rate,
+        redseal_rate=rates.redseal_rate,
+        km_rate=rates.km_rate,
+        rate_source=rates.source,
+        overlapping_invoice_numbers=[
+            inv.invoice_number
+            for inv in _overlapping_invoices(job, period_start, period_end)
+        ],
     )
 
 
@@ -368,17 +541,7 @@ def download_invoice_pdf(
             detail="Invoice not found",
         )
 
-    pdf_timesheets = session.exec(
-        select(Timesheet)
-        .where(Timesheet.job_id == invoice.job_id)
-        .options(
-            selectinload(Timesheet.worker),
-            selectinload(Timesheet.receipts),
-        )
-        .order_by(Timesheet.date.asc())
-    ).all()
-
-    pdf_content = generate_invoice_pdf(invoice, invoice.job, invoice.job.client, pdf_timesheets)
+    pdf_content = generate_invoice_pdf(invoice, invoice.job.client)
 
     disposition = "inline" if inline else "attachment"
     filename = f"Invoice_{invoice.invoice_number}.pdf"
@@ -501,7 +664,12 @@ def download_invoice_receipts(
     session: DBSession,
     current_user: AdminUser,
 ):
-    """Download all receipts for an invoice's job timesheets as a ZIP file (admin only)"""
+    """
+    Download the receipts this invoice billed as a ZIP file (admin only).
+
+    Scoped to the invoice's own billing period, so each progress invoice hands back the
+    expenses it charged for rather than every receipt on the job.
+    """
     invoice = session.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(
@@ -509,14 +677,13 @@ def download_invoice_receipts(
             detail="Invoice not found",
         )
 
-    timesheets = session.exec(
-        select(Timesheet)
-        .where(Timesheet.job_id == invoice.job_id)
-        .options(
-            selectinload(Timesheet.receipts),
-            selectinload(Timesheet.worker),
-        )
-    ).all()
+    timesheets = _timesheets_in_period(
+        session,
+        invoice.job_id,
+        invoice.period_start,
+        invoice.period_end,
+        with_receipts=True,
+    )
 
     all_receipts = [
         (receipt, ts.worker)

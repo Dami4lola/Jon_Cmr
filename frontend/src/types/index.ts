@@ -90,6 +90,10 @@ export interface Job {
   estimated_duration?: string;
   is_completed: boolean;
   is_redseal_trade: boolean;
+  // Null means inherit - from the estimate where it has the rate, else the global rate.
+  billable_labour_rate?: string | null;
+  billable_redseal_rate?: string | null;
+  billable_km_rate?: string | null;
   estimate_amount?: string;
   calculated_distance_km?: string;
   address_override?: string;
@@ -113,6 +117,11 @@ export interface JobCreate {
   estimate_amount?: number;
   address_override?: string;
   is_redseal_trade?: boolean;
+  // Null or omitted means inherit: the estimate's rate where it has one, else the
+  // global rate. Every invoice on the job bills at whatever this resolves to.
+  billable_labour_rate?: number | null;
+  billable_redseal_rate?: number | null;
+  billable_km_rate?: number | null;
   assigned_worker_ids?: number[];
   worker_schedule?: WorkerScheduleEntry[];
 }
@@ -194,6 +203,9 @@ export interface Invoice {
   invoice_number: string;
   created_date: string;
   due_date?: string;
+  // Billing period, both ends inclusive. Absent on a whole-job invoice.
+  period_start?: string | null;
+  period_end?: string | null;
   subtotal: string;
   hst_amount: string;
   total: string;
@@ -209,6 +221,8 @@ export interface Invoice {
   total_labour_hours: string;
   total_distance_km: string;
   km_rate: string;
+  labour_rate: string;
+  redseal_rate: string;
   job?: Job;
   client?: ClientBrief;
 }
@@ -216,6 +230,9 @@ export interface Invoice {
 export interface InvoiceCreate {
   invoice_number?: string;
   scope_of_work?: string;
+  period_start?: string;
+  period_end?: string;
+  allow_overlap?: boolean;
   labour_amount?: number;
   travel_amount?: number;
   materials_amount?: number;
@@ -225,6 +242,8 @@ export interface InvoiceCreate {
   total_labour_hours?: number;
   total_distance_km?: number;
   km_rate?: number;
+  labour_rate?: number;
+  redseal_rate?: number;
   include_hst?: boolean;
   notes?: string;
 }
@@ -246,6 +265,9 @@ export interface InvoiceUpdate {
 
 export interface InvoicePreview {
   invoice_number: string;
+  period_start: string | null;
+  period_end: string | null;
+  timesheet_count: number;
   labour_hours: string;
   labour_amount: string;
   travel_km: string;
@@ -256,6 +278,11 @@ export interface InvoicePreview {
   subtotal: string;
   hst_amount: string;
   total: string;
+  labour_rate: string;
+  redseal_rate: string;
+  km_rate: string;
+  rate_source: RateSource;
+  overlapping_invoice_numbers: string[];
 }
 
 // Receipt Types
@@ -755,6 +782,10 @@ export interface JobWorkerCostSummary {
 
 export type BudgetSource = 'invoice' | 'estimate' | 'job_estimate_amount' | 'none';
 
+// The highest tier that supplied any of a job's billable rates. 'invoice' only ever
+// describes one issued invoice's own frozen rates, never what the next one will bill at.
+export type RateSource = 'job' | 'estimate' | 'default' | 'invoice';
+
 export interface JobFinancialsSummary {
   job_id: number;
   job_title: string;
@@ -778,8 +809,15 @@ export interface JobFinancialsSummary {
   budget_total_with_hst: string | null;
   budget_source: BudgetSource;
   estimate_amount: string | null;
+  // Billed to date, summed across every progress invoice, always reported whichever
+  // source won the budget.
+  invoice_count: number;
+  invoice_subtotal_billed: string | null;
   invoice_total: string | null;
   invoice_status: string | null;
+  // Worked value not yet on any invoice, priced from the uncovered timesheets.
+  uninvoiced_billable: string;
+  uninvoiced_timesheet_count: number;
   margin_amount: string | null;
   margin_percent: string | null;
   is_over_budget: boolean;
@@ -797,7 +835,7 @@ export interface JobFinancialsSummary {
   redseal_hours: string;
   redseal_labour_billable: string;
   billable_km_rate: string;
-  rate_source: 'invoice' | 'estimate' | 'default';
+  rate_source: RateSource;
   is_redseal_trade: boolean;
   estimate_subtotal: string | null;
   variance_amount: string | null;
@@ -807,17 +845,31 @@ export interface JobFinancialsSummary {
   gross_profit_percent: string | null;
 }
 
+export interface JobInvoiceBrief {
+  id: number;
+  invoice_number: string;
+  created_date: string;
+  period_start: string | null;
+  period_end: string | null;
+  subtotal: string;
+  total: string;
+  status: string;
+}
+
 export interface JobFinancialsDetail extends JobFinancialsSummary {
   job_address: string;
   calculated_distance_km: string | null;
   estimate_id: number | null;
   estimate_number: string | null;
   estimate_status: string | null;
+  // The most recent invoice; the amounts below are sums across every invoice.
   invoice_id: number | null;
   invoice_number: string | null;
   invoice_subtotal: string | null;
   invoice_extra_fees: string | null;
+  // Negative on a part-billed job, where it is the worked value not yet invoiced.
   invoice_variance_amount: string | null;
+  invoices: JobInvoiceBrief[];
   workers: JobWorkerCostSummary[];
 }
 
