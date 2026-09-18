@@ -30,14 +30,22 @@ from app.api.invoices import (
     MINIMUM_HOURS,
 )
 
+from app.models import Invoice
+
 from .test_payroll_characterization import StubSession, make_job, make_timesheet, make_worker
 
 
+# Re-baselined 2026-09-17, deliberately: progress billing froze labour_rate and
+# redseal_rate onto the invoice alongside the km_rate it already stored, so a rate change
+# on the job leaves every invoice issued before it still explainable. Two keys added, no
+# amount changed - every golden below held unmoved through that commit.
 INVOICE_AMOUNT_KEYS = {
     "total_labour_hours",
     "labour_amount",
     "total_distance_km",
     "km_rate",
+    "labour_rate",
+    "redseal_rate",
     "travel_amount",
     "materials_amount",
     "inventory_materials",
@@ -289,6 +297,14 @@ class TestReturnedShape:
         amounts = amounts_for([make_timesheet(make_worker(), job)], job)
 
         assert set(amounts) == INVOICE_AMOUNT_KEYS
+
+    def test_every_key_is_a_real_invoice_column(self):
+        """Catches the failure the literal above cannot: a key Invoice(**amounts) rejects."""
+        job = make_job(distance_km="0.00")
+
+        amounts = amounts_for([make_timesheet(make_worker(), job)], job)
+
+        assert set(amounts) <= set(Invoice.model_fields)
 
 
 class TestGoldenCase:

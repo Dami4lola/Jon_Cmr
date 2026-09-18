@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
-from ..models import Job, Timesheet, Worker
+from ..models import Invoice, Job, Timesheet, Worker
 
 KM_RATE_OWN_VEHICLE = Decimal("0.85")
 # There is no company-truck rate: a truck day reimburses no travel, because the
@@ -296,6 +296,11 @@ class BillingRates:
 
     Resolved per job so a job quoted at a non-default rate is tracked at the rate it
     was actually quoted, rather than at the global default.
+
+    source names the highest tier that supplied any one of the three rates - "job",
+    "estimate" or "default" from resolve_billing_rates, or "invoice" from
+    invoice_billing_rates. Because the three rates resolve independently, it is not a
+    claim about where every rate came from.
     """
 
     labour_rate: Decimal
@@ -322,6 +327,85 @@ class BillingRates:
         is now metadata and an audit signal only.
         """
         return self.redseal_rate if timesheet.is_redseal else self.labour_rate
+
+
+def resolve_billing_rates(job: Job) -> BillingRates:
+    """
+    The rates the next invoice on this job prices at, and the rates the Job Financials
+    billable column is measured in.
+
+    Each rate resolves independently - job override, then the estimate where it carries
+    that rate, then the global constant - so a job can override kilometres while still
+    taking its Red Seal rate from the estimate. Estimate has no labour rate column, so
+    labour falls straight through to LABOUR_RATE.
+
+    Issued invoices are deliberately absent from this chain. They record what was
+    billed, not what to bill next, and a job with several progress invoices has no
+    single "the invoice rate" - reading one would let a manual tweak on one invoice
+    silently reprice every invoice after it. To explain one issued invoice, read its own
+    frozen columns through invoice_billing_rates.
+    """
+    estimate = getattr(job, "estimate", None)
+
+    labour_rate = LABOUR_RATE
+    redseal_rate = REDSEAL_RATE
+    km_rate = BILLABLE_KM_RATE
+    source = "default"
+
+    if estimate is not None:
+        if estimate.redseal_rate is not None:
+            redseal_rate = estimate.redseal_rate
+            source = "estimate"
+        if estimate.km_rate is not None:
+            km_rate = estimate.km_rate
+            source = "estimate"
+
+    if job.billable_labour_rate is not None:
+        labour_rate = job.billable_labour_rate
+        source = "job"
+    if job.billable_redseal_rate is not None:
+        redseal_rate = job.billable_redseal_rate
+        source = "job"
+    if job.billable_km_rate is not None:
+        km_rate = job.billable_km_rate
+        source = "job"
+
+    return BillingRates(
+        labour_rate=labour_rate,
+        redseal_rate=redseal_rate,
+        km_rate=km_rate,
+        source=source,
+    )
+
+
+def invoice_billing_rates(invoice: Invoice) -> BillingRates:
+    """The rates one issued invoice was actually priced at, read off its frozen columns."""
+    return BillingRates(
+        labour_rate=invoice.labour_rate,
+        redseal_rate=invoice.redseal_rate,
+        km_rate=invoice.km_rate,
+        source="invoice",
+    )
+
+
+def date_in_period(
+    value: dt.date,
+    period_start: dt.date | None,
+    period_end: dt.date | None,
+) -> bool:
+    """
+    Whether a date falls in a billing period, both ends inclusive and a null bound
+    unbounded in that direction.
+
+    Shared by invoicing, which partitions a job's timesheets into periods, and the
+    financials page, which asks the same question in reverse to find work no invoice
+    covers. The two must agree, or a timesheet could be billed twice or never.
+    """
+    if period_start is not None and value < period_start:
+        return False
+    if period_end is not None and value > period_end:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -517,6 +601,8 @@ def invoice_amounts(billing: JobBilling) -> dict:
         "labour_amount": billing.labour_amount,
         "total_distance_km": billing.total_distance_km,
         "km_rate": billing.km_rate,
+        "labour_rate": billing.rates.labour_rate,
+        "redseal_rate": billing.rates.redseal_rate,
         "travel_amount": billing.travel_amount,
         "materials_amount": billing.materials_amount,
         "inventory_materials": billing.inventory_materials,

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { financialsApi } from '../api/financials';
 import { clientsApi } from '../api/clients';
-import { formatCurrency, formatDate } from '../lib/utils';
+import { formatBillingPeriod, formatCurrency, formatDate } from '../lib/utils';
 import type {
   Client,
   JobCostLineDetail,
@@ -265,13 +265,14 @@ function JobCostBreakdown({ financials }: { financials: JobFinancialsDetail }) {
         </span>
         {financials.rate_source !== 'default' && (
           <span className="text-gray-400">
-            Rates from {financials.rate_source === 'invoice' ? financials.invoice_number : financials.estimate_number}
+            Rates from{' '}
+            {financials.rate_source === 'job' ? 'this job' : financials.estimate_number}
           </span>
         )}
         {financials.invoice_variance_amount !== null &&
-          parseFloat(financials.invoice_variance_amount) !== 0 && (
+          parseFloat(financials.invoice_variance_amount) > 0 && (
             <span className="text-gray-400">
-              Invoice is {formatCurrency(financials.invoice_variance_amount)} above the timesheet
+              Invoiced {formatCurrency(financials.invoice_variance_amount)} above the timesheet
               total ({formatCurrency(financials.invoice_extra_fees ?? '0')} in fees)
             </span>
           )}
@@ -283,15 +284,38 @@ function JobCostBreakdown({ financials }: { financials: JobFinancialsDetail }) {
             </span>
           </span>
         )}
-        {financials.invoice_number && (
-          <span>
-            Invoice {financials.invoice_number}:{' '}
-            <span className="font-medium text-gray-900">
-              {financials.invoice_total ? formatCurrency(financials.invoice_total) : DASH}
-            </span>
-          </span>
-        )}
       </div>
+
+      {financials.invoices.length > 0 && (
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-2">
+            Invoiced ({financials.invoices.length})
+          </h4>
+          <div className="space-y-1 text-sm">
+            {financials.invoices.map((invoice) => (
+              <div key={invoice.id} className="flex justify-between text-gray-600">
+                <span>
+                  {invoice.invoice_number} - {formatBillingPeriod(invoice)}
+                </span>
+                <span className="font-medium text-gray-900">
+                  {formatCurrency(invoice.total)}
+                </span>
+              </div>
+            ))}
+            {parseFloat(financials.uninvoiced_billable) > 0 && (
+              <div className="flex justify-between border-t pt-1 mt-1 text-amber-700">
+                <span>
+                  Not yet invoiced ({financials.uninvoiced_timesheet_count} timesheet
+                  {financials.uninvoiced_timesheet_count === 1 ? '' : 's'})
+                </span>
+                <span className="font-medium">
+                  {formatCurrency(financials.uninvoiced_billable)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {financials.is_redseal_trade && parseFloat(financials.redseal_hours) === 0 && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">

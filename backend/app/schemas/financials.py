@@ -94,8 +94,20 @@ class JobFinancialsSummary(BaseModel):
     budget_total_with_hst: Decimal | None
     budget_source: str
     estimate_amount: Decimal | None
+
+    # Billed to date, summed across every progress invoice on the job, and always
+    # reported whichever source won the budget - a part-billed job must still show what
+    # has gone out the door. invoice_status is a worst-state-first rollup.
+    invoice_count: int
+    invoice_subtotal_billed: Decimal | None
     invoice_total: Decimal | None
     invoice_status: str | None
+
+    # Worked value not yet on any invoice, and the timesheets behind it. A non-zero
+    # count on a job whose periods look complete means a timesheet was filed late,
+    # dated inside a window already billed.
+    uninvoiced_billable: Decimal
+    uninvoiced_timesheet_count: int
 
     margin_amount: Decimal | None
     margin_percent: Decimal | None
@@ -129,19 +141,36 @@ class JobFinancialsSummary(BaseModel):
     gross_profit_percent: Decimal | None
 
 
+class JobInvoiceBrief(BaseModel):
+    """One invoice on a job, enough to list the progress invoices and their periods."""
+
+    id: int
+    invoice_number: str
+    created_date: date
+    period_start: date | None
+    period_end: date | None
+    subtotal: Decimal
+    total: Decimal
+    status: str
+
+
 class JobFinancialsDetail(JobFinancialsSummary):
     job_address: str
     calculated_distance_km: Decimal | None
     estimate_id: int | None
     estimate_number: str | None
     estimate_status: str | None
+    # The most recent invoice, so "open the invoice" still has one target. The amounts
+    # below are sums across every invoice on the job.
     invoice_id: int | None
     invoice_number: str | None
     invoice_subtotal: Decimal | None
-    # How far the issued invoice sits above the timesheet total - catches dump/admin
-    # fees and any manual override applied at invoicing time.
+    # How far the issued invoices sit above the timesheet total - catches dump/admin
+    # fees and any manual override applied at invoicing time. Goes NEGATIVE on a
+    # part-billed job, where it is exactly the worked value not yet invoiced.
     invoice_extra_fees: Decimal | None
     invoice_variance_amount: Decimal | None
+    invoices: list[JobInvoiceBrief]
     workers: list[JobWorkerCostSummary]
 
 

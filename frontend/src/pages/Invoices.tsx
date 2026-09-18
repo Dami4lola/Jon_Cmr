@@ -4,8 +4,16 @@ import { invoicesApi, settingsApi } from '../api/invoices';
 import { useAuthStore } from '../store/authStore';
 import { timesheetsApi } from '../api/timesheets';
 import { jobsApi } from '../api/jobs';
-import { formatCurrency, formatDate } from '../lib/utils';
-import type { Invoice, InvoicePreview, InvoiceUpdate, Job, Timesheet, Receipt } from '../types';
+import { formatBillingPeriod, formatCurrency, formatDate } from '../lib/utils';
+import type {
+  Invoice,
+  InvoicePreview,
+  InvoiceUpdate,
+  Job,
+  RateSource,
+  Timesheet,
+  Receipt,
+} from '../types';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-700',
@@ -14,12 +22,23 @@ const STATUS_COLORS: Record<string, string> = {
   overdue: 'bg-red-100 text-red-700',
 };
 
+const RATE_SOURCE_LABELS: Record<RateSource, string> = {
+  job: "this job's rate",
+  estimate: "the estimate's rate",
+  default: 'standard rate',
+  invoice: "this invoice's rate",
+};
+
+
 export function Invoices() {
   const queryClient = useQueryClient();
   const { isAdmin } = useAuthStore();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [step, setStep] = useState<'select' | 'details'>('select');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+  const [allowOverlap, setAllowOverlap] = useState(false);
 
   // Editable form fields
   const [labourAmount, setLabourAmount] = useState(0);
@@ -57,10 +76,21 @@ export function Invoices() {
     queryFn: () => jobsApi.list(),
   });
 
-  // Fetch preview when job is selected
+  // Fetch preview when job is selected. The period is part of the key: changing either
+  // date re-prices the invoice against a different set of timesheets.
   const { data: preview, isFetching: loadingPreview } = useQuery<InvoicePreview>({
-    queryKey: ['invoice-preview', selectedJobId],
-    queryFn: () => invoicesApi.previewForJob(selectedJobId!),
+    queryKey: ['invoice-preview', selectedJobId, periodStart, periodEnd],
+    queryFn: () =>
+      invoicesApi.previewForJob(selectedJobId!, {
+        period_start: periodStart || undefined,
+        period_end: periodEnd || undefined,
+      }),
+    enabled: !!selectedJobId && step === 'select',
+  });
+
+  const { data: jobInvoices = [] } = useQuery<Invoice[]>({
+    queryKey: ['invoices-by-job', selectedJobId],
+    queryFn: () => invoicesApi.listForJob(selectedJobId!),
     enabled: !!selectedJobId && step === 'select',
   });
 
@@ -101,10 +131,9 @@ export function Invoices() {
     }
   }, [selectedJobId, jobs]);
 
-  const invoicedJobIds = new Set(invoices.map((inv: Invoice) => inv.job_id));
-  const uninvoicedJobs = jobs.filter(
-    (job: Job) => job.is_completed && !invoicedJobIds.has(job.id)
-  );
+  // Every job is invoiceable, at any point in its life. A job is billed as many times as
+  // it takes, and completing it is a scheduling decision with no bearing on billing.
+  const invoiceableJobs = jobs;
 
   // Calculated totals
   const subtotal = labourAmount + travelAmount + materialsAmount + inventoryMaterials + dumpFee + adminFee;
@@ -116,6 +145,9 @@ export function Invoices() {
       invoicesApi.createForJob(selectedJobId!, {
         invoice_number: invoiceNumber || undefined,
         scope_of_work: scopeOfWork || undefined,
+        period_start: periodStart || undefined,
+        period_end: periodEnd || undefined,
+        allow_overlap: allowOverlap || undefined,
         labour_amount: labourAmount,
         travel_amount: travelAmount,
         materials_amount: materialsAmount,
@@ -130,6 +162,7 @@ export function Invoices() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices-by-job'] });
       queryClient.invalidateQueries({ queryKey: ['financials'] });
       handleCloseModal();
     },
@@ -211,6 +244,9 @@ export function Invoices() {
     setShowCreateModal(false);
     setStep('select');
     setSelectedJobId(null);
+    setPeriodStart('');
+    setPeriodEnd('');
+    setAllowOverlap(false);
     setLabourAmount(0);
     setLabourHours(0);
     setRate(80);
@@ -275,6 +311,10 @@ export function Invoices() {
       setTravelKm(parseFloat(preview.travel_km));
       setMaterialsAmount(parseFloat(preview.materials_amount));
       setInventoryMaterials(parseFloat(preview.inventory_materials));
+      // Seeded from the resolved rate, not left at the hardcoded default: the form posts
+      // this value back, so a job or estimate km rate would otherwise be silently
+      // re-priced to 1.50 on submit.
+      setKmRate(preview.km_rate);
       const hours = parseFloat(preview.labour_hours);
       const amount = parseFloat(preview.labour_amount);
       setRate(hours > 0 ? Math.round((amount / hours) * 100) / 100 : 80);
@@ -298,14 +338,12 @@ export function Invoices() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
-          {uninvoicedJobs.length > 0 && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
-            >
-              Create Invoice
-            </button>
-          )}
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="bg-obatek text-white px-4 py-2 rounded-lg font-medium hover:bg-obatek-dark transition-colors"
+          >
+            Create Invoice
+          </button>
         </div>
       </div>
 
@@ -316,14 +354,12 @@ export function Invoices() {
         ) : invoices.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             No invoices yet.{' '}
-            {uninvoicedJobs.length > 0 && (
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="text-obatek hover:underline"
-              >
-                Create one
-              </button>
-            )}
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="text-obatek hover:underline"
+            >
+              Create one
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -332,6 +368,7 @@ export function Invoices() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice #</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Period</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -346,6 +383,9 @@ export function Invoices() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {invoice.client?.name || invoice.job?.client?.name} - {invoice.job?.title}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {formatBillingPeriod(invoice)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatDate(invoice.created_date)}
@@ -441,7 +481,8 @@ export function Invoices() {
 
             {createMutation.isError && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">
-                Failed to create invoice. Please try again.
+                {(createMutation.error as any)?.response?.data?.detail ||
+                  'Failed to create invoice. Please try again.'}
               </div>
             )}
 
@@ -455,14 +496,79 @@ export function Invoices() {
                     onChange={(e) => setSelectedJobId(Number(e.target.value) || null)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   >
-                    <option value="">Choose a completed job...</option>
-                    {uninvoicedJobs.map((job: Job) => (
+                    <option value="">Choose a job...</option>
+                    {invoiceableJobs.map((job: Job) => (
                       <option key={job.id} value={job.id}>
                         {job.client?.name} - {job.title}
+                        {job.is_completed ? '' : ' (in progress)'}
                       </option>
                     ))}
                   </select>
                 </div>
+
+                {selectedJobId && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Billing Period
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        type="date"
+                        value={periodStart}
+                        onChange={(e) => setPeriodStart(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                      <input
+                        type="date"
+                        value={periodEnd}
+                        onChange={(e) => setPeriodEnd(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Bills the hours and expenses filed in this range. Leave both blank to bill
+                      the whole job.
+                    </p>
+                  </div>
+                )}
+
+                {selectedJobId && jobInvoices.length > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                      Already invoiced ({jobInvoices.length})
+                    </h4>
+                    <div className="space-y-1 text-sm">
+                      {jobInvoices.map((inv: Invoice) => (
+                        <div key={inv.id} className="flex justify-between text-gray-600">
+                          <span>
+                            {inv.invoice_number} - {formatBillingPeriod(inv)}
+                          </span>
+                          <span className="font-medium">{formatCurrency(inv.total)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {preview && preview.overlapping_invoice_numbers.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
+                    <p className="text-red-700 font-medium">
+                      This period overlaps {preview.overlapping_invoice_numbers.join(', ')}.
+                    </p>
+                    <p className="text-red-600 mt-1">
+                      Any work already billed there would be billed a second time.
+                    </p>
+                    <label className="flex items-center gap-2 mt-2 text-red-700">
+                      <input
+                        type="checkbox"
+                        checked={allowOverlap}
+                        onChange={(e) => setAllowOverlap(e.target.checked)}
+                        className="w-4 h-4"
+                      />
+                      Bill it again anyway
+                    </label>
+                  </div>
+                )}
 
                 {/* Preview panel */}
                 {selectedJobId && (
@@ -472,6 +578,8 @@ export function Invoices() {
                       <p className="text-sm text-gray-500">Calculating...</p>
                     ) : preview ? (
                       <div className="grid grid-cols-2 gap-2 text-sm">
+                        <span className="text-gray-600">Timesheets in period</span>
+                        <span className="text-right font-medium">{preview.timesheet_count}</span>
                         <span className="text-gray-600">Labour ({preview.labour_hours} hrs)</span>
                         <span className="text-right font-medium">{formatCurrency(preview.labour_amount)}</span>
                         <span className="text-gray-600">Travel ({preview.travel_km} km)</span>
@@ -485,6 +593,11 @@ export function Invoices() {
                         <span className="text-right font-medium">{formatCurrency(preview.hst_amount)}</span>
                         <span className="font-semibold text-gray-900">Total</span>
                         <span className="text-right font-bold text-gray-900">{formatCurrency(preview.total)}</span>
+                        <span className="col-span-2 text-xs text-gray-500 border-t pt-2 mt-1">
+                          Billing at {formatCurrency(preview.labour_rate)}/hr
+                          {' and '}{formatCurrency(preview.km_rate)}/km
+                          {' ('}{RATE_SOURCE_LABELS[preview.rate_source]}{')'}
+                        </span>
                       </div>
                     ) : null}
                   </div>
