@@ -377,9 +377,9 @@ class TestRedSealFlagOnConversion:
     """
     A converted job is a Red Seal trade only when the estimate tagged Red Seal work.
 
-    redseal_techs must not count: the calculator auto-fills it from crew size, so it is
-    non-zero on almost every estimate. Keying off it flagged ordinary jobs as Red Seal
-    and billed them $100/hr against an $80/hr quote.
+    redseal_techs must not count: it used to be auto-filled from crew size, so it is
+    non-zero on almost every estimate saved before that default was dropped. Keying off
+    it flagged ordinary jobs as Red Seal and billed them $100/hr against an $80/hr quote.
     """
 
     def test_untagged_estimate_does_not_make_a_redseal_job(self, client):
@@ -388,7 +388,7 @@ class TestRedSealFlagOnConversion:
             client,
             client_id=customer["id"],
             crew_size=2,
-            redseal_techs=2,  # what the calculator auto-fills
+            redseal_techs=2,  # what the calculator used to auto-fill
             tasks=[{"phase": "build", "description": "Paint", "hours": 10, "sort_order": 0}],
         )
         assert Decimal(estimate["redseal_amount"]) == Decimal("0"), "estimate quoted no Red Seal"

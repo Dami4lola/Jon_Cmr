@@ -848,12 +848,13 @@ def _is_redseal_estimate(estimate: Estimate) -> bool:
     """
     Whether the estimate actually scoped Red Seal work.
 
-    Tagged tasks are the only signal. redseal_techs deliberately does NOT count: the
-    calculator auto-fills it from crew size unless the manager unlinks it, so it is
-    non-zero on virtually every estimate and says nothing about the work. Including it
-    flagged ordinary jobs as Red Seal, which billed the client $100/hr on a job quoted
-    at $80/hr - silently, because the estimate itself charges no Red Seal when no task
-    is tagged.
+    Tagged tasks are the only signal. redseal_techs deliberately does NOT count: it used
+    to be auto-filled from crew size, so it was non-zero on virtually every estimate and
+    said nothing about the work. Including it flagged ordinary jobs as Red Seal, which
+    billed the client $100/hr on a job quoted at $80/hr - silently, because the estimate
+    itself charges no Red Seal when no task is tagged. The calculator no longer auto-fills
+    it, but estimates saved before that still carry the stray count, and nothing stops a
+    client sending one.
     """
     return any(task.uses_redseal for task in estimate.tasks)
 

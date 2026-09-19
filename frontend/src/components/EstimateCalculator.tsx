@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { estimatesApi } from '../api/estimates';
 import { clientsApi, type ClientCreate } from '../api/clients';
-import { formatCurrency, nextAutoFilledAddress } from '../lib/utils';
+import { formatCurrency, nextAutoFilledAddress, shouldLookupDistance } from '../lib/utils';
 import type { Estimate, EstimatePayload, EstimatePhaseKey, MaterialSearchResult, ScaffoldingComponentKey } from '../types';
 
 interface EstimateCalculatorProps {
@@ -112,6 +112,9 @@ const SCAFFOLDING_DEFAULTS: Record<ScaffoldingComponentKey, { rate: number; qty:
 
 const NEW_ESTIMATE_SCAFFOLDING_COMPONENTS: ScaffoldingComponentKey[] = ['frame', 'jack', 'plank'];
 
+const PROSPECT_ADDRESS_REQUIRED =
+  'Add an address for the new client - it is the site the crew drives to.';
+
 function defaultScaffoldingRows(): ScaffoldingRow[] {
   return NEW_ESTIMATE_SCAFFOLDING_COMPONENTS.map((component) => ({
     id: nextId(), component, rate: SCAFFOLDING_DEFAULTS[component].rate, qty: SCAFFOLDING_DEFAULTS[component].qty,
@@ -207,11 +210,12 @@ export function EstimateCalculator({
   const [techsTraveling, setTechsTraveling] = useState(initialEstimate?.techs_traveling ?? 1);
   const [linkTravelToCrew, setLinkTravelToCrew] = useState(!initialEstimate);
 
-  const [address, setAddress] = useState(initialEstimate?.address_override || initialAddress || '');
+  const seedAddress = initialEstimate?.address_override || initialAddress || '';
+  const [address, setAddress] = useState(seedAddress);
   // initialAddress arrives after mount on the Estimates page, where the calculator
   // renders beside the client picker - so the field has to follow the prop, not just
   // seed from it. The ref remembers what was auto-filled so a typed address survives.
-  const autoFilledAddress = useRef(initialEstimate?.address_override || initialAddress || '');
+  const autoFilledAddress = useRef(seedAddress);
 
   useEffect(() => {
     const incoming = initialAddress || '';
@@ -224,6 +228,13 @@ export function EstimateCalculator({
   );
   const [distanceLoading, setDistanceLoading] = useState(false);
   const [distanceError, setDistanceError] = useState<string | null>(null);
+  // A saved estimate's km is manager-tuned for staging yards and ferries, and the
+  // backend carries it through to the job rather than re-measuring, so reopening one
+  // must not quietly re-query and overwrite it. Editing the address still does.
+  const lastLookedUpAddress = useRef(initialEstimate?.distance_km != null ? seedAddress : '');
+  const kmPinned = useRef(false);
+  const pendingLookupAddress = useRef('');
+  const debouncedAddress = useDebouncedValue(address, 800);
 
   const [equipmentRows, setEquipmentRows] = useState<EquipmentRow[]>(() => equipmentFromEstimate(initialEstimate));
   const [materialRows, setMaterialRows] = useState<MaterialRow[]>(() => materialsFromEstimate(initialEstimate));
@@ -247,7 +258,10 @@ export function EstimateCalculator({
   );
   const [redsealTechs, setRedsealTechs] = useState(initialEstimate?.redseal_techs ?? 0);
   const [redsealRate, setRedsealRate] = useState(initialEstimate ? parseFloat(initialEstimate.redseal_rate) : defaultRedsealRate);
-  const [linkRedsealToCrew, setLinkRedsealToCrew] = useState(!initialEstimate);
+  // Deliberately off for a new estimate, unlike the travel link above. Most jobs mix
+  // Red Seal and ordinary work, and linking to crew size billed the whole crew at the
+  // Red Seal rate the moment a single task was tagged.
+  const [linkRedsealToCrew, setLinkRedsealToCrew] = useState(false);
   const [includeAdmin, setIncludeAdmin] = useState(initialEstimate?.include_admin_fee ?? true);
   const [adminFee, setAdminFee] = useState(initialEstimate ? parseFloat(initialEstimate.admin_fee) : 50);
   const [includeHst, setIncludeHst] = useState(initialEstimate?.include_hst ?? true);
@@ -324,28 +338,55 @@ export function EstimateCalculator({
   const hst = includeHst ? subtotal * hstRate : 0;
   const grandTotal = subtotal + hst;
 
-  const handleLookupDistance = async () => {
-    if (!address.trim()) return;
+  const lookupDistance = useCallback(async (target: string) => {
+    const trimmed = target.trim();
+    if (!trimmed) return;
+    lastLookedUpAddress.current = trimmed;
+    pendingLookupAddress.current = trimmed;
     setDistanceLoading(true);
     setDistanceError(null);
     try {
-      const result = await estimatesApi.distancePreview(address);
+      const result = await estimatesApi.distancePreview(trimmed);
+      // A slow reply for a half-typed address must not land on top of a newer one.
+      if (pendingLookupAddress.current !== trimmed) return;
       setDistanceKm(result.distance_km != null ? parseFloat(result.distance_km) : null);
       if (result.distance_km == null) {
         setDistanceError('No distance returned - check the address or enter km manually below.');
       }
     } catch {
+      if (pendingLookupAddress.current !== trimmed) return;
       setDistanceError('Distance lookup failed. Enter km manually below.');
     } finally {
-      setDistanceLoading(false);
+      if (pendingLookupAddress.current === trimmed) setDistanceLoading(false);
     }
-  };
+  }, []);
+
+  // Picking a client fills the address, and the km has to follow on its own - a
+  // forgotten click left distanceKm null, which bills travel at $0 with no warning.
+  useEffect(() => {
+    if (!shouldLookupDistance({
+      address: debouncedAddress,
+      lastLookedUp: lastLookedUpAddress.current,
+      kmPinned: kmPinned.current,
+    })) {
+      return;
+    }
+    lookupDistance(debouncedAddress);
+  }, [debouncedAddress, lookupDistance]);
 
   const addTask = (phase: EstimatePhaseKey) =>
     setTasks((rows) => [...rows, { id: nextId(), phase, description: '', hours: 0, usesHeavyEquipment: false, usesRedseal: false }]);
   const updateTask = (id: number, patch: Partial<TaskRow>) =>
     setTasks((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const removeTask = (id: number) => setTasks((rows) => rows.filter((r) => r.id !== id));
+
+  // Tagged hours bill at the Red Seal rate only for as many techs as are marked Red
+  // Seal, so tagging with the count still at zero would quote the work at the standard
+  // rate. One certified tech is the floor a tag implies; the count stays editable.
+  const tagTaskRedseal = (id: number, tagged: boolean) => {
+    updateTask(id, { usesRedseal: tagged });
+    if (tagged && redsealTechs === 0) setRedsealTechs(1);
+  };
 
   const addEquipmentRow = (category: EquipmentRow['category']) => {
     const d = EQUIPMENT_DEFAULTS[category];
@@ -434,7 +475,13 @@ export function EstimateCalculator({
       // database with full contact info instead of a name-only override.
       let resolvedClientId = clientId ?? null;
       if (!resolvedClientId && pendingProspect) {
-        const created = await clientsApi.create(pendingProspect);
+        // The prospect form and the job address hold the same thing, and the auto-fill
+        // only flows prospect -> job address. An address typed here instead would
+        // otherwise create the client with a blank one, which the API rejects and which
+        // leaves the crew with no site and the invoice with no travel.
+        const prospectAddress = pendingProspect.address.trim() || address.trim();
+        if (!prospectAddress) throw new Error(PROSPECT_ADDRESS_REQUIRED);
+        const created = await clientsApi.create({ ...pendingProspect, address: prospectAddress });
         resolvedClientId = created.id;
       }
       const payload = buildPayload(resolvedClientId);
@@ -506,7 +553,10 @@ export function EstimateCalculator({
           />
           <button
             type="button"
-            onClick={handleLookupDistance}
+            onClick={() => {
+              kmPinned.current = false;
+              lookupDistance(address);
+            }}
             disabled={distanceLoading || !address.trim()}
             className="col-span-3 text-xs bg-white border border-obatek text-obatek rounded-md py-1.5 hover:bg-obatek/10 disabled:opacity-50"
           >
@@ -599,7 +649,10 @@ export function EstimateCalculator({
             step={1}
             className={`${inputClass} w-24`}
             value={distanceKm ?? ''}
-            onChange={(e) => setDistanceKm(e.target.value ? parseFloat(e.target.value) : null)}
+            onChange={(e) => {
+              kmPinned.current = e.target.value !== '';
+              setDistanceKm(e.target.value ? parseFloat(e.target.value) : null);
+            }}
           />
           {distanceError && <span className="text-xs text-amber-600">{distanceError}</span>}
           {travelDays > 0 && (
@@ -660,7 +713,7 @@ export function EstimateCalculator({
                         <input
                           type="checkbox"
                           checked={row.usesRedseal}
-                          onChange={(e) => updateTask(row.id, { usesRedseal: e.target.checked })}
+                          onChange={(e) => tagTaskRedseal(row.id, e.target.checked)}
                         />
                         Red Seal
                       </label>
@@ -1055,7 +1108,9 @@ export function EstimateCalculator({
 
       {saveMutation.isError && (
         <div className="bg-red-50 text-red-600 p-2 rounded-lg text-xs">
-          Failed to save estimate. Please try again.
+          {saveMutation.error instanceof Error && saveMutation.error.message === PROSPECT_ADDRESS_REQUIRED
+            ? PROSPECT_ADDRESS_REQUIRED
+            : 'Failed to save estimate. Please try again.'}
         </div>
       )}
 

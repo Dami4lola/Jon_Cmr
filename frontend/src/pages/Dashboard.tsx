@@ -452,7 +452,9 @@ export function Dashboard() {
               </label>
               {/* Deliberately not pre-ticked from the job's Red Seal flag: billing at
                   the Red Seal rate should be a positive assertion by whoever did the
-                  work. A Red Seal job already bills that rate without this. */}
+                  work, and a job can mix Red Seal and ordinary hours. This tick is the
+                  only thing that bills the hours at that rate - the job flag prices
+                  nothing - so Job Financials warns when a flagged job has none. */}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"

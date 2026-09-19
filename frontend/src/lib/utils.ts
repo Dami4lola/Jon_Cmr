@@ -151,3 +151,24 @@ export function nextAutoFilledAddress(
   const untouched = current === '' || current === lastAutoFilled;
   return untouched ? incoming : current;
 }
+
+/**
+ * Whether a settled address is worth spending a distance lookup on.
+ *
+ * Every lookup is a billed Google Distance Matrix call, so the same address is never
+ * queried twice, and anything under the endpoint's 3-character minimum is rejected
+ * here rather than round-tripped for a 422.
+ *
+ * kmPinned means someone typed a distance by hand - a staging yard or a ferry leg the
+ * map cannot know about - and that number outranks anything Google would return.
+ */
+export function shouldLookupDistance(params: {
+  address: string;
+  lastLookedUp: string;
+  kmPinned: boolean;
+}): boolean {
+  const address = params.address.trim();
+  if (address.length < 3) return false;
+  if (params.kmPinned) return false;
+  return address !== params.lastLookedUp.trim();
+}
