@@ -10,16 +10,31 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import delete as sa_delete
 
 from ..models import Job, Worker, Client, JobWorkerLink, JobWorkerSchedule, JobPhoto
+from ..models.estimate import Estimate
 from ..schemas.job import JobCreate, JobUpdate, JobResponse, JobPhotoResponse, CalendarEvent, WorkerScheduleEntry
 from ..schemas.client import ClientBrief
 from ..schemas.worker import WorkerBrief
 from ..services.distance import calculate_distance, get_distance_info
+from ..services.job_prep import prep_items_for_job
 from ..services.s3 import upload_file_to_s3, delete_file_from_s3, generate_presigned_url
 from .deps import DBSession, CurrentUser, CurrentWorker, ManagerUser
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Everything job_to_response touches. The estimate chain feeds prep_items, and the
+# list endpoint returns up to 50 jobs - lazy-loading it there is five queries a job.
+JOB_RESPONSE_LOADS = (
+    selectinload(Job.client),
+    selectinload(Job.assigned_workers),
+    selectinload(Job.photos),
+    selectinload(Job.worker_schedule),
+    selectinload(Job.estimate).selectinload(Estimate.equipment_rows),
+    selectinload(Job.estimate).selectinload(Estimate.material_rows),
+    selectinload(Job.estimate).selectinload(Estimate.tooling_rows),
+    selectinload(Job.estimate).selectinload(Estimate.scaffolding_rows),
+)
 
 
 def job_to_response(job: Job, current_worker_id: int | None = None) -> JobResponse:
@@ -69,6 +84,7 @@ def job_to_response(job: Job, current_worker_id: int | None = None) -> JobRespon
             )
             for p in (job.photos or [])
         ],
+        prep_items=prep_items_for_job(job),
     )
 
 
@@ -87,7 +103,7 @@ def list_jobs(
     """
     statement = (
         select(Job)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
+        .options(*JOB_RESPONSE_LOADS)
     )
 
     # Filter by completion status if specified
@@ -179,7 +195,7 @@ def create_job(
     statement = (
         select(Job)
         .where(Job.id == job.id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
+        .options(*JOB_RESPONSE_LOADS)
     )
     job = session.exec(statement).first()
 
@@ -243,7 +259,7 @@ def get_calendar_events(
                         duration=str(job.estimated_duration) if job.estimated_duration else None,
                         client=job.client.name,
                         address=job.get_job_address(),
-                        description=job.details or job.title,
+                        description=job.details,
                         phone_number=job.client.phone_number,
                         email=job.client.email,
                         coworkers=coworkers,
@@ -259,7 +275,7 @@ def get_calendar_events(
                     duration=str(job.estimated_duration) if job.estimated_duration else None,
                     client=job.client.name,
                     address=job.get_job_address(),
-                    description=job.details or job.title,
+                    description=job.details,
                     phone_number=job.client.phone_number,
                     email=job.client.email,
                     coworkers=coworkers,
@@ -275,7 +291,7 @@ def get_calendar_events(
                 duration=str(job.estimated_duration) if job.estimated_duration else None,
                 client=job.client.name,
                 address=job.get_job_address(),
-                description=job.details or job.title,
+                description=job.details,
                 phone_number=job.client.phone_number,
                 email=job.client.email,
                 coworkers=coworkers,
@@ -294,7 +310,7 @@ def get_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
+        .options(*JOB_RESPONSE_LOADS)
     )
     job = session.exec(statement).first()
 
@@ -477,7 +493,7 @@ def update_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
+        .options(*JOB_RESPONSE_LOADS)
     )
     job = session.exec(statement).first()
 
@@ -495,7 +511,7 @@ def assign_workers_to_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
+        .options(*JOB_RESPONSE_LOADS)
     )
     job = session.exec(statement).first()
 
@@ -522,7 +538,7 @@ def assign_workers_to_job(
     statement = (
         select(Job)
         .where(Job.id == job_id)
-        .options(selectinload(Job.client), selectinload(Job.assigned_workers), selectinload(Job.photos), selectinload(Job.worker_schedule))
+        .options(*JOB_RESPONSE_LOADS)
     )
     job = session.exec(statement).first()
 

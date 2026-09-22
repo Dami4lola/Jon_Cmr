@@ -56,12 +56,13 @@ export function Clients() {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.address.trim()) {
+    // Phone is required on a new client: the crew calls it off the job card.
+    if (!formData.name.trim() || !formData.address.trim() || !formData.phone_number?.trim()) {
       return;
     }
     createMutation.mutate({
       ...formData,
-      phone_number: formData.phone_number?.trim() || undefined,
+      phone_number: formData.phone_number.trim(),
       email: formData.email?.trim() || undefined,
     });
   };
@@ -130,7 +131,7 @@ export function Clients() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
+                  Phone Number *
                 </label>
                 <input
                   type="text"
@@ -138,6 +139,8 @@ export function Clients() {
                   onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="Phone number"
+                  maxLength={20}
+                  required
                 />
               </div>
             </div>

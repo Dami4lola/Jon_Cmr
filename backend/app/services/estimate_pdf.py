@@ -38,13 +38,6 @@ PHASE_LABELS = {
     "finishing": "Finishing",
 }
 
-SCAFFOLDING_LABELS = {
-    "frame": "Frames (incl. crossers)",
-    "crosser": "Crossers",
-    "jack": "Jacks",
-    "plank": "Planks",
-}
-
 
 def draw_header_footer(canvas, doc):
     """Draw the static company header and footer credit line on every page."""

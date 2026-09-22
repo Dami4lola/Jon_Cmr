@@ -143,8 +143,9 @@ export function AdminEstimate() {
                   className="col-span-2 w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                 />
                 <input
-                  type="text"
-                  placeholder="Phone (optional)"
+                  type="tel"
+                  placeholder="Phone"
+                  maxLength={20}
                   value={prospectDraft.phone_number}
                   onChange={(e) => setProspectDraft((d) => ({ ...d, phone_number: e.target.value }))}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"

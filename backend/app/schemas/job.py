@@ -68,6 +68,18 @@ class JobUpdate(BaseModel):
     worker_schedule: List[WorkerScheduleEntry] | None = None
 
 
+class JobPrepItem(BaseModel):
+    """One thing the crew needs on site, derived from the job's estimate.
+
+    Carries no rate, unit cost or markup: this is served to every assigned worker,
+    and what the gear costs is none of the crew's concern.
+    """
+    section: str
+    description: str
+    quantity: str
+    unit: str | None = None
+
+
 class JobResponse(BaseModel):
     """Job response"""
     id: int
@@ -93,6 +105,7 @@ class JobResponse(BaseModel):
     worker_schedule: List[WorkerScheduleEntry] = []
     my_scheduled_dates: List[date] = []
     photos: List[JobPhotoResponse] = []
+    prep_items: List[JobPrepItem] = []
 
     class Config:
         from_attributes = True
@@ -120,7 +133,7 @@ class CalendarEvent(BaseModel):
     duration: str | None = None
     client: str
     address: str
-    description: str
+    description: str | None = None
     phone_number: str | None = None
     email: str | None = None
     coworkers: list[str] = []

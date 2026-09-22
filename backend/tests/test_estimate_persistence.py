@@ -360,7 +360,10 @@ class TestEstimateApi:
 
     @staticmethod
     def _make_client(client):
-        resp = client.post("/api/clients/", json={"name": "Test Client", "address": "1 Test St"})
+        resp = client.post(
+            "/api/clients/",
+            json={"name": "Test Client", "address": "1 Test St", "phone_number": "613-555-0142"},
+        )
         return resp.json()["id"]
 
 

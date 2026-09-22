@@ -98,10 +98,12 @@ export function ViewInspection() {
           <div className="p-4 border-b">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Pre-Job Details</h3>
             <div className="space-y-2">
-              <div>
-                <span className="text-sm font-medium text-gray-700">Materials Needed: </span>
-                <span className="text-gray-600">{inspection.materials_needed ? 'Yes' : 'No'}</span>
-              </div>
+              {inspection.materials_needed && (
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Materials Needed: </span>
+                  <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inspection.materials_needed}</p>
+                </div>
+              )}
               {inspection.special_tools_needed && (
                 <div>
                   <span className="text-sm font-medium text-gray-700">Special Tools Needed: </span>

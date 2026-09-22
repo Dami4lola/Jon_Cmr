@@ -79,6 +79,15 @@ export interface JobPhoto {
   uploaded_at: string;
 }
 
+// One thing the crew needs on site, derived from the job's estimate. Carries no
+// rate or unit cost - it is served to every assigned worker.
+export interface JobPrepItem {
+  section: string;
+  description: string;
+  quantity: string;
+  unit?: string | null;
+}
+
 export interface Job {
   id: number;
   client_id: number;
@@ -104,6 +113,7 @@ export interface Job {
   photos?: JobPhoto[];
   worker_schedule?: WorkerScheduleEntry[];
   my_scheduled_dates?: string[];
+  prep_items?: JobPrepItem[];
 }
 
 export interface JobCreate {
@@ -140,7 +150,7 @@ export interface CalendarEvent {
   duration?: string;
   client: string;
   address: string;
-  description: string;
+  description?: string | null;
   phone_number?: string;
   email?: string;
   coworkers?: string[];

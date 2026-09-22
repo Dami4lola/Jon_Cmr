@@ -10,6 +10,7 @@ import { timesheetsApi } from '../api/timesheets';
 import { timeOffApi } from '../api/timeOff';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
+import { JobPrepList } from '../components/JobPrepList';
 import { formatCurrency, formatDate, getCoworkerSchedule, formatShortDate } from '../lib/utils';
 import type { TimesheetCreate, Timesheet, TimeOffRequest, PayoutPreview } from '../types';
 
@@ -891,6 +892,10 @@ export function Dashboard() {
                         </a>
                       </p>
                     )}
+                    {job.details && (
+                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{job.details}</p>
+                    )}
+                    <JobPrepList items={job.prep_items || []} />
                     {(coworkerScheduleByJobId.get(job.id)?.length ?? 0) > 0 && (
                       <div className="mt-2 space-y-1">
                         <span className="text-xs text-gray-500">Working with:</span>
