@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { nextAutoFilledAddress, shouldLookupDistance } from './utils';
+import {
+  blankIfZero,
+  groupPrepItemsBySection,
+  nextAutoFilledAddress,
+  shouldLookupDistance,
+} from './utils';
 
 describe('nextAutoFilledAddress', () => {
   it('fills an empty field from the selected client', () => {
@@ -74,5 +79,67 @@ describe('shouldLookupDistance', () => {
 
   it('skips an empty address', () => {
     expect(shouldLookupDistance({ address: '   ', lastLookedUp: '', kmPinned: false })).toBe(false);
+  });
+});
+
+describe('blankIfZero', () => {
+  it('shows an unfilled box instead of a zero', () => {
+    expect(blankIfZero(0)).toBe('');
+  });
+
+  it('keeps a real quantity', () => {
+    expect(blankIfZero(40)).toBe(40);
+  });
+
+  it('keeps a fractional rate', () => {
+    expect(blankIfZero(1.5)).toBe(1.5);
+  });
+
+  it('keeps a negative value rather than hiding it', () => {
+    expect(blankIfZero(-5)).toBe(-5);
+  });
+});
+
+describe('groupPrepItemsBySection', () => {
+  const item = (section: string, description: string) => ({ section, description });
+
+  it('gathers items under their section', () => {
+    const grouped = groupPrepItemsBySection([
+      item('Materials', '2x6 cedar'),
+      item('Materials', 'Screws'),
+    ]);
+
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].section).toBe('Materials');
+    expect(grouped[0].items.map((i) => i.description)).toEqual(['2x6 cedar', 'Screws']);
+  });
+
+  it('keeps sections in the order the backend sent them', () => {
+    const grouped = groupPrepItemsBySection([
+      item('Equipment & rentals', 'Jackhammer'),
+      item('Materials', 'Concrete'),
+      item('Scaffolding', 'Planks'),
+    ]);
+
+    expect(grouped.map((g) => g.section)).toEqual([
+      'Equipment & rentals',
+      'Materials',
+      'Scaffolding',
+    ]);
+  });
+
+  it('regroups a section that appears again later', () => {
+    const grouped = groupPrepItemsBySection([
+      item('Materials', 'Concrete'),
+      item('Scaffolding', 'Planks'),
+      item('Materials', 'Rebar'),
+    ]);
+
+    expect(grouped.map((g) => g.section)).toEqual(['Materials', 'Scaffolding']);
+    expect(grouped[0].items.map((i) => i.description)).toEqual(['Concrete', 'Rebar']);
+  });
+
+  it('has nothing to group when the job has no estimate', () => {
+    expect(groupPrepItemsBySection([])).toEqual([]);
   });
 });

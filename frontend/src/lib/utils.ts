@@ -172,3 +172,38 @@ export function shouldLookupDistance(params: {
   if (params.kmPinned) return false;
   return address !== params.lastLookedUp.trim();
 }
+
+/**
+ * What a money input shows for a value of zero.
+ *
+ * Every one of these fields reads back as `parseFloat(value) || 0`, so zero and empty
+ * already price the same. Rendering the zero means clearing it before a real number can
+ * be typed, on every untouched box of a fresh estimate - so it renders as empty instead.
+ *
+ * Counts with a genuine floor stay numeric: crew size, techs traveling, and the Red Seal
+ * tech count, where zero is a state the estimate warns about rather than an unfilled box.
+ */
+export function blankIfZero(value: number): number | '' {
+  return value || '';
+}
+
+/**
+ * The crew's gear list, grouped under its section headings.
+ *
+ * Section order follows first appearance rather than a fixed list, so the backend
+ * stays the single authority on what order the crew packs in.
+ */
+export function groupPrepItemsBySection<T extends { section: string }>(
+  items: T[]
+): { section: string; items: T[] }[] {
+  const grouped: { section: string; items: T[] }[] = [];
+  for (const item of items) {
+    const existing = grouped.find((g) => g.section === item.section);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      grouped.push({ section: item.section, items: [item] });
+    }
+  }
+  return grouped;
+}
