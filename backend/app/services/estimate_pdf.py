@@ -14,6 +14,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT
 
 from ..models import Estimate
+from .job_prep import PHASE_LABELS, PHASE_ORDER
 
 # Company info
 COMPANY_NAME = "Just Jon Industries INC."
@@ -31,12 +32,6 @@ BORDER_COLOR = colors.HexColor("#999999")
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "justjon_logo.png")
 
-PHASE_ORDER = ["preplanning", "build", "finishing"]
-PHASE_LABELS = {
-    "preplanning": "Preplanning",
-    "build": "The Build",
-    "finishing": "Finishing",
-}
 
 
 def draw_header_footer(canvas, doc):

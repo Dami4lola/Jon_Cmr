@@ -1,24 +1,39 @@
 """
-What the crew needs on site, taken from the job's estimate.
+What the crew gets off the job, taken from the estimate behind it.
 
-The estimator already itemises every rental, material and tool while pricing the work,
-but none of it was reaching the people doing the job: the rows live on the estimate, the
-conversion copies none of them onto the Job, and every estimate endpoint is gated behind
-EstimatorUser, which a worker fails. This projects those rows into a crew-facing list.
+The estimator itemises every rental, material and tool while pricing the work, and writes
+the work itself out as tasks under three phases - but none of it was reaching the people
+doing the job. The rows live on the estimate, the conversion copied only the free-text
+scope, and every estimate endpoint is gated behind EstimatorUser, which a worker fails.
 
-Costs are deliberately absent. The crew needs to know a jackhammer has to be picked up,
-not what it rents for, and the list is served on GET /api/jobs/ to whoever is assigned.
+Two projections live here: the gear list, and the scope of work. Both drop the money and
+the hours. The crew needs to know a jackhammer has to be picked up and what the task is,
+not what either costs, and this is served to whoever is assigned to the job.
 """
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from ..models.estimate import EquipmentCategory, ScaffoldingComponent
+from ..models.estimate import EquipmentCategory, EstimatePhase, ScaffoldingComponent
 from ..schemas.job import JobPrepItem
 
 if TYPE_CHECKING:
     from ..models.job import Job
     from ..models.estimate import Estimate
 
+
+# Phases read in the order the work happens, never alphabetically - the estimate response
+# serializer sorts them by name, which puts The Build before Preplanning.
+PHASE_ORDER = [
+    EstimatePhase.PREPLANNING.value,
+    EstimatePhase.BUILD.value,
+    EstimatePhase.FINISHING.value,
+]
+
+PHASE_LABELS = {
+    EstimatePhase.PREPLANNING.value: "Preplanning",
+    EstimatePhase.BUILD.value: "The Build",
+    EstimatePhase.FINISHING.value: "Finishing",
+}
 
 EQUIPMENT_CATEGORY_LABELS = {
     EquipmentCategory.HEAVY.value: "Heavy equipment",
@@ -118,3 +133,35 @@ def prep_items_for_job(job: "Job") -> list[JobPrepItem]:
         *_described_items(estimate.tooling_rows, SECTION_TOOLING),
         *_scaffolding_items(estimate),
     ]
+
+
+def _phase_block(estimate: "Estimate", phase: str) -> str | None:
+    """One phase heading and its task lines, or nothing when the phase is empty."""
+    lines = [
+        f"- {task.description.strip()}"
+        for task in sorted(estimate.tasks, key=lambda t: t.sort_order)
+        if task.phase == phase and task.description.strip()
+    ]
+    if not lines:
+        return None
+    return "\n".join([PHASE_LABELS[phase], *lines])
+
+
+def job_scope_from_estimate(estimate: "Estimate") -> str | None:
+    """
+    The scope of work as the crew reads it: the estimator's written scope, then the
+    tasks they priced, grouped under their phase.
+
+    Hours are left out. They are what the task costs, not what it is, and the crew
+    reading this on their dashboard needs the second. The Red Seal and heavy-equipment
+    tags the PDF appends are left out for the same reason.
+
+    None rather than an empty string when there is nothing to say, so Job.details
+    stays null instead of becoming blank text.
+    """
+    written = (estimate.scope_of_work or "").strip()
+    blocks = [written] if written else []
+    blocks.extend(
+        block for block in (_phase_block(estimate, phase) for phase in PHASE_ORDER) if block
+    )
+    return "\n\n".join(blocks) or None

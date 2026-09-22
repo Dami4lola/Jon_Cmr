@@ -160,13 +160,28 @@ class TestConvertEstimateToJob:
         assert Decimal(job["estimate_amount"]) == Decimal(estimate["total"])
         assert Decimal(job["estimated_duration"]) == Decimal(estimate["total_hours"])
 
-    def test_details_default_to_scope_of_work(self, client):
+    def test_details_default_to_the_written_scope_and_the_tasks(self, client):
+        """
+        Changed 2026-09-22: details used to be a plain copy of scope_of_work, which
+        left the crew with the estimator's paragraph and none of the work breakdown
+        that was actually priced.
+        """
         customer = make_client(client)
         estimate = make_estimate(client, client_id=customer["id"])
 
         job = convert(client, estimate["id"]).json()
 
-        assert job["details"] == estimate["scope_of_work"]
+        assert job["details"] == (
+            "Recert the boiler\nSecond line of scope\n\nThe Build\n- Build"
+        )
+
+    def test_details_the_manager_typed_still_win(self, client):
+        customer = make_client(client)
+        estimate = make_estimate(client, client_id=customer["id"])
+
+        job = convert(client, estimate["id"], details="Go in through the rear gate").json()
+
+        assert job["details"] == "Go in through the rear gate"
 
     def test_estimate_marked_accepted_and_linked(self, client):
         customer = make_client(client)
@@ -531,7 +546,37 @@ class TestConvertedJobReachesTheCrew:
         job = convert(client, estimate["id"]).json()
         fetched = client.get(f"/api/jobs/{job['id']}").json()
 
-        assert fetched["details"] == "Recert the boiler\nSecond line of scope"
+        assert fetched["details"] == (
+            "Recert the boiler\nSecond line of scope\n\nThe Build\n- Build"
+        )
+
+    def test_the_crew_reads_the_phases_in_working_order(self, client):
+        """
+        Entered finishing-first, and the estimate response serializer sorts tasks
+        alphabetically by phase, so anything trusting that order would hand the crew
+        The Build before Preplanning.
+        """
+        customer = make_client(client)
+        estimate = make_estimate(
+            client,
+            client_id=customer["id"],
+            scope_of_work=None,
+            tasks=[
+                {"phase": "finishing", "description": "Sand and stain", "hours": 4, "sort_order": 0},
+                {"phase": "build", "description": "Frame and joist", "hours": 12, "sort_order": 0},
+                {"phase": "preplanning", "description": "Pull the permit", "hours": 2, "sort_order": 0},
+            ],
+        )
+
+        job = convert(client, estimate["id"]).json()
+        details = client.get(f"/api/jobs/{job['id']}").json()["details"]
+
+        assert details == (
+            "Preplanning\n- Pull the permit\n\n"
+            "The Build\n- Frame and joist\n\n"
+            "Finishing\n- Sand and stain"
+        )
+        assert "12" not in details, "hours price the task, they do not describe it"
 
     def test_a_job_with_no_estimate_has_no_crew_list(self, client):
         customer = make_client(client)

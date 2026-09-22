@@ -701,6 +701,9 @@ export interface Estimate extends EstimateAmounts {
   address_override: string | null;
   scope_of_work: string | null;
   notes: string | null;
+  // Read-only: scope_of_work plus the phased tasks, composed by the backend. What the
+  // job's scope of work is prefilled with on conversion.
+  job_scope: string | null;
   crew_size: number;
   techs_traveling: number;
   distance_km: string | null;

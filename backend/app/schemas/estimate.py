@@ -249,6 +249,9 @@ class EstimateResponse(BaseModel):
 
     scope_of_work: str | None
     notes: str | None
+    # scope_of_work plus the phased tasks, composed server-side so the convert dialog
+    # and the conversion itself cannot disagree about what the crew is told.
+    job_scope: str | None
 
     crew_size: int
     techs_traveling: int

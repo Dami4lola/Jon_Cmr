@@ -33,6 +33,7 @@ from ..models.estimate import EstimateStatus
 from ..services.distance import calculate_distance
 from ..services.material_pricing import search_materials
 from ..services.estimate_pdf import generate_estimate_pdf
+from ..services.job_prep import job_scope_from_estimate
 from ..schemas.job import JobBrief, JobResponse
 from ..schemas.client import ClientBrief
 from ..schemas.estimate import (
@@ -507,6 +508,7 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         address_override=estimate.address_override,
         scope_of_work=estimate.scope_of_work,
         notes=estimate.notes,
+        job_scope=job_scope_from_estimate(estimate),
         crew_size=estimate.crew_size,
         techs_traveling=estimate.techs_traveling,
         distance_km=estimate.distance_km,
@@ -979,9 +981,9 @@ def convert_estimate_to_job(
     job = Job(
         client_id=client.id,
         title=data.title,
-        # scope_of_work, never notes - notes are internal margin commentary and
-        # Job.details is shown to workers.
-        details=data.details if data.details is not None else estimate.scope_of_work,
+        # The written scope plus the phased tasks, never notes - notes are internal
+        # margin commentary and Job.details is on the crew's dashboard.
+        details=data.details if data.details is not None else job_scope_from_estimate(estimate),
         start_date=data.start_date,
         end_date=data.end_date,
         scheduled_time=data.scheduled_time,

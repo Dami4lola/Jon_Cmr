@@ -52,7 +52,10 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   useEffect(() => {
     if (!estimate) return;
     setTitle(defaultJobTitle(estimate));
-    setDetails(estimate.scope_of_work || '');
+    // job_scope, not scope_of_work: the written scope plus the phased task list, which
+    // is what the crew reads. Composed server-side so this cannot drift from the
+    // fallback the conversion itself uses.
+    setDetails(estimate.job_scope || '');
     setClientName(estimate.client_name_override || '');
     setClientAddress(estimate.address_override || '');
   }, [estimate]);

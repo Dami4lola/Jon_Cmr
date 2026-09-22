@@ -1,8 +1,8 @@
 """
-Tests for the crew's gear and materials list.
+Tests for what the crew gets off a job - the gear list and the scope of work.
 
-Pure-function tests against in-memory model objects: prep_items_for_job walks
-relationships and does no IO, so there is nothing here worth a database for.
+Pure-function tests against in-memory model objects: both projections walk
+relationships and do no IO, so there is nothing here worth a database for.
 """
 from decimal import Decimal
 
@@ -12,6 +12,7 @@ from app.models.estimate import (
     EstimateEquipmentRow,
     EstimateMaterialRow,
     EstimateScaffoldingRow,
+    EstimateTask,
     EstimateToolingRow,
 )
 from app.services.job_prep import (
@@ -19,6 +20,7 @@ from app.services.job_prep import (
     SECTION_MATERIALS,
     SECTION_SCAFFOLDING,
     SECTION_TOOLING,
+    job_scope_from_estimate,
     prep_items_for_job,
 )
 
@@ -169,3 +171,103 @@ class TestQuantityFormatting:
         job = make_job(materials=[EstimateMaterialRow(description="Board", quantity=Decimal("2.50"))])
 
         assert prep_items_for_job(job)[0].quantity == "2.5"
+
+
+def make_estimate(scope=None, tasks=()):
+    estimate = Estimate(estimate_number="EST-1", scope_of_work=scope)
+    estimate.tasks = list(tasks)
+    return estimate
+
+
+def task(phase, description, hours="4", sort_order=0):
+    return EstimateTask(
+        phase=phase, description=description,
+        hours=Decimal(hours), sort_order=sort_order,
+    )
+
+
+class TestJobScope:
+    def test_written_scope_comes_first_then_the_phases(self):
+        estimate = make_estimate(
+            scope="Rebuild the rear deck to code.",
+            tasks=[task("build", "Frame and joist")],
+        )
+
+        assert job_scope_from_estimate(estimate) == (
+            "Rebuild the rear deck to code.\n\nThe Build\n- Frame and joist"
+        )
+
+    def test_phases_read_in_working_order_however_they_were_entered(self):
+        """
+        The whole point. The estimate response serializer sorts tasks alphabetically
+        by phase, which puts The Build ahead of Preplanning.
+        """
+        estimate = make_estimate(tasks=[
+            task("finishing", "Sand and stain"),
+            task("build", "Frame and joist"),
+            task("preplanning", "Pull the permit"),
+        ])
+
+        assert job_scope_from_estimate(estimate) == (
+            "Preplanning\n- Pull the permit\n\n"
+            "The Build\n- Frame and joist\n\n"
+            "Finishing\n- Sand and stain"
+        )
+
+    def test_sort_order_holds_within_a_phase(self):
+        estimate = make_estimate(tasks=[
+            task("build", "Second", sort_order=1),
+            task("build", "First", sort_order=0),
+        ])
+
+        assert job_scope_from_estimate(estimate) == "The Build\n- First\n- Second"
+
+    def test_hours_never_reach_the_crew(self):
+        """Hours are what a task costs, not what it is."""
+        estimate = make_estimate(tasks=[task("build", "Frame and joist", hours="12.50")])
+
+        scope = job_scope_from_estimate(estimate)
+
+        assert "12" not in scope
+        assert scope == "The Build\n- Frame and joist"
+
+    def test_an_empty_phase_gets_no_heading(self):
+        estimate = make_estimate(tasks=[task("build", "Frame and joist")])
+
+        scope = job_scope_from_estimate(estimate)
+
+        assert "Preplanning" not in scope
+        assert "Finishing" not in scope
+
+    def test_a_blank_task_is_skipped(self):
+        estimate = make_estimate(tasks=[
+            task("build", "   "),
+            task("build", "Frame and joist", sort_order=1),
+        ])
+
+        assert job_scope_from_estimate(estimate) == "The Build\n- Frame and joist"
+
+    def test_a_phase_of_only_blank_tasks_gets_no_heading(self):
+        estimate = make_estimate(scope="Deck work", tasks=[task("preplanning", "  ")])
+
+        assert job_scope_from_estimate(estimate) == "Deck work"
+
+    def test_written_scope_alone_when_there_are_no_tasks(self):
+        """Older estimates predate the phased task rows."""
+        estimate = make_estimate(scope="Recert the boiler")
+
+        assert job_scope_from_estimate(estimate) == "Recert the boiler"
+
+    def test_tasks_alone_when_nothing_was_written(self):
+        estimate = make_estimate(tasks=[task("preplanning", "Pull the permit")])
+
+        assert job_scope_from_estimate(estimate) == "Preplanning\n- Pull the permit"
+
+    def test_nothing_at_all_is_none_not_blank(self):
+        """Job.details stays null rather than becoming empty text."""
+        assert job_scope_from_estimate(make_estimate()) is None
+
+    def test_a_whitespace_only_scope_is_not_treated_as_written(self):
+        estimate = make_estimate(scope="   \n ", tasks=[task("build", "Frame")])
+
+        assert job_scope_from_estimate(estimate) == "The Build\n- Frame"
