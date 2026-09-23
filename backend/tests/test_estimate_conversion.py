@@ -120,8 +120,11 @@ CONVERT_BODY = {
 }
 
 
-def make_client(client, name="Acme Industrial", address="1 Bay St, Toronto"):
-    response = client.post("/api/clients/", json={"name": name, "address": address})
+def make_client(client, name="Acme Industrial", address="1 Bay St, Toronto", phone="613-555-0142"):
+    response = client.post(
+        "/api/clients/",
+        json={"name": name, "address": address, "phone_number": phone},
+    )
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -157,13 +160,28 @@ class TestConvertEstimateToJob:
         assert Decimal(job["estimate_amount"]) == Decimal(estimate["total"])
         assert Decimal(job["estimated_duration"]) == Decimal(estimate["total_hours"])
 
-    def test_details_default_to_scope_of_work(self, client):
+    def test_details_default_to_the_written_scope_and_the_tasks(self, client):
+        """
+        Changed 2026-09-22: details used to be a plain copy of scope_of_work, which
+        left the crew with the estimator's paragraph and none of the work breakdown
+        that was actually priced.
+        """
         customer = make_client(client)
         estimate = make_estimate(client, client_id=customer["id"])
 
         job = convert(client, estimate["id"]).json()
 
-        assert job["details"] == estimate["scope_of_work"]
+        assert job["details"] == (
+            "Recert the boiler\nSecond line of scope\n\nThe Build\n- Build"
+        )
+
+    def test_details_the_manager_typed_still_win(self, client):
+        customer = make_client(client)
+        estimate = make_estimate(client, client_id=customer["id"])
+
+        job = convert(client, estimate["id"], details="Go in through the rear gate").json()
+
+        assert job["details"] == "Go in through the rear gate"
 
     def test_estimate_marked_accepted_and_linked(self, client):
         customer = make_client(client)
@@ -233,6 +251,27 @@ class TestConvertEstimateToJob:
         assert response.json()["client"]["name"] == "Prospect Co"
         created = [c for c in client.get("/api/clients/").json() if c["name"] == "Prospect Co"]
         assert created[0]["address"] == "5 King St, Toronto"
+
+    def test_new_client_phone_reaches_the_client_record(self, client):
+        """
+        The crew calls this number off the job card. The passthrough existed but was
+        untested, and the convert dialog never sent one - so every job converted for a
+        new client arrived with nobody to ring.
+        """
+        estimate = make_estimate(client, client_name_override="Prospect Co")
+
+        response = convert(
+            client,
+            estimate["id"],
+            new_client={
+                "name": "Prospect Co",
+                "address": "5 King St, Toronto",
+                "phone_number": "613-555-0142",
+            },
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["client"]["phone_number"] == "613-555-0142"
 
     def test_client_id_and_new_client_together_is_400(self, client):
         customer = make_client(client)
@@ -377,9 +416,9 @@ class TestRedSealFlagOnConversion:
     """
     A converted job is a Red Seal trade only when the estimate tagged Red Seal work.
 
-    redseal_techs must not count: the calculator auto-fills it from crew size, so it is
-    non-zero on almost every estimate. Keying off it flagged ordinary jobs as Red Seal
-    and billed them $100/hr against an $80/hr quote.
+    redseal_techs must not count: it used to be auto-filled from crew size, so it is
+    non-zero on almost every estimate saved before that default was dropped. Keying off
+    it flagged ordinary jobs as Red Seal and billed them $100/hr against an $80/hr quote.
     """
 
     def test_untagged_estimate_does_not_make_a_redseal_job(self, client):
@@ -388,7 +427,7 @@ class TestRedSealFlagOnConversion:
             client,
             client_id=customer["id"],
             crew_size=2,
-            redseal_techs=2,  # what the calculator auto-fills
+            redseal_techs=2,  # what the calculator used to auto-fill
             tasks=[{"phase": "build", "description": "Paint", "hours": 10, "sort_order": 0}],
         )
         assert Decimal(estimate["redseal_amount"]) == Decimal("0"), "estimate quoted no Red Seal"
@@ -418,3 +457,133 @@ class TestRedSealFlagOnConversion:
         ]
 
         assert _is_redseal_estimate(estimate) is False
+
+
+class TestConvertedJobReachesTheCrew:
+    """
+    The reported failure: a job went through from an estimate and the crew arrived
+    with no phone number for the client, no idea a jackhammer had to be rented, and
+    no material list. All three ride on the job response now.
+    """
+
+    def test_job_carries_the_gear_and_materials_to_the_crew(self, client):
+        customer = make_client(client)
+        estimate = make_estimate(
+            client,
+            client_id=customer["id"],
+            equipment_rows=[
+                {
+                    "category": "rentalVillage", "description": "Jackhammer",
+                    "rate": 95, "unit": "per day", "quantity": 1, "sort_order": 0,
+                },
+            ],
+            material_rows=[
+                {"description": "Concrete mix", "quantity": 12, "unit_cost": 8.5, "sort_order": 0},
+            ],
+            tooling_rows=[
+                {"description": "Breaker bits", "quantity": 2, "unit_cost": 40, "sort_order": 0},
+            ],
+        )
+
+        job = convert(client, estimate["id"]).json()
+        fetched = client.get(f"/api/jobs/{job['id']}")
+
+        assert fetched.status_code == 200, fetched.text
+        items = fetched.json()["prep_items"]
+        assert [(i["section"], i["description"], i["quantity"]) for i in items] == [
+            ("Equipment & rentals", "Jackhammer (Outside rental)", "1"),
+            ("Materials", "Concrete mix", "12"),
+            ("Tooling & supplies", "Breaker bits", "2"),
+        ]
+
+    def test_crew_list_never_carries_a_price(self, client):
+        customer = make_client(client)
+        estimate = make_estimate(
+            client,
+            client_id=customer["id"],
+            material_rows=[
+                {"description": "Concrete mix", "quantity": 12, "unit_cost": 8.5, "sort_order": 0},
+            ],
+        )
+
+        job = convert(client, estimate["id"]).json()
+        items = client.get(f"/api/jobs/{job['id']}").json()["prep_items"]
+
+        assert items
+        for item in items:
+            assert set(item) == {"section", "description", "quantity", "unit"}
+            assert "8.5" not in str(item)
+
+    def test_empty_scaffolding_does_not_reach_the_crew(self, client):
+        """A new estimate seeds all three components at zero so the boxes start empty."""
+        customer = make_client(client)
+        estimate = make_estimate(
+            client,
+            client_id=customer["id"],
+            scaffolding_rows=[
+                {"component": "frame", "rate_per_day": 0, "quantity": 0, "sort_order": 0},
+                {"component": "jack", "rate_per_day": 0, "quantity": 0, "sort_order": 1},
+            ],
+        )
+
+        job = convert(client, estimate["id"]).json()
+
+        assert client.get(f"/api/jobs/{job['id']}").json()["prep_items"] == []
+
+    def test_job_carries_the_client_phone(self, client):
+        customer = make_client(client, phone="613-555-0142")
+        estimate = make_estimate(client, client_id=customer["id"])
+
+        job = convert(client, estimate["id"]).json()
+        fetched = client.get(f"/api/jobs/{job['id']}").json()
+
+        assert fetched["client"]["phone_number"] == "613-555-0142"
+
+    def test_job_carries_the_scope_of_work(self, client):
+        customer = make_client(client)
+        estimate = make_estimate(client, client_id=customer["id"])
+
+        job = convert(client, estimate["id"]).json()
+        fetched = client.get(f"/api/jobs/{job['id']}").json()
+
+        assert fetched["details"] == (
+            "Recert the boiler\nSecond line of scope\n\nThe Build\n- Build"
+        )
+
+    def test_the_crew_reads_the_phases_in_working_order(self, client):
+        """
+        Entered finishing-first, and the estimate response serializer sorts tasks
+        alphabetically by phase, so anything trusting that order would hand the crew
+        The Build before Preplanning.
+        """
+        customer = make_client(client)
+        estimate = make_estimate(
+            client,
+            client_id=customer["id"],
+            scope_of_work=None,
+            tasks=[
+                {"phase": "finishing", "description": "Sand and stain", "hours": 4, "sort_order": 0},
+                {"phase": "build", "description": "Frame and joist", "hours": 12, "sort_order": 0},
+                {"phase": "preplanning", "description": "Pull the permit", "hours": 2, "sort_order": 0},
+            ],
+        )
+
+        job = convert(client, estimate["id"]).json()
+        details = client.get(f"/api/jobs/{job['id']}").json()["details"]
+
+        assert details == (
+            "Preplanning\n- Pull the permit\n\n"
+            "The Build\n- Frame and joist\n\n"
+            "Finishing\n- Sand and stain"
+        )
+        assert "12" not in details, "hours price the task, they do not describe it"
+
+    def test_a_job_with_no_estimate_has_no_crew_list(self, client):
+        customer = make_client(client)
+        created = client.post(
+            "/api/jobs/",
+            json={"client_id": customer["id"], "title": "Callout"},
+        )
+
+        assert created.status_code == 201, created.text
+        assert created.json()["prep_items"] == []

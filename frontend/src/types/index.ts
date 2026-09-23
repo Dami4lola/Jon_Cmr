@@ -79,6 +79,15 @@ export interface JobPhoto {
   uploaded_at: string;
 }
 
+// One thing the crew needs on site, derived from the job's estimate. Carries no
+// rate or unit cost - it is served to every assigned worker.
+export interface JobPrepItem {
+  section: string;
+  description: string;
+  quantity: string;
+  unit?: string | null;
+}
+
 export interface Job {
   id: number;
   client_id: number;
@@ -104,6 +113,7 @@ export interface Job {
   photos?: JobPhoto[];
   worker_schedule?: WorkerScheduleEntry[];
   my_scheduled_dates?: string[];
+  prep_items?: JobPrepItem[];
 }
 
 export interface JobCreate {
@@ -140,7 +150,7 @@ export interface CalendarEvent {
   duration?: string;
   client: string;
   address: string;
-  description: string;
+  description?: string | null;
   phone_number?: string;
   email?: string;
   coworkers?: string[];
@@ -691,6 +701,9 @@ export interface Estimate extends EstimateAmounts {
   address_override: string | null;
   scope_of_work: string | null;
   notes: string | null;
+  // Read-only: scope_of_work plus the phased tasks, composed by the backend. What the
+  // job's scope of work is prefilled with on conversion.
+  job_scope: string | null;
   crew_size: number;
   techs_traveling: number;
   distance_km: string | null;

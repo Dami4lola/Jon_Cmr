@@ -31,8 +31,9 @@ class Timesheet(SQLModel, table=True):
     used_company_truck: bool = Field(default=False)
     worked_at_hq: bool = Field(default=False)
     # Billing only: this entry's labour bills at the Red Seal rate. The worker's
-    # payout is unaffected - that always uses worker.hourly_rate. Purely additive:
-    # a Red Seal job already bills every hour at the Red Seal rate regardless.
+    # payout is unaffected - that always uses worker.hourly_rate. This tick is the
+    # only thing that prices an hour at the Red Seal rate; job.is_redseal_trade is
+    # metadata and prices nothing (see job_cost.BillingRates.labour_rate_for).
     is_redseal: bool = Field(default=False)
 
     # Notes

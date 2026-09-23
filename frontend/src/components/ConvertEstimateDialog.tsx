@@ -37,6 +37,7 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   const [workerIds, setWorkerIds] = useState<number[]>([]);
   const [clientName, setClientName] = useState('');
   const [clientAddress, setClientAddress] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
 
   const { data: estimate, isLoading } = useQuery<Estimate>({
     queryKey: ['estimate', estimateId],
@@ -51,7 +52,10 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   useEffect(() => {
     if (!estimate) return;
     setTitle(defaultJobTitle(estimate));
-    setDetails(estimate.scope_of_work || '');
+    // job_scope, not scope_of_work: the written scope plus the phased task list, which
+    // is what the crew reads. Composed server-side so this cannot drift from the
+    // fallback the conversion itself uses.
+    setDetails(estimate.job_scope || '');
     setClientName(estimate.client_name_override || '');
     setClientAddress(estimate.address_override || '');
   }, [estimate]);
@@ -71,7 +75,11 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
         assigned_worker_ids: workerIds,
       };
       if (needsClient) {
-        payload.new_client = { name: clientName.trim(), address: clientAddress.trim() };
+        payload.new_client = {
+          name: clientName.trim(),
+          address: clientAddress.trim(),
+          phone_number: clientPhone.trim(),
+        };
       }
       return estimatesApi.convertToJob(estimateId, payload);
     },
@@ -91,7 +99,7 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   const canSubmit =
     !!title.trim() &&
     !convertMutation.isPending &&
-    (!needsClient || (!!clientName.trim() && !!clientAddress.trim()));
+    (!needsClient || (!!clientName.trim() && !!clientAddress.trim() && !!clientPhone.trim()));
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -156,6 +164,19 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       />
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                      <input
+                        type="tel"
+                        value={clientPhone}
+                        onChange={(e) => setClientPhone(e.target.value)}
+                        maxLength={20}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        The crew calls this from the job card if they need the client on site.
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
@@ -180,7 +201,9 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
                   rows={4}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 />
-                <p className="text-xs text-gray-500 mt-1">Prefilled from the scope of work. Workers see this.</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Prefilled from the scope of work. The crew sees this on their dashboard.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

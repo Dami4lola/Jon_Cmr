@@ -33,6 +33,7 @@ from ..models.estimate import EstimateStatus
 from ..services.distance import calculate_distance
 from ..services.material_pricing import search_materials
 from ..services.estimate_pdf import generate_estimate_pdf
+from ..services.job_prep import job_scope_from_estimate
 from ..schemas.job import JobBrief, JobResponse
 from ..schemas.client import ClientBrief
 from ..schemas.estimate import (
@@ -507,6 +508,7 @@ def _estimate_to_response(estimate: Estimate) -> EstimateResponse:
         address_override=estimate.address_override,
         scope_of_work=estimate.scope_of_work,
         notes=estimate.notes,
+        job_scope=job_scope_from_estimate(estimate),
         crew_size=estimate.crew_size,
         techs_traveling=estimate.techs_traveling,
         distance_km=estimate.distance_km,
@@ -848,12 +850,13 @@ def _is_redseal_estimate(estimate: Estimate) -> bool:
     """
     Whether the estimate actually scoped Red Seal work.
 
-    Tagged tasks are the only signal. redseal_techs deliberately does NOT count: the
-    calculator auto-fills it from crew size unless the manager unlinks it, so it is
-    non-zero on virtually every estimate and says nothing about the work. Including it
-    flagged ordinary jobs as Red Seal, which billed the client $100/hr on a job quoted
-    at $80/hr - silently, because the estimate itself charges no Red Seal when no task
-    is tagged.
+    Tagged tasks are the only signal. redseal_techs deliberately does NOT count: it used
+    to be auto-filled from crew size, so it was non-zero on virtually every estimate and
+    said nothing about the work. Including it flagged ordinary jobs as Red Seal, which
+    billed the client $100/hr on a job quoted at $80/hr - silently, because the estimate
+    itself charges no Red Seal when no task is tagged. The calculator no longer auto-fills
+    it, but estimates saved before that still carry the stray count, and nothing stops a
+    client sending one.
     """
     return any(task.uses_redseal for task in estimate.tasks)
 
@@ -978,9 +981,9 @@ def convert_estimate_to_job(
     job = Job(
         client_id=client.id,
         title=data.title,
-        # scope_of_work, never notes - notes are internal margin commentary and
-        # Job.details is shown to workers.
-        details=data.details if data.details is not None else estimate.scope_of_work,
+        # The written scope plus the phased tasks, never notes - notes are internal
+        # margin commentary and Job.details is on the crew's dashboard.
+        details=data.details if data.details is not None else job_scope_from_estimate(estimate),
         start_date=data.start_date,
         end_date=data.end_date,
         scheduled_time=data.scheduled_time,

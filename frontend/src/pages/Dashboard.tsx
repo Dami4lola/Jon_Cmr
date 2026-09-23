@@ -10,6 +10,7 @@ import { timesheetsApi } from '../api/timesheets';
 import { timeOffApi } from '../api/timeOff';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../store/authStore';
+import { JobPrepList } from '../components/JobPrepList';
 import { formatCurrency, formatDate, getCoworkerSchedule, formatShortDate } from '../lib/utils';
 import type { TimesheetCreate, Timesheet, TimeOffRequest, PayoutPreview } from '../types';
 
@@ -452,7 +453,9 @@ export function Dashboard() {
               </label>
               {/* Deliberately not pre-ticked from the job's Red Seal flag: billing at
                   the Red Seal rate should be a positive assertion by whoever did the
-                  work. A Red Seal job already bills that rate without this. */}
+                  work, and a job can mix Red Seal and ordinary hours. This tick is the
+                  only thing that bills the hours at that rate - the job flag prices
+                  nothing - so Job Financials warns when a flagged job has none. */}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -889,6 +892,10 @@ export function Dashboard() {
                         </a>
                       </p>
                     )}
+                    {job.details && (
+                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{job.details}</p>
+                    )}
+                    <JobPrepList items={job.prep_items || []} />
                     {(coworkerScheduleByJobId.get(job.id)?.length ?? 0) > 0 && (
                       <div className="mt-2 space-y-1">
                         <span className="text-xs text-gray-500">Working with:</span>

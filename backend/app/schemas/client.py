@@ -7,7 +7,10 @@ from pydantic import BaseModel, EmailStr, Field
 class ClientCreate(BaseModel):
     """Create client"""
     name: str = Field(..., max_length=100)
-    phone_number: str | None = Field(default=None, max_length=20)
+    # Required, unlike the nullable column behind it: the crew calls this number from
+    # the job card, and a client created without one silently reaches site unreachable.
+    # No format rule - extensions and site offices all have to survive.
+    phone_number: str = Field(..., min_length=1, max_length=20)
     email: EmailStr | None = None
     address: str = Field(..., min_length=1)
 

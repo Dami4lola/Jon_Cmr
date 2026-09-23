@@ -244,7 +244,7 @@ export function Calendar() {
                 </p>
               )}
               {selectedEvent.description && (
-                <p>
+                <p className="whitespace-pre-wrap">
                   <span className="font-medium">Description:</span>{' '}
                   {selectedEvent.description}
                 </p>
