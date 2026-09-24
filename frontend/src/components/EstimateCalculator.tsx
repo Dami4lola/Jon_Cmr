@@ -99,9 +99,18 @@ const SCAFFOLDING_LABELS: Record<ScaffoldingComponentKey, string> = {
   plank: 'Planks',
 };
 
-// Crossers are billed as part of the Frame line's cost, not a separate line
-// (business rule) - "crosser" stays a valid component so older saved
-// estimates with a standalone crosser row still load and display correctly.
+// The usual per-day rate and count for each component. Shown as placeholders rather
+// than filled in, so the figures are there to work from but nothing has to be cleared
+// before typing. Crossers are billed as part of the Frame line's cost, not a separate
+// line (business rule) - "crosser" stays a valid component so older saved estimates
+// with a standalone crosser row still load and display correctly.
+const SCAFFOLDING_DEFAULTS: Record<ScaffoldingComponentKey, { rate: number; qty: number }> = {
+  frame: { rate: 1, qty: 40 },
+  crosser: { rate: 0, qty: 56 },
+  jack: { rate: 2, qty: 20 },
+  plank: { rate: 3, qty: 35 },
+};
+
 const NEW_ESTIMATE_SCAFFOLDING_COMPONENTS: ScaffoldingComponentKey[] = ['frame', 'jack', 'plank'];
 
 const PROSPECT_ADDRESS_REQUIRED =
@@ -829,7 +838,7 @@ export function EstimateCalculator({
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder="Rate/day"
+                placeholder={String(SCAFFOLDING_DEFAULTS[row.component].rate)}
                 className={`${inputClass} col-span-3`}
                 value={blankIfZero(row.rate)}
                 onChange={(e) => updateScaffoldingRow(row.id, { rate: parseFloat(e.target.value) || 0 })}
@@ -839,7 +848,7 @@ export function EstimateCalculator({
                 type="number"
                 min={0}
                 step={1}
-                placeholder="Qty"
+                placeholder={String(SCAFFOLDING_DEFAULTS[row.component].qty)}
                 className={`${inputClass} col-span-3`}
                 value={blankIfZero(row.qty)}
                 onChange={(e) => updateScaffoldingRow(row.id, { qty: parseFloat(e.target.value) || 0 })}
