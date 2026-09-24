@@ -99,16 +99,25 @@ const SCAFFOLDING_LABELS: Record<ScaffoldingComponentKey, string> = {
   plank: 'Planks',
 };
 
-// Crossers are billed as part of the Frame line's cost, not a separate line
-// (business rule) - "crosser" stays a valid component so older saved
-// estimates with a standalone crosser row still load and display correctly.
+// The usual per-day rate and count for each component. Shown as placeholders rather
+// than filled in, so the figures are there to work from but nothing has to be cleared
+// before typing. Crossers are billed as part of the Frame line's cost, not a separate
+// line (business rule) - "crosser" stays a valid component so older saved estimates
+// with a standalone crosser row still load and display correctly.
+const SCAFFOLDING_DEFAULTS: Record<ScaffoldingComponentKey, { rate: number; qty: number }> = {
+  frame: { rate: 1, qty: 40 },
+  crosser: { rate: 0, qty: 56 },
+  jack: { rate: 2, qty: 20 },
+  plank: { rate: 3, qty: 35 },
+};
+
 const NEW_ESTIMATE_SCAFFOLDING_COMPONENTS: ScaffoldingComponentKey[] = ['frame', 'jack', 'plank'];
 
 const PROSPECT_ADDRESS_REQUIRED =
   'Add an address for the new client - it is the site the crew drives to.';
 
-const PROSPECT_PHONE_REQUIRED =
-  'Add a phone number for the new client - the crew calls it from the job card.';
+const PROSPECT_CONTACT_REQUIRED =
+  'Add a phone number or an email for the new client - one or the other, so they can be reached.';
 
 function defaultScaffoldingRows(): ScaffoldingRow[] {
   return NEW_ESTIMATE_SCAFFOLDING_COMPONENTS.map((component) => ({
@@ -476,7 +485,8 @@ export function EstimateCalculator({
         // leaves the crew with no site and the invoice with no travel.
         const prospectAddress = pendingProspect.address.trim() || address.trim();
         if (!prospectAddress) throw new Error(PROSPECT_ADDRESS_REQUIRED);
-        if (!pendingProspect.phone_number?.trim()) throw new Error(PROSPECT_PHONE_REQUIRED);
+        const hasContact = pendingProspect.phone_number?.trim() || pendingProspect.email?.trim();
+        if (!hasContact) throw new Error(PROSPECT_CONTACT_REQUIRED);
         const created = await clientsApi.create({ ...pendingProspect, address: prospectAddress });
         resolvedClientId = created.id;
       }
@@ -829,7 +839,7 @@ export function EstimateCalculator({
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder="Rate/day"
+                placeholder={String(SCAFFOLDING_DEFAULTS[row.component].rate)}
                 className={`${inputClass} col-span-3`}
                 value={blankIfZero(row.rate)}
                 onChange={(e) => updateScaffoldingRow(row.id, { rate: parseFloat(e.target.value) || 0 })}
@@ -839,7 +849,7 @@ export function EstimateCalculator({
                 type="number"
                 min={0}
                 step={1}
-                placeholder="Qty"
+                placeholder={String(SCAFFOLDING_DEFAULTS[row.component].qty)}
                 className={`${inputClass} col-span-3`}
                 value={blankIfZero(row.qty)}
                 onChange={(e) => updateScaffoldingRow(row.id, { qty: parseFloat(e.target.value) || 0 })}
@@ -1119,7 +1129,7 @@ export function EstimateCalculator({
       {saveMutation.isError && (
         <div className="bg-red-50 text-red-600 p-2 rounded-lg text-xs">
           {saveMutation.error instanceof Error
-          && [PROSPECT_ADDRESS_REQUIRED, PROSPECT_PHONE_REQUIRED].includes(saveMutation.error.message)
+          && [PROSPECT_ADDRESS_REQUIRED, PROSPECT_CONTACT_REQUIRED].includes(saveMutation.error.message)
             ? saveMutation.error.message
             : 'Failed to save estimate. Please try again.'}
         </div>
