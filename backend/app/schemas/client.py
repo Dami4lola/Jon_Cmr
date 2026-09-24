@@ -1,18 +1,29 @@
 """
 Client schemas
 """
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
+
+CONTACT_REQUIRED = "Add a phone number or an email so the client can be reached."
 
 
 class ClientCreate(BaseModel):
     """Create client"""
     name: str = Field(..., max_length=100)
-    # Required, unlike the nullable column behind it: the crew calls this number from
-    # the job card, and a client created without one silently reaches site unreachable.
-    # No format rule - extensions and site offices all have to survive.
-    phone_number: str = Field(..., min_length=1, max_length=20)
+    phone_number: str | None = Field(default=None, max_length=20)
     email: EmailStr | None = None
     address: str = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def require_a_way_to_reach_them(self) -> "ClientCreate":
+        """
+        One contact method, either one. Phone alone was mandatory for a while so the
+        crew always had a number on the job card, but that walls off an estimate for a
+        prospect who has only ever given an email. No format rule on the phone -
+        extensions and site offices all have to survive.
+        """
+        if not (self.phone_number or "").strip() and not self.email:
+            raise ValueError(CONTACT_REQUIRED)
+        return self
 
 
 class ClientUpdate(BaseModel):

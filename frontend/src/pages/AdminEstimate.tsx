@@ -152,11 +152,14 @@ export function AdminEstimate() {
                 />
                 <input
                   type="email"
-                  placeholder="Email (optional)"
+                  placeholder="Email"
                   value={prospectDraft.email}
                   onChange={(e) => setProspectDraft((d) => ({ ...d, email: e.target.value }))}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                 />
+                <p className="col-span-2 text-xs text-gray-500">
+                  A phone number or an email - either one, so the client can be reached.
+                </p>
               </div>
             )}
           </div>

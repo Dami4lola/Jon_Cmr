@@ -116,8 +116,8 @@ const NEW_ESTIMATE_SCAFFOLDING_COMPONENTS: ScaffoldingComponentKey[] = ['frame',
 const PROSPECT_ADDRESS_REQUIRED =
   'Add an address for the new client - it is the site the crew drives to.';
 
-const PROSPECT_PHONE_REQUIRED =
-  'Add a phone number for the new client - the crew calls it from the job card.';
+const PROSPECT_CONTACT_REQUIRED =
+  'Add a phone number or an email for the new client - one or the other, so they can be reached.';
 
 function defaultScaffoldingRows(): ScaffoldingRow[] {
   return NEW_ESTIMATE_SCAFFOLDING_COMPONENTS.map((component) => ({
@@ -485,7 +485,8 @@ export function EstimateCalculator({
         // leaves the crew with no site and the invoice with no travel.
         const prospectAddress = pendingProspect.address.trim() || address.trim();
         if (!prospectAddress) throw new Error(PROSPECT_ADDRESS_REQUIRED);
-        if (!pendingProspect.phone_number?.trim()) throw new Error(PROSPECT_PHONE_REQUIRED);
+        const hasContact = pendingProspect.phone_number?.trim() || pendingProspect.email?.trim();
+        if (!hasContact) throw new Error(PROSPECT_CONTACT_REQUIRED);
         const created = await clientsApi.create({ ...pendingProspect, address: prospectAddress });
         resolvedClientId = created.id;
       }
@@ -1128,7 +1129,7 @@ export function EstimateCalculator({
       {saveMutation.isError && (
         <div className="bg-red-50 text-red-600 p-2 rounded-lg text-xs">
           {saveMutation.error instanceof Error
-          && [PROSPECT_ADDRESS_REQUIRED, PROSPECT_PHONE_REQUIRED].includes(saveMutation.error.message)
+          && [PROSPECT_ADDRESS_REQUIRED, PROSPECT_CONTACT_REQUIRED].includes(saveMutation.error.message)
             ? saveMutation.error.message
             : 'Failed to save estimate. Please try again.'}
         </div>

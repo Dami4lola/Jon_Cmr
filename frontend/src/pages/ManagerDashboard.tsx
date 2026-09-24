@@ -352,8 +352,8 @@ export function ManagerDashboard() {
   const handleCreateClient = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientFormData.name.trim() || !clientFormData.address.trim()) return;
-    // The crew calls this off the job card; a client saved without one is unreachable.
-    if (!clientFormData.phone_number?.trim()) return;
+    // A phone number or an email, either one - a client with neither cannot be reached.
+    if (!clientFormData.phone_number?.trim() && !clientFormData.email?.trim()) return;
     createClientMutation.mutate(clientFormData);
   };
 
@@ -856,7 +856,7 @@ export function ManagerDashboard() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number *
+                  Phone Number
                 </label>
                 <input
                   type="tel"
@@ -865,8 +865,10 @@ export function ManagerDashboard() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="Phone number"
                   maxLength={20}
-                  required
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  A phone number or an email - either one.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

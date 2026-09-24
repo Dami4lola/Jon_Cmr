@@ -38,6 +38,7 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   const [clientName, setClientName] = useState('');
   const [clientAddress, setClientAddress] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
 
   const { data: estimate, isLoading } = useQuery<Estimate>({
     queryKey: ['estimate', estimateId],
@@ -78,7 +79,8 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
         payload.new_client = {
           name: clientName.trim(),
           address: clientAddress.trim(),
-          phone_number: clientPhone.trim(),
+          phone_number: clientPhone.trim() || undefined,
+          email: clientEmail.trim() || undefined,
         };
       }
       return estimatesApi.convertToJob(estimateId, payload);
@@ -99,7 +101,10 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   const canSubmit =
     !!title.trim() &&
     !convertMutation.isPending &&
-    (!needsClient || (!!clientName.trim() && !!clientAddress.trim() && !!clientPhone.trim()));
+    (!needsClient
+      || (!!clientName.trim()
+        && !!clientAddress.trim()
+        && (!!clientPhone.trim() || !!clientEmail.trim())));
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -165,7 +170,7 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                       <input
                         type="tel"
                         value={clientPhone}
@@ -175,6 +180,18 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
                       />
                       <p className="text-xs text-gray-500 mt-1">
                         The crew calls this from the job card if they need the client on site.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={clientEmail}
+                        onChange={(e) => setClientEmail(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        A phone number or an email - either one.
                       </p>
                     </div>
                   </div>

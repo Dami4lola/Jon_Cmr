@@ -56,13 +56,14 @@ export function Clients() {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Phone is required on a new client: the crew calls it off the job card.
-    if (!formData.name.trim() || !formData.address.trim() || !formData.phone_number?.trim()) {
+    // A phone number or an email, either one - a client with neither cannot be reached.
+    const hasContact = formData.phone_number?.trim() || formData.email?.trim();
+    if (!formData.name.trim() || !formData.address.trim() || !hasContact) {
       return;
     }
     createMutation.mutate({
       ...formData,
-      phone_number: formData.phone_number.trim(),
+      phone_number: formData.phone_number?.trim() || undefined,
       email: formData.email?.trim() || undefined,
     });
   };
@@ -131,7 +132,7 @@ export function Clients() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number *
+                  Phone Number
                 </label>
                 <input
                   type="text"
@@ -140,8 +141,10 @@ export function Clients() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-obatek focus:border-transparent outline-none"
                   placeholder="Phone number"
                   maxLength={20}
-                  required
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  A phone number or an email - either one.
+                </p>
               </div>
             </div>
 

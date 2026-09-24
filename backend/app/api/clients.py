@@ -46,9 +46,9 @@ def create_client(
 def get_client(
     client_id: int,
     session: DBSession,
-    current_user: ManagerUser,
+    current_user: EstimatorUser,
 ):
-    """Get a specific client (manager only)"""
+    """Get a specific client (manager, admin, or estimator)"""
     client = session.get(Client, client_id)
 
     if not client:
@@ -65,9 +65,15 @@ def update_client(
     client_id: int,
     data: ClientUpdate,
     session: DBSession,
-    current_user: ManagerUser,
+    current_user: EstimatorUser,
 ):
-    """Update a client (manager only)"""
+    """
+    Update a client (manager, admin, or estimator).
+
+    An estimator who can add a client can correct one - a wrong address would otherwise
+    block them mid-estimate. Deleting stays manager-only: it is destructive and
+    estimators are a wider group.
+    """
     client = session.get(Client, client_id)
 
     if not client:
