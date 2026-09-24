@@ -109,6 +109,53 @@ class TestContactRule:
 
         assert response.status_code == 422
 
+    def test_an_untouched_email_box_is_not_a_malformed_address(self, manager_client):
+        """
+        A form sends "" for a box nobody typed in, and EmailStr rejects "" before the
+        contact rule is reached - so a blank email read as "an email is required"
+        while a blank phone failed its own rule, and the pair looked mandatory.
+        """
+        response = manager_client.post(
+            "/api/clients/", json=payload(phone_number="613-555-0142", email="")
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["email"] is None
+
+    def test_an_untouched_phone_box_is_stored_as_nothing(self, manager_client):
+        response = manager_client.post(
+            "/api/clients/", json=payload(phone_number="", email="bob@vance.com")
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["phone_number"] is None
+
+    def test_both_boxes_untouched_names_the_contact_rule(self, manager_client):
+        response = manager_client.post("/api/clients/", json=payload(phone_number="", email=""))
+
+        assert response.status_code == 422
+        assert "phone number or an email" in response.text
+
+    def test_a_malformed_email_is_still_rejected(self, manager_client):
+        """Blank is forgiven; wrong is not."""
+        response = manager_client.post(
+            "/api/clients/", json=payload(phone_number="613-555-0142", email="not-an-email")
+        )
+
+        assert response.status_code == 422
+        assert "valid email" in response.text
+
+    def test_clearing_a_contact_on_an_edit_removes_it(self, manager_client):
+        created = manager_client.post(
+            "/api/clients/",
+            json=payload(phone_number="613-555-0142", email="bob@vance.com"),
+        ).json()
+
+        response = manager_client.put(f"/api/clients/{created['id']}", json={"email": ""})
+
+        assert response.status_code == 200, response.text
+        assert response.json()["email"] is None
+
     def test_an_address_is_still_required(self, manager_client):
         """Unchanged: the address is the site the crew drives to."""
         response = manager_client.post(
