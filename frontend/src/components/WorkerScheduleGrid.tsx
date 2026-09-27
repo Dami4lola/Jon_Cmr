@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { timeOffApi } from '../api/timeOff';
 import { formatShortDate, getDateRange } from '../lib/utils';
+import { WorkerPicker } from './WorkerPicker';
 import type { TimeOffRequest, Worker, WorkerScheduleEntry } from '../types';
 
 interface WorkerScheduleGridProps {
@@ -76,26 +77,11 @@ export function WorkerScheduleGrid({
 
   if (!startDate || !endDate || startDate > endDate) {
     return (
-      <div className="flex flex-wrap gap-2">
-        {workers.map((worker) => (
-          <label
-            key={worker.id}
-            className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-              assignedWorkerIds.includes(worker.id)
-                ? 'bg-obatek/10 border-obatek text-obatek'
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={assignedWorkerIds.includes(worker.id)}
-              onChange={() => toggleWorker(worker.id)}
-              className="sr-only"
-            />
-            <span className="text-sm">{worker.name}</span>
-          </label>
-        ))}
-      </div>
+      <WorkerPicker
+        workers={workers}
+        assignedWorkerIds={assignedWorkerIds}
+        onToggle={toggleWorker}
+      />
     );
   }
 
