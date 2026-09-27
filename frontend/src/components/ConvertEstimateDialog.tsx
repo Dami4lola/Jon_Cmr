@@ -3,7 +3,14 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { estimatesApi } from '../api/estimates';
 import { workersApi } from '../api/workers';
 import { formatCurrency } from '../lib/utils';
-import type { ConvertEstimatePayload, Estimate, Job, Worker } from '../types';
+import { WorkerScheduleGrid } from './WorkerScheduleGrid';
+import type {
+  ConvertEstimatePayload,
+  Estimate,
+  Job,
+  Worker,
+  WorkerScheduleEntry,
+} from '../types';
 
 // Job.estimated_duration is Numeric(4,2) on the backend, so longer estimates
 // cannot carry their hours onto the job.
@@ -13,6 +20,12 @@ interface ConvertEstimateDialogProps {
   estimateId: number;
   onClose: () => void;
   onConverted: (job: Job, estimateNumber: string) => void;
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(date + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString('en-CA');
 }
 
 function defaultJobTitle(estimate: Estimate): string {
@@ -35,6 +48,7 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   const [endDate, setEndDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [workerIds, setWorkerIds] = useState<number[]>([]);
+  const [workerSchedule, setWorkerSchedule] = useState<WorkerScheduleEntry[]>([]);
   const [clientName, setClientName] = useState('');
   const [clientAddress, setClientAddress] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -53,10 +67,10 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   useEffect(() => {
     if (!estimate) return;
     setTitle(defaultJobTitle(estimate));
-    // job_scope, not scope_of_work: the written scope plus the phased task list, which
-    // is what the crew reads. Composed server-side so this cannot drift from the
-    // fallback the conversion itself uses.
-    setDetails(estimate.job_scope || '');
+    // job_details, not scope_of_work: the written scope, the phased task list and the
+    // gear list, which is what the crew reads. Composed server-side so this cannot
+    // drift from the fallback the conversion itself uses.
+    setDetails(estimate.job_details || '');
     setClientName(estimate.client_name_override || '');
     setClientAddress(estimate.address_override || '');
   }, [estimate]);
@@ -64,6 +78,16 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
   const needsClient = !!estimate && !estimate.client;
   const totalHours = estimate ? parseFloat(estimate.total_hours) : 0;
   const hoursTooLarge = totalHours > JOB_DURATION_MAX;
+  const rangeInverted = !!startDate && !!endDate && endDate < startDate;
+
+  // The estimate already priced how many days the work runs, so the manager gets the
+  // range - and with it the day-by-day grid - off a single date. Typed-over freely.
+  const handleStartDate = (value: string) => {
+    setStartDate(value);
+    if (value && !endDate && estimate?.travel_days) {
+      setEndDate(addDays(value, estimate.travel_days - 1));
+    }
+  };
 
   const convertMutation = useMutation({
     mutationFn: () => {
@@ -74,6 +98,11 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
         end_date: endDate || null,
         scheduled_time: scheduledTime ? `${scheduledTime}:00` : null,
         assigned_worker_ids: workerIds,
+        // Shortening the range after ticking days leaves entries the grid no longer
+        // draws, and those would schedule the crew outside their own job.
+        worker_schedule: workerSchedule.filter(
+          (ws) => (!startDate || ws.date >= startDate) && (!endDate || ws.date <= endDate)
+        ),
       };
       if (needsClient) {
         payload.new_client = {
@@ -92,15 +121,10 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
     (convertMutation.error as any)?.response?.data?.detail ||
     (convertMutation.error ? 'Failed to convert this estimate. Please try again.' : null);
 
-  const toggleWorker = (workerId: number) => {
-    setWorkerIds((current) =>
-      current.includes(workerId) ? current.filter((id) => id !== workerId) : [...current, workerId]
-    );
-  };
-
   const canSubmit =
     !!title.trim() &&
     !convertMutation.isPending &&
+    !rangeInverted &&
     (!needsClient
       || (!!clientName.trim()
         && !!clientAddress.trim()
@@ -215,11 +239,12 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
                 <textarea
                   value={details}
                   onChange={(e) => setDetails(e.target.value)}
-                  rows={4}
+                  rows={12}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Prefilled from the scope of work. The crew sees this on their dashboard.
+                  Prefilled with the scope of work and the gear list off this estimate. The
+                  crew sees this on their dashboard and on their calendar - edit it here.
                 </p>
               </div>
 
@@ -229,7 +254,7 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
                   <input
                     type="date"
                     value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    onChange={(e) => handleStartDate(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
@@ -253,23 +278,27 @@ export function ConvertEstimateDialog({ estimateId, onClose, onConverted }: Conv
                 </div>
               </div>
 
+              {rangeInverted && (
+                <p className="text-sm text-red-600">End date cannot be before start date.</p>
+              )}
+
               {workers.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Assign workers</label>
-                  <div className="border border-gray-200 rounded-lg p-3 flex flex-wrap gap-3">
-                    {workers.map((worker) => (
-                      <label key={worker.id} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={workerIds.includes(worker.id)}
-                          onChange={() => toggleWorker(worker.id)}
-                        />
-                        {worker.name}
-                      </label>
-                    ))}
-                  </div>
+                  <WorkerScheduleGrid
+                    workers={workers}
+                    startDate={startDate}
+                    endDate={endDate}
+                    schedule={workerSchedule}
+                    assignedWorkerIds={workerIds}
+                    onChange={(schedule, ids) => {
+                      setWorkerSchedule(schedule);
+                      setWorkerIds(ids);
+                    }}
+                  />
                   <p className="text-xs text-gray-500 mt-1">
-                    Day-by-day scheduling can be set afterwards from the Manager Dashboard.
+                    Tick each worker onto the days they are on site. Set a start and end date
+                    first to get a column per day.
                   </p>
                 </div>
               )}

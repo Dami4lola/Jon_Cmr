@@ -6,7 +6,6 @@ relationships and do no IO, so there is nothing here worth a database for.
 """
 from decimal import Decimal
 
-from app.models import Job
 from app.models.estimate import (
     Estimate,
     EstimateEquipmentRow,
@@ -20,33 +19,34 @@ from app.services.job_prep import (
     SECTION_MATERIALS,
     SECTION_SCAFFOLDING,
     SECTION_TOOLING,
+    job_details_from_estimate,
     job_scope_from_estimate,
-    prep_items_for_job,
+    prep_items_from_estimate,
+    prep_text_from_estimate,
 )
 
 
-def make_job(**rows) -> Job:
+def make_gear_estimate(**rows) -> Estimate:
     estimate = Estimate(estimate_number="EST-1")
     estimate.equipment_rows = rows.get("equipment", [])
     estimate.material_rows = rows.get("materials", [])
     estimate.tooling_rows = rows.get("tooling", [])
     estimate.scaffolding_rows = rows.get("scaffolding", [])
-    job = Job(client_id=1, title="Deck rebuild")
-    job.estimate = estimate
-    return job
+    estimate.tasks = []
+    return estimate
 
 
 class TestSections:
     def test_equipment_row_names_its_category(self):
         """The reported case: the crew never learned a jackhammer had to be rented."""
-        job = make_job(equipment=[
+        estimate = make_gear_estimate(equipment=[
             EstimateEquipmentRow(
                 category="rentalVillage", description="Jackhammer",
                 quantity=Decimal("1"), unit="per day", rate=Decimal("95"),
             )
         ])
 
-        items = prep_items_for_job(job)
+        items = prep_items_from_estimate(estimate)
 
         assert len(items) == 1
         assert items[0].section == SECTION_EQUIPMENT
@@ -55,12 +55,12 @@ class TestSections:
         assert items[0].unit == "per day"
 
     def test_materials_and_tooling_land_in_their_own_sections(self):
-        job = make_job(
+        estimate = make_gear_estimate(
             materials=[EstimateMaterialRow(description="2x6 cedar", quantity=Decimal("24"))],
             tooling=[EstimateToolingRow(description="Impact driver", quantity=Decimal("2"))],
         )
 
-        sections = {item.section: item.description for item in prep_items_for_job(job)}
+        sections = {item.section: item.description for item in prep_items_from_estimate(estimate)}
 
         assert sections == {
             SECTION_MATERIALS: "2x6 cedar",
@@ -68,34 +68,34 @@ class TestSections:
         }
 
     def test_scaffolding_component_is_labelled(self):
-        job = make_job(scaffolding=[
+        estimate = make_gear_estimate(scaffolding=[
             EstimateScaffoldingRow(component="frame", quantity=Decimal("40"), rate_per_day=Decimal("1"))
         ])
 
-        items = prep_items_for_job(job)
+        items = prep_items_from_estimate(estimate)
 
         assert items[0].section == SECTION_SCAFFOLDING
         assert items[0].description == "Frames (incl. crossers)"
 
     def test_sections_come_out_in_packing_order(self):
-        job = make_job(
+        estimate = make_gear_estimate(
             equipment=[EstimateEquipmentRow(category="heavy", description="Excavator", quantity=Decimal("1"))],
             materials=[EstimateMaterialRow(description="Concrete", quantity=Decimal("12"))],
             tooling=[EstimateToolingRow(description="Laser level", quantity=Decimal("1"))],
             scaffolding=[EstimateScaffoldingRow(component="jack", quantity=Decimal("20"))],
         )
 
-        assert [item.section for item in prep_items_for_job(job)] == [
+        assert [item.section for item in prep_items_from_estimate(estimate)] == [
             SECTION_EQUIPMENT, SECTION_MATERIALS, SECTION_TOOLING, SECTION_SCAFFOLDING,
         ]
 
     def test_rows_keep_the_estimators_ordering(self):
-        job = make_job(materials=[
+        estimate = make_gear_estimate(materials=[
             EstimateMaterialRow(description="Second", quantity=Decimal("1"), sort_order=1),
             EstimateMaterialRow(description="First", quantity=Decimal("1"), sort_order=0),
         ])
 
-        assert [item.description for item in prep_items_for_job(job)] == ["First", "Second"]
+        assert [item.description for item in prep_items_from_estimate(estimate)] == ["First", "Second"]
 
 
 class TestEmptyRowsAreDropped:
@@ -104,44 +104,40 @@ class TestEmptyRowsAreDropped:
         A new estimate seeds all three components at zero so the boxes start empty.
         Without this every converted job would list scaffolding nobody asked for.
         """
-        job = make_job(scaffolding=[
+        estimate = make_gear_estimate(scaffolding=[
             EstimateScaffoldingRow(component="frame", quantity=Decimal("0")),
             EstimateScaffoldingRow(component="jack", quantity=Decimal("0")),
             EstimateScaffoldingRow(component="plank", quantity=Decimal("35")),
         ])
 
-        items = prep_items_for_job(job)
+        items = prep_items_from_estimate(estimate)
 
         assert [item.description for item in items] == ["Planks"]
 
     def test_blank_description_is_not_listed(self):
-        job = make_job(materials=[
+        estimate = make_gear_estimate(materials=[
             EstimateMaterialRow(description="   ", quantity=Decimal("5")),
             EstimateMaterialRow(description="Screws", quantity=Decimal("2")),
         ])
 
-        assert [item.description for item in prep_items_for_job(job)] == ["Screws"]
+        assert [item.description for item in prep_items_from_estimate(estimate)] == ["Screws"]
 
     def test_zero_quantity_material_is_not_listed(self):
-        job = make_job(materials=[EstimateMaterialRow(description="Sand", quantity=Decimal("0"))])
+        estimate = make_gear_estimate(materials=[EstimateMaterialRow(description="Sand", quantity=Decimal("0"))])
 
-        assert prep_items_for_job(job) == []
+        assert prep_items_from_estimate(estimate) == []
 
-    def test_job_with_no_estimate_has_no_list(self):
-        """Jobs created by hand on the Manager Dashboard have no estimate behind them."""
-        job = Job(client_id=1, title="Callout")
-        job.estimate = None
-
-        assert prep_items_for_job(job) == []
+    def test_an_estimate_that_itemises_nothing_has_no_list(self):
+        assert prep_items_from_estimate(make_gear_estimate()) == []
 
 
 class TestNoCostsLeak:
     def test_no_money_field_reaches_the_crew(self):
         """
-        The whole point of the projection. This list is served to every assigned
-        worker on GET /api/jobs/, so a rate or unit cost here is a leak.
+        The whole point of the projection. This list lands on Job.details, which every
+        assigned worker reads, so a rate or unit cost here is a leak.
         """
-        job = make_job(
+        estimate = make_gear_estimate(
             equipment=[EstimateEquipmentRow(
                 category="heavy", description="Excavator", quantity=Decimal("1"),
                 rate=Decimal("120"), markup_pct=Decimal("15"),
@@ -154,7 +150,7 @@ class TestNoCostsLeak:
             )],
         )
 
-        for item in prep_items_for_job(job):
+        for item in prep_items_from_estimate(estimate):
             dumped = item.model_dump()
             assert set(dumped) == {"section", "description", "quantity", "unit"}
             assert "120" not in str(dumped)
@@ -163,14 +159,95 @@ class TestNoCostsLeak:
 
 class TestQuantityFormatting:
     def test_trailing_zeros_are_trimmed(self):
-        job = make_job(materials=[EstimateMaterialRow(description="Board", quantity=Decimal("4.00"))])
+        estimate = make_gear_estimate(materials=[EstimateMaterialRow(description="Board", quantity=Decimal("4.00"))])
 
-        assert prep_items_for_job(job)[0].quantity == "4"
+        assert prep_items_from_estimate(estimate)[0].quantity == "4"
 
     def test_a_real_fraction_survives(self):
-        job = make_job(materials=[EstimateMaterialRow(description="Board", quantity=Decimal("2.50"))])
+        estimate = make_gear_estimate(materials=[EstimateMaterialRow(description="Board", quantity=Decimal("2.50"))])
 
-        assert prep_items_for_job(job)[0].quantity == "2.5"
+        assert prep_items_from_estimate(estimate)[0].quantity == "2.5"
+
+
+class TestPrepText:
+    def test_sections_keep_their_packing_order_under_a_heading(self):
+        estimate = make_gear_estimate(
+            equipment=[EstimateEquipmentRow(
+                category="rentalVillage", description="Jackhammer",
+                quantity=Decimal("1"), unit="per day",
+            )],
+            materials=[
+                EstimateMaterialRow(description="2x6 cedar", quantity=Decimal("24")),
+                EstimateMaterialRow(description="Joist hangers", quantity=Decimal("40"), sort_order=1),
+            ],
+            scaffolding=[EstimateScaffoldingRow(component="plank", quantity=Decimal("35"))],
+        )
+
+        assert prep_text_from_estimate(estimate) == (
+            "What to bring\n\n"
+            "Equipment & rentals\n"
+            "- 1 per day x Jackhammer (Outside rental)\n\n"
+            "Materials\n"
+            "- 24 x 2x6 cedar\n"
+            "- 40 x Joist hangers\n\n"
+            "Scaffolding\n"
+            "- 35 x Planks"
+        )
+
+    def test_an_estimate_that_itemises_nothing_gets_no_heading(self):
+        """None, not an empty heading appended to a perfectly good scope."""
+        assert prep_text_from_estimate(make_gear_estimate()) is None
+
+    def test_no_money_reaches_the_text(self):
+        estimate = make_gear_estimate(
+            equipment=[EstimateEquipmentRow(
+                category="heavy", description="Excavator", quantity=Decimal("1"),
+                rate=Decimal("120"), markup_pct=Decimal("15"),
+            )],
+            materials=[EstimateMaterialRow(
+                description="Concrete", quantity=Decimal("12"), unit_cost=Decimal("8.50"),
+            )],
+        )
+
+        text = prep_text_from_estimate(estimate)
+
+        assert "120" not in text
+        assert "8.50" not in text
+        assert "15" not in text
+
+
+class TestJobDetails:
+    def test_scope_comes_first_then_the_gear(self):
+        estimate = make_gear_estimate(
+            materials=[EstimateMaterialRow(description="2x6 cedar", quantity=Decimal("24"))],
+        )
+        estimate.scope_of_work = "Rebuild the rear deck to code."
+        estimate.tasks = [task("build", "Frame and joist")]
+
+        assert job_details_from_estimate(estimate) == (
+            "Rebuild the rear deck to code.\n\n"
+            "The Build\n- Frame and joist\n\n"
+            "What to bring\n\n"
+            "Materials\n- 24 x 2x6 cedar"
+        )
+
+    def test_a_scope_with_nothing_itemised_is_the_scope_alone(self):
+        estimate = make_gear_estimate()
+        estimate.scope_of_work = "Recert the boiler"
+
+        assert job_details_from_estimate(estimate) == "Recert the boiler"
+
+    def test_gear_with_no_scope_stands_on_its_own(self):
+        estimate = make_gear_estimate(
+            tooling=[EstimateToolingRow(description="Impact driver", quantity=Decimal("2"))],
+        )
+
+        assert job_details_from_estimate(estimate) == (
+            "What to bring\n\nTooling & supplies\n- 2 x Impact driver"
+        )
+
+    def test_an_empty_estimate_leaves_details_null(self):
+        assert job_details_from_estimate(make_gear_estimate()) is None
 
 
 def make_estimate(scope=None, tasks=()):

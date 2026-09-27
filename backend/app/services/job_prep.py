@@ -8,7 +8,8 @@ scope, and every estimate endpoint is gated behind EstimatorUser, which a worker
 
 Two projections live here: the gear list, and the scope of work. Both drop the money and
 the hours. The crew needs to know a jackhammer has to be picked up and what the task is,
-not what either costs, and this is served to whoever is assigned to the job.
+not what either costs. job_details_from_estimate joins them into the text the conversion
+writes onto Job.details, which is the one field every crew surface already shows.
 """
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -17,7 +18,6 @@ from ..models.estimate import EquipmentCategory, EstimatePhase, ScaffoldingCompo
 from ..schemas.job import JobPrepItem
 
 if TYPE_CHECKING:
-    from ..models.job import Job
     from ..models.estimate import Estimate
 
 
@@ -54,6 +54,8 @@ SECTION_EQUIPMENT = "Equipment & rentals"
 SECTION_MATERIALS = "Materials"
 SECTION_TOOLING = "Tooling & supplies"
 SECTION_SCAFFOLDING = "Scaffolding"
+
+PREP_HEADING = "What to bring"
 
 
 def _format_quantity(quantity: Decimal) -> str:
@@ -115,24 +117,38 @@ def _scaffolding_items(estimate: "Estimate") -> list[JobPrepItem]:
     return items
 
 
-def prep_items_for_job(job: "Job") -> list[JobPrepItem]:
-    """
-    The gear and materials list for this job, or empty when it has no estimate.
-
-    Read straight off the linked estimate rather than copied at conversion, so a
-    material added while the job is still open reaches the crew instead of stranding
-    them with whatever was quoted weeks earlier.
-    """
-    estimate = job.estimate
-    if not estimate:
-        return []
-
+def prep_items_from_estimate(estimate: "Estimate") -> list[JobPrepItem]:
+    """Everything the crew has to have on site, in the order it gets packed."""
     return [
         *_equipment_items(estimate),
         *_described_items(estimate.material_rows, SECTION_MATERIALS),
         *_described_items(estimate.tooling_rows, SECTION_TOOLING),
         *_scaffolding_items(estimate),
     ]
+
+
+def _prep_line(item: JobPrepItem) -> str:
+    quantity = f"{item.quantity} {item.unit}" if item.unit else item.quantity
+    return f"- {quantity} x {item.description}"
+
+
+def prep_text_from_estimate(estimate: "Estimate") -> str | None:
+    """
+    The gear list written out for Job.details, grouped under its section headings.
+
+    Section order follows first appearance, which is the order prep_items_from_estimate
+    already packs in. None when the estimate itemises nothing, so an empty heading is
+    never appended to a scope.
+    """
+    sections: dict[str, list[str]] = {}
+    for item in prep_items_from_estimate(estimate):
+        sections.setdefault(item.section, []).append(_prep_line(item))
+
+    if not sections:
+        return None
+
+    blocks = ["\n".join([section, *lines]) for section, lines in sections.items()]
+    return "\n\n".join([PREP_HEADING, *blocks])
 
 
 def _phase_block(estimate: "Estimate", phase: str) -> str | None:
@@ -164,4 +180,22 @@ def job_scope_from_estimate(estimate: "Estimate") -> str | None:
     blocks.extend(
         block for block in (_phase_block(estimate, phase) for phase in PHASE_ORDER) if block
     )
+    return "\n\n".join(blocks) or None
+
+
+def job_details_from_estimate(estimate: "Estimate") -> str | None:
+    """
+    Everything the crew reads off the job: the scope of work, then the gear list.
+
+    Composed once here and used both to prefill the convert dialog and as the
+    conversion's own fallback, so the manager cannot be shown one thing and the job
+    given another. Unlike the scope, this is a snapshot - the manager edits the job's
+    details when the estimate gains a material mid-job.
+    """
+    blocks = [
+        block for block in (
+            job_scope_from_estimate(estimate),
+            prep_text_from_estimate(estimate),
+        ) if block
+    ]
     return "\n\n".join(blocks) or None

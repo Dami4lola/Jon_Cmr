@@ -71,8 +71,9 @@ class JobUpdate(BaseModel):
 class JobPrepItem(BaseModel):
     """One thing the crew needs on site, derived from the job's estimate.
 
-    Carries no rate, unit cost or markup: this is served to every assigned worker,
-    and what the gear costs is none of the crew's concern.
+    The shape job_prep renders the gear list from before it lands on Job.details.
+    Carries no rate, unit cost or markup: this reaches every assigned worker, and
+    what the gear costs is none of the crew's concern.
     """
     section: str
     description: str
@@ -105,7 +106,6 @@ class JobResponse(BaseModel):
     worker_schedule: List[WorkerScheduleEntry] = []
     my_scheduled_dates: List[date] = []
     photos: List[JobPhotoResponse] = []
-    prep_items: List[JobPrepItem] = []
 
     class Config:
         from_attributes = True

@@ -9,24 +9,9 @@ import { payrollApi } from '../api/payroll';
 import { timeOffApi } from '../api/timeOff';
 import { formatCurrency, formatDate } from '../lib/utils';
 import { EstimateCalculator } from '../components/EstimateCalculator';
+import { WorkerScheduleGrid } from '../components/WorkerScheduleGrid';
 import { estimatesApi, estimateToPayload } from '../api/estimates';
 import type { Timesheet, Job, Client, Worker, JobCreate, PayrollWorkerSummary, TimeOffRequest, Estimate } from '../types';
-
-function getDateRange(start: string, end: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(start + 'T00:00:00');
-  const last = new Date(end + 'T00:00:00');
-  while (current <= last) {
-    dates.push(current.toISOString().split('T')[0]);
-    current.setDate(current.getDate() + 1);
-  }
-  return dates;
-}
-
-function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
 
 // An empty field means inherit, so it maps to null rather than 0 - a zero rate would
 // bill the client nothing and read as a deliberate choice.
@@ -170,17 +155,6 @@ export function ManagerDashboard() {
   });
 
   const pendingTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'pending');
-  const approvedTimeOff = timeOffRequests.filter((r: TimeOffRequest) => r.status === 'approved');
-
-  const isWorkerOffOnDate = (workerId: number, date: string): boolean => {
-    return approvedTimeOff.some(
-      (r: TimeOffRequest) => r.worker_id === workerId && r.dates.includes(date)
-    );
-  };
-
-  const isWorkerOffAllDates = (workerId: number, dates: string[]): boolean => {
-    return dates.length > 0 && dates.every((d) => isWorkerOffOnDate(workerId, d));
-  };
 
   const reviewTimeOffMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: { status: 'approved' | 'denied'; manager_note?: string } }) =>
@@ -330,17 +304,6 @@ export function ManagerDashboard() {
     createJobMutation.mutate(submitData);
   };
 
-  const handleWorkerToggle = (workerId: number) => {
-    setFormData((prev) => {
-      const currentWorkers = prev.assigned_worker_ids || [];
-      if (currentWorkers.includes(workerId)) {
-        return { ...prev, assigned_worker_ids: currentWorkers.filter((id) => id !== workerId) };
-      } else {
-        return { ...prev, assigned_worker_ids: [...currentWorkers, workerId] };
-      }
-    });
-  };
-
   const handleClientSelect = (value: string) => {
     if (value === 'create-new') {
       setShowCreateClient(true);
@@ -456,17 +419,6 @@ export function ManagerDashboard() {
       billable_km_rate: job.billable_km_rate ? parseFloat(job.billable_km_rate) : null,
       assigned_worker_ids: job.assigned_workers?.map((w) => w.id) || job.workers?.map((w) => w.id) || [],
       worker_schedule: job.worker_schedule || [],
-    });
-  };
-
-  const handleEditWorkerToggle = (workerId: number) => {
-    setEditFormData((prev) => {
-      const currentWorkers = prev.assigned_worker_ids || [];
-      if (currentWorkers.includes(workerId)) {
-        return { ...prev, assigned_worker_ids: currentWorkers.filter((id) => id !== workerId) };
-      } else {
-        return { ...prev, assigned_worker_ids: [...currentWorkers, workerId] };
-      }
     });
   };
 
@@ -703,86 +655,16 @@ export function ManagerDashboard() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Assign Workers
                 </label>
-                {formData.start_date && formData.end_date && formData.start_date <= formData.end_date ? (
-                  <div className="overflow-x-auto border rounded-lg">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="px-3 py-2 text-left font-medium text-gray-600 sticky left-0 bg-gray-50">Worker</th>
-                          {getDateRange(formData.start_date, formData.end_date).map((d) => (
-                            <th key={d} className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">
-                              {formatShortDate(d)}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {workers
-                          .filter((worker: Worker) => !isWorkerOffAllDates(worker.id, getDateRange(formData.start_date!, formData.end_date!)))
-                          .map((worker: Worker) => (
-                          <tr key={worker.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
-                            {getDateRange(formData.start_date!, formData.end_date!).map((d) => {
-                              const offOnDate = isWorkerOffOnDate(worker.id, d);
-                              const isChecked = (formData.worker_schedule || []).some(
-                                (ws) => ws.worker_id === worker.id && ws.date === d
-                              );
-                              return (
-                                <td key={d} className={`px-2 py-2 text-center ${offOnDate ? 'bg-red-50' : ''}`}>
-                                  {offOnDate ? (
-                                    <span className="text-xs text-red-400" title="On approved time off">OFF</span>
-                                  ) : (
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => {
-                                        setFormData((prev) => {
-                                          const schedule = [...(prev.worker_schedule || [])];
-                                          const idx = schedule.findIndex(
-                                            (ws) => ws.worker_id === worker.id && ws.date === d
-                                          );
-                                          if (idx >= 0) {
-                                            schedule.splice(idx, 1);
-                                          } else {
-                                            schedule.push({ worker_id: worker.id, date: d });
-                                          }
-                                          const workerIds = [...new Set(schedule.map((ws) => ws.worker_id))];
-                                          return { ...prev, worker_schedule: schedule, assigned_worker_ids: workerIds };
-                                        });
-                                      }}
-                                      className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
-                                    />
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {workers.map((worker: Worker) => (
-                      <label
-                        key={worker.id}
-                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                          formData.assigned_worker_ids?.includes(worker.id)
-                            ? 'bg-obatek/10 border-obatek text-obatek'
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.assigned_worker_ids?.includes(worker.id) || false}
-                          onChange={() => handleWorkerToggle(worker.id)}
-                          className="sr-only"
-                        />
-                        <span className="text-sm">{worker.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
+                <WorkerScheduleGrid
+                  workers={workers}
+                  startDate={formData.start_date}
+                  endDate={formData.end_date}
+                  schedule={formData.worker_schedule || []}
+                  assignedWorkerIds={formData.assigned_worker_ids || []}
+                  onChange={(worker_schedule, assigned_worker_ids) =>
+                    setFormData((prev) => ({ ...prev, worker_schedule, assigned_worker_ids }))
+                  }
+                />
               </div>
             )}
 
@@ -1197,92 +1079,16 @@ export function ManagerDashboard() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Assign Workers
                   </label>
-                  {editFormData.start_date && editFormData.end_date && editFormData.start_date <= editFormData.end_date ? (
-                    <div className="overflow-x-auto border rounded-lg">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-50">
-                            <th className="px-3 py-2 text-left font-medium text-gray-600 sticky left-0 bg-gray-50">Worker</th>
-                            {getDateRange(editFormData.start_date, editFormData.end_date).map((d) => (
-                              <th key={d} className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">
-                                {formatShortDate(d)}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {workers
-                            .filter((worker: Worker) => !isWorkerOffAllDates(worker.id, getDateRange(editFormData.start_date!, editFormData.end_date!)))
-                            .map((worker: Worker) => (
-                            <tr key={worker.id} className="hover:bg-gray-50">
-                              <td className="px-3 py-2 font-medium sticky left-0 bg-white">{worker.name}</td>
-                              {getDateRange(editFormData.start_date!, editFormData.end_date!).map((d) => {
-                                const offOnDate = isWorkerOffOnDate(worker.id, d);
-                                const isChecked = (editFormData.worker_schedule || []).some(
-                                  (ws) => ws.worker_id === worker.id && ws.date === d
-                                );
-                                return (
-                                  <td key={d} className={`px-2 py-2 text-center ${offOnDate ? 'bg-red-50' : ''}`}>
-                                    {offOnDate ? (
-                                      <span className="text-xs text-red-400" title="On approved time off">OFF</span>
-                                    ) : (
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => {
-                                          setEditFormData((prev) => {
-                                            const schedule = [...(prev.worker_schedule || [])];
-                                            const idx = schedule.findIndex(
-                                              (ws) => ws.worker_id === worker.id && ws.date === d
-                                            );
-                                            if (idx >= 0) {
-                                              schedule.splice(idx, 1);
-                                            } else {
-                                              schedule.push({ worker_id: worker.id, date: d });
-                                            }
-                                            const workerStillInSchedule = schedule.some((ws) => ws.worker_id === worker.id);
-                                            const currentAssigned = prev.assigned_worker_ids || [];
-                                            const newAssigned = workerStillInSchedule
-                                              ? currentAssigned.includes(worker.id)
-                                                ? currentAssigned
-                                                : [...currentAssigned, worker.id]
-                                              : currentAssigned.filter((id) => id !== worker.id);
-                                            return { ...prev, worker_schedule: schedule, assigned_worker_ids: newAssigned };
-                                          });
-                                        }}
-                                        className="w-4 h-4 text-obatek rounded border-gray-300 focus:ring-obatek"
-                                      />
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {workers.map((worker: Worker) => (
-                        <label
-                          key={worker.id}
-                          className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors ${
-                            editFormData.assigned_worker_ids?.includes(worker.id)
-                              ? 'bg-obatek/10 border-obatek text-obatek'
-                              : 'border-gray-300 hover:border-gray-400'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={editFormData.assigned_worker_ids?.includes(worker.id) || false}
-                            onChange={() => handleEditWorkerToggle(worker.id)}
-                            className="sr-only"
-                          />
-                          <span className="text-sm">{worker.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
+                  <WorkerScheduleGrid
+                    workers={workers}
+                    startDate={editFormData.start_date}
+                    endDate={editFormData.end_date}
+                    schedule={editFormData.worker_schedule || []}
+                    assignedWorkerIds={editFormData.assigned_worker_ids || []}
+                    onChange={(worker_schedule, assigned_worker_ids) =>
+                      setEditFormData((prev) => ({ ...prev, worker_schedule, assigned_worker_ids }))
+                    }
+                  />
                 </div>
               )}
 
