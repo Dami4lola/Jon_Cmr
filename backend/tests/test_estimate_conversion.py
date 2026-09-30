@@ -95,7 +95,11 @@ def client():
     app.dependency_overrides[deps.get_session] = override_get_session
     app.dependency_overrides[deps.get_current_user] = override_get_current_user
 
-    yield TestClient(app)
+    test_client = TestClient(app)
+    # Workers are seeded directly: creating one over HTTP needs a user record and the
+    # admin-only route, neither of which this fixture's FakeManager stands in for.
+    test_client.engine = engine
+    yield test_client
 
     app.dependency_overrides.clear()
 
@@ -134,6 +138,23 @@ def make_estimate(client, **overrides):
     response = client.post("/api/estimates/", json=payload)
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def make_worker(client, username="sam", name="Sam"):
+    from app.models import User, Worker
+
+    with Session(client.engine) as session:
+        user = User(username=username, email=f"{username}@example.com", hashed_password="x")
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        worker = Worker(user_id=user.id, name=name, hourly_rate=Decimal("45.00"))
+        session.add(worker)
+        session.commit()
+        session.refresh(worker)
+
+        return {"id": worker.id, "name": worker.name}
 
 
 def convert(client, estimate_id, **overrides):
@@ -489,12 +510,12 @@ class TestConvertedJobReachesTheCrew:
         fetched = client.get(f"/api/jobs/{job['id']}")
 
         assert fetched.status_code == 200, fetched.text
-        items = fetched.json()["prep_items"]
-        assert [(i["section"], i["description"], i["quantity"]) for i in items] == [
-            ("Equipment & rentals", "Jackhammer (Outside rental)", "1"),
-            ("Materials", "Concrete mix", "12"),
-            ("Tooling & supplies", "Breaker bits", "2"),
-        ]
+        assert fetched.json()["details"].endswith(
+            "What to bring\n\n"
+            "Equipment & rentals\n- 1 per day x Jackhammer (Outside rental)\n\n"
+            "Materials\n- 12 x Concrete mix\n\n"
+            "Tooling & supplies\n- 2 x Breaker bits"
+        )
 
     def test_crew_list_never_carries_a_price(self, client):
         customer = make_client(client)
@@ -507,12 +528,10 @@ class TestConvertedJobReachesTheCrew:
         )
 
         job = convert(client, estimate["id"]).json()
-        items = client.get(f"/api/jobs/{job['id']}").json()["prep_items"]
+        details = client.get(f"/api/jobs/{job['id']}").json()["details"]
 
-        assert items
-        for item in items:
-            assert set(item) == {"section", "description", "quantity", "unit"}
-            assert "8.5" not in str(item)
+        assert "12 x Concrete mix" in details
+        assert "8.5" not in details
 
     def test_empty_scaffolding_does_not_reach_the_crew(self, client):
         """A new estimate seeds all three components at zero so the boxes start empty."""
@@ -528,7 +547,7 @@ class TestConvertedJobReachesTheCrew:
 
         job = convert(client, estimate["id"]).json()
 
-        assert client.get(f"/api/jobs/{job['id']}").json()["prep_items"] == []
+        assert "What to bring" not in client.get(f"/api/jobs/{job['id']}").json()["details"]
 
     def test_job_carries_the_client_phone(self, client):
         customer = make_client(client, phone="613-555-0142")
@@ -586,4 +605,53 @@ class TestConvertedJobReachesTheCrew:
         )
 
         assert created.status_code == 201, created.text
-        assert created.json()["prep_items"] == []
+        assert created.json()["details"] is None
+
+    def test_the_convert_response_already_carries_the_details(self, client):
+        """
+        The dialog navigates straight off this response, so the manager must not have
+        to refetch the job to see what the crew was told.
+        """
+        customer = make_client(client)
+        estimate = make_estimate(
+            client,
+            client_id=customer["id"],
+            material_rows=[
+                {"description": "Concrete mix", "quantity": 12, "unit_cost": 8.5, "sort_order": 0},
+            ],
+        )
+
+        converted = convert(client, estimate["id"])
+
+        assert converted.status_code == 201, converted.text
+        assert "Materials\n- 12 x Concrete mix" in converted.json()["details"]
+
+
+class TestConvertedJobSchedule:
+    def test_per_day_worker_rows_are_written(self, client):
+        """
+        The manager ticks each worker onto each day in the convert dialog. Without these
+        rows the crew's dashboard falls back to a bare date range and the calendar emits
+        one long span instead of a day each.
+        """
+        customer = make_client(client)
+        estimate = make_estimate(client, client_id=customer["id"])
+        worker = make_worker(client)
+
+        job = convert(
+            client,
+            estimate["id"],
+            start_date="2026-03-02",
+            end_date="2026-03-04",
+            assigned_worker_ids=[worker["id"]],
+            worker_schedule=[
+                {"worker_id": worker["id"], "date": "2026-03-02"},
+                {"worker_id": worker["id"], "date": "2026-03-04"},
+            ],
+        ).json()
+
+        fetched = client.get(f"/api/jobs/{job['id']}").json()
+
+        assert sorted(ws["date"] for ws in fetched["worker_schedule"]) == [
+            "2026-03-02", "2026-03-04",
+        ]

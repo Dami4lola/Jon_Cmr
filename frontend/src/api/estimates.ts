@@ -51,9 +51,11 @@ export function estimateToPayload(estimate: Estimate): EstimatePayload {
     material_rows: estimate.material_rows.map((r) => ({
       description: r.description, quantity: parseFloat(r.quantity), unit_cost: parseFloat(r.unit_cost), sort_order: r.sort_order,
     })),
-    scaffolding_rows: estimate.scaffolding_rows.map((r) => ({
-      component: r.component, rate_per_day: parseFloat(r.rate_per_day), quantity: parseFloat(r.quantity), sort_order: r.sort_order,
-    })),
+    scaffolding_rows: estimate.scaffolding_rows
+      .filter((r) => parseFloat(r.quantity) > 0)
+      .map((r) => ({
+        component: r.component, rate_per_day: parseFloat(r.rate_per_day), quantity: parseFloat(r.quantity), sort_order: r.sort_order,
+      })),
     tooling_rows: estimate.tooling_rows.map((r) => ({
       description: r.description, quantity: parseFloat(r.quantity), unit_cost: parseFloat(r.unit_cost), sort_order: r.sort_order,
     })),

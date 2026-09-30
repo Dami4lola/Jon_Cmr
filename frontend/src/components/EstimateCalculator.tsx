@@ -248,9 +248,13 @@ export function EstimateCalculator({
   // since the backend doesn't distinguish where a material line came from -
   // reopening an existing estimate loads everything into the Home Depot list.
   const [nonHomeDepotMaterialRows, setNonHomeDepotMaterialRows] = useState<MaterialRow[]>([]);
-  const [scaffoldingRows, setScaffoldingRows] = useState<ScaffoldingRow[]>(() =>
-    initialEstimate ? scaffoldingFromEstimate(initialEstimate) : defaultScaffoldingRows()
-  );
+  // An estimate with no scaffolding saves no rows, and there is no "add a line" button
+  // for scaffolding the way there is for materials - so seed the components back or the
+  // section reopens empty and uneditable.
+  const [scaffoldingRows, setScaffoldingRows] = useState<ScaffoldingRow[]>(() => {
+    const saved = scaffoldingFromEstimate(initialEstimate);
+    return saved.length > 0 ? saved : defaultScaffoldingRows();
+  });
   const [toolingRows, setToolingRows] = useState<ToolingRow[]>(() => toolingFromEstimate(initialEstimate));
   const [activeSearchRowId, setActiveSearchRowId] = useState<number | null>(null);
 
@@ -464,9 +468,11 @@ export function EstimateCalculator({
     material_rows: [...materialRows, ...nonHomeDepotMaterialRows]
       .filter((r) => r.desc.trim().length > 0)
       .map((r, i) => ({ description: r.desc, quantity: r.qty, unit_cost: r.unitCost, sort_order: i })),
-    scaffolding_rows: scaffoldingRows.map((r, i) => ({
-      component: r.component, rate_per_day: r.rate, quantity: r.qty, sort_order: i,
-    })),
+    scaffolding_rows: scaffoldingRows
+      .filter((r) => r.qty > 0)
+      .map((r, i) => ({
+        component: r.component, rate_per_day: r.rate, quantity: r.qty, sort_order: i,
+      })),
     tooling_rows: toolingRows
       .filter((r) => r.desc.trim().length > 0)
       .map((r, i) => ({ description: r.desc, quantity: r.qty, unit_cost: r.unitCost, sort_order: i })),
