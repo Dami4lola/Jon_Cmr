@@ -242,6 +242,12 @@ function JobCostBreakdown({ financials }: { financials: JobFinancialsDetail }) {
           </span>
         </span>
         <span>
+          Billable (incl. HST):{' '}
+          <span className="font-medium text-gray-900">
+            {formatCurrency(financials.total_billable)}
+          </span>
+        </span>
+        <span>
           Cost (pre-tax):{' '}
           <span className="font-medium text-gray-900">
             {formatCurrency(financials.subtotal_cost)}
@@ -428,11 +434,10 @@ export function JobFinancials() {
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-600">Billable</p>
             <p className="text-2xl font-bold text-gray-900">
-              {formatCurrency(totals.subtotal_billable)}
+              {formatCurrency(totals.total_billable)}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              +{formatCurrency(totals.hst_billable)} HST · {formatCurrency(totals.total_billable)}{' '}
-              incl. tax
+              {formatCurrency(totals.subtotal_billable)} + {formatCurrency(totals.hst_billable)} HST
             </p>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
@@ -457,9 +462,12 @@ export function JobFinancials() {
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-600">Quoted</p>
-            <p className="text-2xl font-bold text-obatek">{formatCurrency(totals.total_budget)}</p>
+            <p className="text-2xl font-bold text-obatek">
+              {formatCurrency(totals.total_budget_with_hst)}
+            </p>
             <p className="text-xs text-gray-500 mt-1">
-              {totals.jobs_without_budget} of {totals.job_count} unquoted
+              {formatCurrency(totals.total_budget)} before tax · {totals.jobs_without_budget} of{' '}
+              {totals.job_count} unquoted
             </p>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
@@ -521,10 +529,14 @@ export function JobFinancials() {
 
                   <div className="text-right flex-shrink-0">
                     <p className="text-lg font-bold text-gray-900">
-                      {formatCurrency(job.subtotal_billable)}
+                      {formatCurrency(job.total_billable)}
                     </p>
                     <p className="text-sm text-gray-500">
-                      of {job.budget_amount === null ? DASH : formatCurrency(job.budget_amount)} quoted
+                      of{' '}
+                      {job.budget_total_with_hst === null
+                        ? DASH
+                        : formatCurrency(job.budget_total_with_hst)}{' '}
+                      quoted
                     </p>
                     <p className={`text-sm font-medium ${marginToneClass(job.gross_profit_amount)}`}>
                       {formatCurrency(job.gross_profit_amount)} profit

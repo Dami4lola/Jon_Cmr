@@ -12,6 +12,7 @@ from app.api.financials import (
     _resolve_budget,
     _calculate_margin,
     _build_job_financials,
+    _build_totals,
     _uninvoiced_timesheets,
     _rollup_invoice_status,
     BUDGET_SOURCE_INVOICE,
@@ -21,6 +22,7 @@ from app.api.financials import (
 )
 from app.services.job_cost import resolve_billing_rates
 from app.models import Estimate, Invoice
+from app.schemas.financials import JobFinancialsSummary
 
 from .test_payroll_characterization import make_job, make_timesheet, make_worker
 
@@ -166,6 +168,28 @@ class TestMargin:
         assert margin["margin_amount"] == Decimal("-7500.00")
         assert margin["margin_percent"] is None
         assert margin["is_over_budget"] is True
+
+
+class TestPortfolioTotals:
+    def _summary(self, job_id, attach_budget):
+        job = make_job(job_id=job_id)
+        job.timesheets = []
+        attach_budget(job)
+        fields, _ = _build_job_financials(job)
+        return JobFinancialsSummary(**fields)
+
+    def test_quoted_total_with_hst_sums_only_budgeted_jobs(self):
+        summaries = [
+            self._summary(1, lambda job: attach_estimate(job, subtotal="8000.00", total="9040.00")),
+            self._summary(2, lambda job: attach_estimate(job, subtotal="1000.00", total="1130.00")),
+            self._summary(3, lambda job: None),
+        ]
+
+        totals = _build_totals(summaries)
+
+        assert totals.total_budget == Decimal("9000.00")
+        assert totals.total_budget_with_hst == Decimal("10170.00")
+        assert totals.jobs_without_budget == 1
 
 
 class TestJobRollup:

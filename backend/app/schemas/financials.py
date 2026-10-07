@@ -189,6 +189,7 @@ class FinancialsTotals(BaseModel):
     # total_budget and total_margin cover only jobs that have a budget, otherwise
     # unbudgeted jobs would drag portfolio margin negative for no reason.
     total_budget: Decimal
+    total_budget_with_hst: Decimal
     total_margin: Decimal
     total_margin_percent: Decimal | None
     jobs_over_budget: int
