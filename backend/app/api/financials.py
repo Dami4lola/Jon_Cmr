@@ -424,6 +424,7 @@ def _build_totals(summaries: list[JobFinancialsSummary]) -> FinancialsTotals:
     """Portfolio rollup. Budget and margin cover only the jobs that have a budget."""
     budgeted = [s for s in summaries if s.budget_amount is not None]
     total_budget = sum((s.budget_amount for s in budgeted), Decimal("0"))
+    total_budget_with_hst = sum((s.budget_total_with_hst for s in budgeted), Decimal("0"))
     budgeted_cost = sum((s.subtotal_cost for s in budgeted), Decimal("0"))
     total_margin = q(total_budget - budgeted_cost)
 
@@ -452,6 +453,7 @@ def _build_totals(summaries: list[JobFinancialsSummary]) -> FinancialsTotals:
         total_cost=q(subtotal_cost + hst_cost),
         unpaid_cost=q(sum((s.unpaid_cost for s in summaries), Decimal("0"))),
         total_budget=q(total_budget),
+        total_budget_with_hst=q(total_budget_with_hst),
         total_margin=total_margin,
         total_margin_percent=(
             None

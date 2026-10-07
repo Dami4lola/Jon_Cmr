@@ -888,6 +888,7 @@ export interface FinancialsTotals {
   total_cost: string;
   unpaid_cost: string;
   total_budget: string;
+  total_budget_with_hst: string;
   total_margin: string;
   total_margin_percent: string | null;
   jobs_over_budget: number;
