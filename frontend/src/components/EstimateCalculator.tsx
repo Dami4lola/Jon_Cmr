@@ -99,11 +99,12 @@ const SCAFFOLDING_LABELS: Record<ScaffoldingComponentKey, string> = {
   plank: 'Planks',
 };
 
-// The usual per-day rate and count for each component. Shown as placeholders rather
-// than filled in, so the figures are there to work from but nothing has to be cleared
-// before typing. Crossers are billed as part of the Frame line's cost, not a separate
-// line (business rule) - "crosser" stays a valid component so older saved estimates
-// with a standalone crosser row still load and display correctly.
+// The rate is the business's standing per-unit day price, so it is filled in for real -
+// as a placeholder it read as priced while the line billed $0. The quantity changes
+// every job, so it stays a placeholder with nothing to clear before typing. Crossers are
+// billed as part of the Frame line's cost, not a separate line (business rule) - "crosser"
+// stays a valid component so older saved estimates with a standalone crosser row still
+// load and display correctly.
 const SCAFFOLDING_DEFAULTS: Record<ScaffoldingComponentKey, { rate: number; qty: number }> = {
   frame: { rate: 1, qty: 40 },
   crosser: { rate: 0, qty: 56 },
@@ -121,7 +122,7 @@ const PROSPECT_CONTACT_REQUIRED =
 
 function defaultScaffoldingRows(): ScaffoldingRow[] {
   return NEW_ESTIMATE_SCAFFOLDING_COMPONENTS.map((component) => ({
-    id: nextId(), component, rate: 0, qty: 0,
+    id: nextId(), component, rate: SCAFFOLDING_DEFAULTS[component].rate, qty: 0,
   }));
 }
 
@@ -173,6 +174,21 @@ function scaffoldingFromEstimate(estimate?: Estimate): ScaffoldingRow[] {
   return estimate.scaffolding_rows.map((r) => ({
     id: nextId(), component: r.component, rate: parseFloat(r.rate_per_day), qty: parseFloat(r.quantity),
   }));
+}
+
+// Only rows with a quantity are saved, and there is no "add a line" button for scaffolding
+// the way there is for materials - so every missing component is seeded back or it could
+// never be added to a reopened estimate. Zero-quantity rows on older estimates count as
+// missing, otherwise they would reopen without the standing rate.
+function scaffoldingRowsForCalculator(estimate?: Estimate): ScaffoldingRow[] {
+  const savedRows = scaffoldingFromEstimate(estimate).filter((row) => row.qty > 0);
+  const missingRows = defaultScaffoldingRows().filter(
+    (row) => !savedRows.some((savedRow) => savedRow.component === row.component)
+  );
+  const componentOrder = Object.keys(SCAFFOLDING_LABELS);
+  return [...savedRows, ...missingRows].sort(
+    (a, b) => componentOrder.indexOf(a.component) - componentOrder.indexOf(b.component)
+  );
 }
 
 function toolingFromEstimate(estimate?: Estimate): ToolingRow[] {
@@ -248,13 +264,9 @@ export function EstimateCalculator({
   // since the backend doesn't distinguish where a material line came from -
   // reopening an existing estimate loads everything into the Home Depot list.
   const [nonHomeDepotMaterialRows, setNonHomeDepotMaterialRows] = useState<MaterialRow[]>([]);
-  // An estimate with no scaffolding saves no rows, and there is no "add a line" button
-  // for scaffolding the way there is for materials - so seed the components back or the
-  // section reopens empty and uneditable.
-  const [scaffoldingRows, setScaffoldingRows] = useState<ScaffoldingRow[]>(() => {
-    const saved = scaffoldingFromEstimate(initialEstimate);
-    return saved.length > 0 ? saved : defaultScaffoldingRows();
-  });
+  const [scaffoldingRows, setScaffoldingRows] = useState<ScaffoldingRow[]>(() =>
+    scaffoldingRowsForCalculator(initialEstimate)
+  );
   const [toolingRows, setToolingRows] = useState<ToolingRow[]>(() => toolingFromEstimate(initialEstimate));
   const [activeSearchRowId, setActiveSearchRowId] = useState<number | null>(null);
 
@@ -845,7 +857,6 @@ export function EstimateCalculator({
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder={String(SCAFFOLDING_DEFAULTS[row.component].rate)}
                 className={`${inputClass} col-span-3`}
                 value={blankIfZero(row.rate)}
                 onChange={(e) => updateScaffoldingRow(row.id, { rate: parseFloat(e.target.value) || 0 })}

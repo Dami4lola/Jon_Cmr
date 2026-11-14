@@ -358,6 +358,58 @@ class TestEstimateApi:
         second = client.post("/api/estimates/", json=payload)
         assert second.status_code == 400
 
+    def test_duplicate_is_a_fresh_draft_with_the_same_contents(self, client):
+        payload = {**MINIMAL_PAYLOAD, "notes": "Gate code 1234"}
+        original = client.post("/api/estimates/", json=payload).json()
+
+        resp = client.post(f"/api/estimates/{original['id']}/duplicate")
+        assert resp.status_code == 201
+        copy = resp.json()
+
+        assert copy["id"] != original["id"]
+        assert copy["estimate_number"] != original["estimate_number"]
+        assert copy["status"] == "draft"
+        for field in ("scope_of_work", "notes", "crew_size", "techs_traveling", "admin_fee",
+                      "total_hours", "subtotal", "hst_amount", "total"):
+            assert copy[field] == original[field], field
+        for rows in ("tasks", "equipment_rows", "material_rows", "scaffolding_rows", "tooling_rows"):
+            assert self._without_ids(copy[rows]) == self._without_ids(original[rows]), rows
+            assert all(r["id"] not in {o["id"] for o in original[rows]} for r in copy[rows]), rows
+
+        # The original is untouched
+        assert client.get(f"/api/estimates/{original['id']}").json()["tasks"] == original["tasks"]
+
+    def test_duplicate_of_a_sent_estimate_is_a_draft(self, client):
+        original = client.post("/api/estimates/", json=MINIMAL_PAYLOAD).json()
+        sent = client.put(f"/api/estimates/{original['id']}", json={**MINIMAL_PAYLOAD, "status": "sent"})
+        assert sent.json()["status"] == "sent"
+
+        copy = client.post(f"/api/estimates/{original['id']}/duplicate").json()
+        assert copy["status"] == "draft"
+
+    def test_duplicate_of_a_job_linked_estimate_is_standalone(self, client):
+        job_resp = client.post(
+            "/api/jobs/",
+            json={"client_id": self._make_client(client), "title": "Test job", "details": "x"},
+        )
+        linked = client.post("/api/estimates/", json={**MINIMAL_PAYLOAD, "job_id": job_resp.json()["id"]}).json()
+        assert linked["job"] is not None
+
+        copy = client.post(f"/api/estimates/{linked['id']}/duplicate").json()
+        assert copy["job"] is None
+        assert copy["client"] == linked["client"]
+
+        standalone_ids = {e["id"] for e in client.get("/api/estimates/", params={"standalone": True}).json()}
+        assert copy["id"] in standalone_ids
+        assert linked["id"] not in standalone_ids
+
+    def test_duplicate_missing_estimate_is_404(self, client):
+        assert client.post("/api/estimates/999999/duplicate").status_code == 404
+
+    @staticmethod
+    def _without_ids(rows):
+        return [{k: v for k, v in r.items() if k != "id"} for r in rows]
+
     @staticmethod
     def _make_client(client):
         resp = client.post(

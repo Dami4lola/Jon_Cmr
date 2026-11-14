@@ -123,6 +123,12 @@ export const estimatesApi = {
     return response.data;
   },
 
+  // Copies an estimate into a new standalone draft with its own number
+  duplicate: async (id: number): Promise<Estimate> => {
+    const response = await api.post(`/estimates/${id}/duplicate`);
+    return response.data;
+  },
+
   convertToJob: async (id: number, data: ConvertEstimatePayload): Promise<Job> => {
     const response = await api.post(`/estimates/${id}/convert-to-job`, data);
     return response.data;

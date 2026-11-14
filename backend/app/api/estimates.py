@@ -821,6 +821,63 @@ def delete_estimate(estimate_id: int, session: DBSession, current_user: Estimato
     session.commit()
 
 
+COPIED_ESTIMATE_FIELDS = (
+    "client_id", "client_name_override", "address_override",
+    "scope_of_work", "notes",
+    "crew_size", "techs_traveling", "distance_km", "km_rate",
+    "redseal_techs", "redseal_rate",
+    "dump_fee", "permits_fee", "engineering_fee", "admin_fee",
+    "heavy_equipment_rate", "include_admin_fee", "include_hst",
+    "total_hours", "travel_days", "labour_amount", "redseal_amount", "travel_amount",
+    "materials_amount", "heavy_equipment_amount", "rental_amount", "fuel_amount",
+    "scaffolding_amount", "tooling_amount", "admin_amount", "subtotal", "hst_amount", "total",
+)
+
+_CHILD_ROW_TYPES = (
+    ("tasks", EstimateTask),
+    ("equipment_rows", EstimateEquipmentRow),
+    ("material_rows", EstimateMaterialRow),
+    ("scaffolding_rows", EstimateScaffoldingRow),
+    ("tooling_rows", EstimateToolingRow),
+)
+
+
+def _copy_estimate(session, source: Estimate) -> Estimate:
+    """
+    A fresh draft with its own number and no job link: the job_id column is
+    unique, and the copy should be convertible to a job of its own. Stored
+    amounts are copied as-is so the copy reads exactly like its source; the
+    next save recomputes them.
+    """
+    copy = Estimate(
+        estimate_number=generate_estimate_number(session),
+        job_id=None,
+        status=EstimateStatus.DRAFT.value,
+        **{field: getattr(source, field) for field in COPIED_ESTIMATE_FIELDS},
+    )
+    session.add(copy)
+    session.flush()
+
+    for attr, row_type in _CHILD_ROW_TYPES:
+        for row in getattr(source, attr):
+            session.add(row_type(estimate_id=copy.id, **row.model_dump(exclude={"id", "estimate_id"})))
+
+    return copy
+
+
+@router.post("/{estimate_id}/duplicate", response_model=EstimateResponse, status_code=status.HTTP_201_CREATED)
+def duplicate_estimate(estimate_id: int, session: DBSession, current_user: EstimatorUser):
+    """Manager-only: copy an estimate into a new standalone draft"""
+    source = _load_estimate(session, estimate_id)
+    if not source:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estimate not found")
+
+    copy = _copy_estimate(session, source)
+    session.commit()
+
+    return _get_estimate_or_404(session, copy.id)
+
+
 # ============================================================
 # Convert an estimate into a job
 # ============================================================

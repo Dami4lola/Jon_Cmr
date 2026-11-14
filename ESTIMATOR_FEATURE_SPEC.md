@@ -25,7 +25,7 @@ These rules were supplied by the business owner and drive every calculation in b
 | Fuel for tools/equipment | Billed out as its own line item |
 | Heavy equipment (mini excavator, tractor, skid steer) | $120.00 / hour |
 | Owned rental equipment (e.g. wood chipper) | $150.00 / day |
-| Scaffolding | Rate set per job, taken from whatever the work estimate specifies (no fixed default) |
+| Scaffolding | Per unit per day: $1.00 per frame (crossers included), $2.00 per jack, $3.00 per plank. Pre-filled and editable on each estimate; quantity is set per job |
 | Outside/rented equipment | Priced at whatever the rental company ("rental village") charges — a pass-through cost, with an optional markup percentage |
 | Tax | 13% (Ontario HST) by default, editable |
 

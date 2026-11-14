@@ -104,7 +104,7 @@ def _described_items(rows, section: str) -> list[JobPrepItem]:
 def _scaffolding_items(estimate: "Estimate") -> list[JobPrepItem]:
     items = []
     for row in sorted(estimate.scaffolding_rows, key=lambda r: r.sort_order):
-        # A new estimate seeds every component at zero so the boxes start empty -
+        # Older estimates still carry the zero-quantity rows the calculator used to save -
         # without this the crew list would show three components nobody asked for.
         if row.quantity <= 0:
             continue

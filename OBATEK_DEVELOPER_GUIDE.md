@@ -217,6 +217,9 @@ CORS_ORIGINS=http://localhost:5173,https://yourdomain.com
 # Google Maps API (for distance calculations between office and job site)
 GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 
+# Mapbox (optional fallback for distance calculations when Google Maps is unavailable)
+MAPBOX_ACCESS_TOKEN=your-mapbox-access-token
+
 # File uploads
 UPLOAD_DIR=uploads
 MAX_FILE_SIZE_MB=10

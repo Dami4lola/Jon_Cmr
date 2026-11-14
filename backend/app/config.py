@@ -22,6 +22,9 @@ class Settings:
     # Google Maps API
     GOOGLE_MAPS_API_KEY: str | None = config("GOOGLE_MAPS_API_KEY", default=None)
 
+    # Mapbox (fallback for distance lookups when Google Maps is unavailable)
+    MAPBOX_ACCESS_TOKEN: str | None = config("MAPBOX_ACCESS_TOKEN", default=None)
+
     # SerpApi (Home Depot pricing lookups for the estimate calculator)
     SERPAPI_KEY: str | None = config("SERPAPI_KEY", default=None)
     MATERIAL_PRICE_CACHE_TTL_HOURS: int = config(
