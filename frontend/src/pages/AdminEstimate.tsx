@@ -47,6 +47,17 @@ export function AdminEstimate() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['estimates'] }),
   });
 
+  // The copy opens straight in the builder, so editing it is the next step.
+  const duplicateMutation = useMutation({
+    mutationFn: (id: number) => estimatesApi.duplicate(id),
+    onSuccess: (copy) => {
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      setOpenEstimate(copy);
+      setView('builder');
+    },
+    onError: () => alert('Failed to duplicate estimate'),
+  });
+
   const handleDownload = async (estimate: { id: number; estimate_number: string }, customer: boolean) => {
     try {
       await estimatesApi.downloadPdfToFile(estimate.id, estimate.estimate_number, customer);
@@ -89,9 +100,21 @@ export function AdminEstimate() {
           <h1 className="text-2xl font-bold text-gray-900">
             {openEstimate ? `Estimate — ${openEstimate.estimate_number}` : 'New Estimate'}
           </h1>
-          <button onClick={handleClose} className="text-sm text-obatek hover:underline">
-            &larr; Back to estimates
-          </button>
+          <div className="flex items-center gap-4">
+            {openEstimate && (
+              <button
+                onClick={() => duplicateMutation.mutate(openEstimate.id)}
+                disabled={duplicateMutation.isPending}
+                className="text-sm text-obatek hover:underline disabled:opacity-50"
+                title="Make a copy of this estimate as a new draft"
+              >
+                {duplicateMutation.isPending ? 'Duplicating...' : 'Duplicate'}
+              </button>
+            )}
+            <button onClick={handleClose} className="text-sm text-obatek hover:underline">
+              &larr; Back to estimates
+            </button>
+          </div>
         </div>
 
         {!openEstimate && (
@@ -312,6 +335,14 @@ export function AdminEstimate() {
                           title="Download customer copy PDF (no internal hour breakdown)"
                         >
                           Customer
+                        </button>
+                        <button
+                          onClick={() => duplicateMutation.mutate(e.id)}
+                          disabled={duplicateMutation.isPending}
+                          className="text-obatek hover:text-obatek-dark transition-colors text-xs font-medium disabled:opacity-50"
+                          title="Make a copy of this estimate as a new draft"
+                        >
+                          Duplicate
                         </button>
                         <button
                           onClick={() => handleOpen(e.id)}
